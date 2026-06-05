@@ -70,9 +70,14 @@ description until a task makes it relevant, then the full body loads on demand.
   automatically from the PowerShell Gallery if missing)*
 - [Microsoft Win32 Content Prep Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool)
   *(the skill provisions this automatically)*
-- For the optional **automated SYSTEM test loop**: an **elevated** PowerShell session; the
-  [`Invoke-CommandAs`](https://github.com/mkellerman/Invoke-CommandAs) module is installed automatically
-  from the PowerShell Gallery
+- **For full end-to-end automation, run the session elevated (as Administrator).** Only the optional
+  **automated SYSTEM test loop** (Phase 5.5) needs this — scaffold, customizing, pre-flight, packaging and
+  the dossier all run unprivileged. Without elevation the agent does everything *except* the SYSTEM test
+  loop and hands that one step back to you to run as admin. Works from both Windows PowerShell 5.1 and
+  PowerShell 7 (under pwsh the SYSTEM test auto-relaunches under 5.1, since the
+  [`Invoke-CommandAs`](https://github.com/mkellerman/Invoke-CommandAs) module it uses relies on the
+  Windows-PowerShell-5.1-only `PSScheduledJob` module). `Invoke-CommandAs` is installed automatically from
+  the PowerShell Gallery
 - *(Future release only)* For the optional direct upload: an Entra app registration with the Graph
   **application** permission `DeviceManagementApps.ReadWrite.All` (admin consent granted)
 
