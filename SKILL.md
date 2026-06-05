@@ -179,7 +179,7 @@ If the installer creates a desktop icon on its own: remove it again specifically
 
 **4b. `Uninstall-ADTDeployment`** — values from intake question 7 (what goes, what stays):
 
-- MSI with known ProductCode: `Start-ADTMsiProcess -Action Uninstall -FilePath '{<ProductCode>}' -ArgumentList '/qn'`
+- MSI with known ProductCode: `Start-ADTMsiProcess -Action Uninstall -ProductCode '{<ProductCode>}' -ArgumentList '/qn'` (in PSADT 4.1.x a GUID MUST go to `-ProductCode`; `-FilePath` is validated as a real file path and throws `InvalidFilePathParameterValue` -> exit 60001)
 - MSI via DisplayName match (when ProductCode varies): `Remove-ADTApplication -Name '<AppName>' -NameMatch Exact` (not `Contains` - that accidentally removes neighboring products with a name prefix)
 - EXE with its own uninstaller: `Start-ADTProcess -FilePath '<uninstallstring-from-registry>' -ArgumentList '<silent uninstall switches>'`
 - Squirrel: `Start-ADTProcess -FilePath "$env:LocalAppData\<app>\update.exe" -ArgumentList '--uninstall -s'`
@@ -198,7 +198,7 @@ Counter-example to warn about: NEVER do `Remove-Item 'HKLM:\SOFTWARE\<vendor>' -
 **4c. `Repair-ADTDeployment`** — values from intake question 8:
 
 - If intake says "not needed": leave the hook empty or abort with `Write-ADTLogEntry -Message 'Repair not supported - please use Uninstall + Install.'` + `throw`
-- MSI: `Start-ADTMsiProcess -Action Repair -FilePath '{<ProductCode>}' -ArgumentList '/fa /qn'` (`/fa` = all files reinstalled, shortcuts + registry are set again)
+- MSI: `Start-ADTMsiProcess -Action Repair -ProductCode '{<ProductCode>}' -ArgumentList '/fa /qn'` (`/fa` = all files reinstalled, shortcuts + registry are set again; a GUID goes to `-ProductCode`, NOT `-FilePath` - see Uninstall note above)
 - EXE wrapper without a dedicated repair mode: uninstall followed by install in the same hook; preserve user config if possible (backup-restore logic if needed)
 - Config-only repair: stop the service, copy the config files back from `SupportFiles\`, start the service - without reinstalling the app (faster, less invasive)
 
@@ -432,6 +432,8 @@ On user reports, check in this order:
 | App stuck on "Installing" in Company Portal | IME state cache or process hangs | Appendix A.2 cleanup sequence |
 | `0x80070002` | Launcher does not find the .ps1 | `-s` during packaging was wrong |
 | Detection failed after successful install | Detection script bug (contract violation, 32/64-bit registry) | Manually on target: `.\Detect-*.ps1; $LASTEXITCODE` |
+| SYSTEM test: `New-ScheduledJobOption`/`PSScheduledJob` could not be loaded; every step `ExitCode=0 Success=False not-installed` | Running `Invoke-PsadtSystemTest.ps1` under pwsh 7 - PSScheduledJob (used by Invoke-CommandAs) is WinPS-5.1-only, blocked in Core | Re-run under `powershell.exe` 5.1; the harness now self-re-execs to 5.1 (Appendix G 2026-06-05 #1) |
+| `60001` (`InvalidFilePathParameterValue,Start-ADTMsiProcess`) on Uninstall/Repair | ProductCode GUID passed to `-FilePath` instead of `-ProductCode` (PSADT 4.1.x) | Use `-ProductCode '{<GUID>}'`; verify `(Get-Command Start-ADTMsiProcess).Parameters.Keys` (Appendix G 2026-06-05 #2) |
 
 HRESULT conversion: Intune shows unknown positive exit codes as `0x80070000 + code`. So `0x80070001` = exit 1 = script did not run at all. Always recompute, don't be misled by the "ERROR_INVALID_FUNCTION" text.
 
