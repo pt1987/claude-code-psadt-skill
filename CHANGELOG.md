@@ -2,6 +2,33 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.9.2 — 2026-06-12 — Reconcile diverged install copy: SYSTEM-test fix, richer report, MSI generator
+
+A separate working copy had drifted from `main`; its genuinely newer parts were merged back into the repo
+(the canonical source). The repo keeps the 0.9.0 `_GraphCommon` refactor, unified 0-12 phases and full test
+suite; only the items below were brought in.
+
+### Fixed
+- **`Invoke-PsadtSystemTest.ps1` crashed at param binding under the WinPS 5.1 re-exec.** The `$SkillRoot`
+  default was `Split-Path $PSScriptRoot -Parent`. When the script self-re-execs from PowerShell 7 (Core) to
+  Windows PowerShell 5.1 via `powershell.exe -File`, `$PSScriptRoot` can be empty during parameter-default
+  evaluation, so `Split-Path` threw `ParameterArgumentValidationErrorEmptyStringNotAllowed` and every SYSTEM
+  action returned `ExitCode=EXC, Success=false` ("child produced no result") **before the MSI ever ran** -
+  making the mandatory Install/Uninstall gate impossible to pass on a pwsh-7 host. The default is now
+  fail-safe: it falls back to `$PSCommandPath` and finally to an empty string (the param is currently unused
+  downstream, so an empty value is harmless). No other logic changed.
+
+### Added
+- **Per-field copy buttons in the HTML dossier.** `references/Report-Template.html` gains a `file://`-safe
+  clipboard path (synchronous `execCommand` first, async Clipboard API as a best-effort bonus) plus a copy
+  icon on every Intune value cell, recomputed at click time so it follows the DE/EN toggle. `{{LANG}}` is
+  retained so the generator still controls the root language. The token set is unchanged, so the existing
+  `New-PsadtReport.ps1` fills the template as-is.
+- **`scripts/New-MsiPackage.ps1`** - reusable PSADT v4.1.8 MSI package generator (scaffold + fully-customized
+  ASCII `Invoke-AppDeployToolkit.ps1` for Install/Uninstall/Repair + registry detection script). The hard-coded
+  `.claude\skills\...` path for `Get-PsadtConfig` was replaced with a `$PSScriptRoot` sibling lookup so it runs
+  from any location. New `tests/New-MsiPackage.Tests.ps1` (AST parse, mandatory-param, ASCII, no-hard-path).
+
 ## 0.9.1 — 2026-06-12 — Applicability/portability drift cleanup (docs + instructions)
 
 Follow-up to the 0.9.0 audit: a consistency pass found documented behaviour that no longer matched the

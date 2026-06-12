@@ -172,6 +172,13 @@
   .preview p { margin: 0 0 8px; } .preview .strong { font-weight: 600; }
   pre.md { margin: 0; padding: 14px 16px; font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: pre-wrap; line-height: 1.55; background: #fcfcfc; max-height: 460px; overflow: auto; }
   .copy-btn { font-family: var(--font); font-size: 11px; font-weight: 600; color: var(--accent-dark); background: var(--accent-soft); border: 1px solid #cfe4f7; border-radius: 5px; padding: 2px 9px; cursor: pointer; }
+  .copy-btn.copied { color: var(--ok); background: var(--ok-bg); border-color: var(--ok); }
+  td.cpv { position: relative; padding-right: 40px; }
+  .copy-ic { position: absolute; right: 8px; top: 6px; width: 24px; height: 24px; display: inline-grid; place-items: center; padding: 0; border: 1px solid var(--line-soft); background: #fff; color: var(--ink-3); border-radius: 5px; cursor: pointer; opacity: .4; transition: opacity .12s, background .12s, color .12s, border-color .12s; }
+  tr:hover .copy-ic { opacity: 1; }
+  .copy-ic:hover { background: var(--accent-soft); color: var(--accent-dark); border-color: #cfe4f7; }
+  .copy-ic.copied { opacity: 1; background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+  .copy-ic svg { display: block; }
 
   /* ---------- Hooks ---------- */
   .hooks { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
@@ -209,7 +216,8 @@
   @media print {
     body { background: #fff; font-size: 11px; }
     .hero { background: var(--accent-dark) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    nav.toc, .copy-btn, .lang-switch { display: none; }
+    nav.toc, .copy-btn, .copy-ic, .lang-switch { display: none; }
+    td.cpv { padding-right: 12px; }
     .wrap { grid-template-columns: 1fr; padding: 12px; }
     section.card { break-inside: avoid; box-shadow: none; }
   }
@@ -303,7 +311,7 @@
             <div class="preview only-en"></div>
           </div>
           <div class="panel">
-            <div class="panel-h"><span data-de="Markdown-Quelle" data-en="Markdown source">Markdown-Quelle</span> <button class="copy-btn cp" onclick="copyMd()" data-de="kopieren" data-en="copy">kopieren</button></div>
+            <div class="panel-h"><span data-de="Markdown-Quelle" data-en="Markdown source">Markdown-Quelle</span> <button class="copy-btn cp" onclick="copyMd(this)" data-de="kopieren" data-en="copy">kopieren</button></div>
             <pre class="md only-de" id="mdsrc-de">{{DESC_MD_DE}}</pre>
             <pre class="md only-en" id="mdsrc-en">{{DESC_MD_EN}}</pre>
           </div>
@@ -534,10 +542,77 @@
       b.classList.toggle('active', b.getAttribute('data-lang') === lang);
     });
   }
-  function copyMd() {
-    var lang = document.documentElement.lang || 'de';
-    var el = document.getElementById('mdsrc-' + lang);
-    if (el && navigator.clipboard) navigator.clipboard.writeText(el.textContent);
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.left = '0'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); } catch (e) { }
+    document.body.removeChild(ta);
+  }
+  function copyText(text, btn) {
+    // Copy synchronously via execCommand FIRST - this runs inside the click gesture and works on
+    // file:// (opaque origin) regardless of content. The async Clipboard API is then attempted as a
+    // best-effort bonus for http(s) contexts; any failure there is irrelevant since execCommand
+    // already put the text on the clipboard.
+    fallbackCopy(text);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try { navigator.clipboard.writeText(text); } catch (e) { /* ignore - execCommand already copied */ }
+    }
+    flashBtn(btn);
+  }
+  function flashBtn(btn) {
+    if (!btn) return;
+    if (btn.classList.contains('copy-ic')) {
+      btn.classList.add('copied');
+      setTimeout(function () { btn.classList.remove('copied'); }, 1100);
+    } else {
+      var prev = btn.textContent;
+      btn.textContent = (document.documentElement.lang === 'en') ? 'copied!' : 'kopiert!';
+      btn.classList.add('copied');
+      setTimeout(function () { btn.textContent = prev; btn.classList.remove('copied'); }, 1100);
+    }
+  }
+  function copyMd(btn) {
+    var lang = (document.documentElement.lang === 'en') ? 'en' : 'de';
+    var el = document.getElementById('mdsrc-' + lang) || document.getElementById('mdsrc-de');
+    if (el) copyText(el.textContent, btn);
+  }
+
+  // ---- Per-field copy buttons on every Intune value cell. ----
+  // The value cell may hold <code>, badges or bilingual spans; we copy the visible text
+  // (current language), recomputed at click time so it follows the DE/EN toggle.
+  function cellText(cell) {
+    var clone = cell.cloneNode(true);
+    clone.querySelectorAll('.copy-ic').forEach(function (b) { b.remove(); });
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+  function addFieldCopyButtons() {
+    var icon = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    ['appinfo', 'program', 'requirements', 'detection', 'deps'].forEach(function (id) {
+      var sec = document.getElementById(id);
+      if (!sec) return;
+      sec.querySelectorAll('table tr').forEach(function (tr) {
+        var tds = tr.children;
+        if (tds.length < 2) return;
+        var val = tds[tds.length - 1];
+        if (val.classList.contains('k')) return;        // skip label cells
+        if (!cellText(val)) return;                      // skip empty values
+        val.classList.add('cpv');
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'copy-ic';
+        b.innerHTML = icon;
+        b.title = (document.documentElement.lang === 'en') ? 'copy value' : 'Wert kopieren';
+        b.addEventListener('click', function (e) {
+          e.preventDefault();
+          copyText(cellText(val), b);
+        });
+        val.appendChild(b);
+      });
+    });
   }
 
   // ---- Sticky header: condense to a compact bar (desktop only). ----
@@ -560,7 +635,8 @@
   })();
 
   renderPreviews();
-  setLang(document.documentElement.lang || 'de');
+  setLang(document.documentElement.lang === 'en' ? 'en' : 'de');
+  addFieldCopyButtons();
 </script>
 
 </body>

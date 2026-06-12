@@ -166,6 +166,7 @@ psadt-deploy/
 │  ├─ Invoke-PsadtPreflight.ps1     pre-flight GREEN/RED gate (Phase 5)
 │  ├─ Invoke-PsadtSystemTest.ps1    SYSTEM test loop (Phase 6)
 │  ├─ New-PsadtReport.ps1           HTML package report (Phase 8, always)
+│  ├─ New-MsiPackage.ps1            reusable MSI package generator (opt-in)
 │  ├─ New-PsadtEntraApp.ps1         Entra app bootstrap (WAM)
 │  ├─ Get-GraphToken.ps1            app-only Graph token (cert/DPAPI)
 │  ├─ _GraphCommon.ps1              shared Graph helpers (3 upload scripts)
@@ -219,6 +220,13 @@ configurable per machine.
 
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
+
+### 0.9.2 - 12.06.2026
+- **Reconciled a diverged install copy back into the repo.** Fixed `Invoke-PsadtSystemTest.ps1` crashing at
+  param binding under the WinPS 5.1 re-exec (`$SkillRoot` default is now fail-safe, so the SYSTEM Install/
+  Uninstall gate works on a pwsh-7 host). Added per-field copy buttons + a `file://`-safe clipboard to the
+  HTML dossier (`Report-Template.html`, token set unchanged). Added `scripts/New-MsiPackage.ps1` (reusable
+  MSI package generator, `$PSScriptRoot`-relative, ASCII-only) + its Pester test.
 
 ### 0.9.1 - 12.06.2026
 - **Applicability/portability drift cleanup** (docs + instructions; no script logic changed). Removed the
