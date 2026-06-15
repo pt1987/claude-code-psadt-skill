@@ -2,6 +2,32 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.15.0 — 2026-06-15 — Windows-feature packages (optional features + capabilities / FoD)
+
+### Added
+- **`scripts/New-WindowsFeaturePackage.ps1`** — one-call generator for a new opt-in package type: enable
+  **Windows Optional Features** (`Enable-WindowsOptionalFeature`, e.g. NetFx3, Hyper-V, WSL, TelnetClient) and
+  **Capabilities / Features on Demand** (`Add-WindowsCapability`, e.g. RSAT.*, OpenSSH) — both in one typed list,
+  multiple per package. Feature-only (no vendor installer). Writes the launcher (data model + 3 hooks), the
+  Extensions module (enable/disable dispatch + WU-FoD access toggle) and the detection script.
+- **Guide Appendix P** — model, Phase-2 name/reboot/source research, cmdlet+state reference, generator usage,
+  helpers, hooks (3010), detection + Intune wiring, content source (bundled SxS vs Windows Update / WSUS-bypass),
+  dossier additions, anti-patterns.
+- SKILL.md control-plane: Gate-1 package-type option, Phase-2 research note, anti-patterns, reference-lookup
+  line for Appendix P.
+
+### Notes
+- **Uninstall reverts** (`Disable-WindowsOptionalFeature` / `Remove-WindowsCapability`); Repair re-enables
+  (idempotent). Enable/disable helpers skip features already in the target state.
+- **Reboot:** features that report `RestartNeeded` surface **3010** via `$adtSession.SetExitCode(3010)`;
+  `-NoRestart` prevents DISM from rebooting mid-install. Detection treats `EnablePending` as not-yet-done.
+- **Content source:** bundled `Files\<Source>` via `-Source -LimitAccess` (offline), else Windows Update with a
+  **temporary** WSUS bypass (`RepairContentServerSource=2`, `UseWUServer=0`) that records and **restores** the
+  exact prior state — reuses the proven pattern from the existing `RSAT-1.0.0` package.
+- Verified: generated package passes the Phase-5 pre-flight **GREEN**; enable/disable dispatch + idempotency +
+  clean boolean returns and the WU-FoD save/restore (incl. remove-value-that-didn't-exist) validated against an
+  in-memory registry sim; generator is 7-bit ASCII-clean.
+
 ## 0.14.0 — 2026-06-15 — Browser-extension force-install packages (Edge / Chrome / Firefox)
 
 ### Added
