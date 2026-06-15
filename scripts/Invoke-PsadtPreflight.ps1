@@ -18,6 +18,8 @@
                       defined is actually called by the launcher (else WARN).
       6. ProductCode- no `Start-ADTMsiProcess -FilePath '{GUID}'` (a GUID belongs on -ProductCode; a GUID on
                       -FilePath throws InvalidFilePathParameterValue -> 60001). Checked in all hooks.
+      7. Detection  - any Detect*.ps1 in the package: the "not installed" path should be `exit 0` + empty stdout
+                      (Intune reads a non-zero exit as a detection error/retry, not "absent"). Non-zero exit = WARN.
 
     GREEN = no FAIL checks. WARN does not flip the verdict. Works under Windows PowerShell 5.1 and PowerShell 7.
 
@@ -155,6 +157,19 @@ else {
     }
     if ($suspect.Count -gt 0) { Add-Check 'TopLevel' 'WARN' "$($suspect.Count) unexpected top-level statement(s) - review: $((($suspect | Select-Object -First 3) -join ' | '))" 'Invoke-AppDeployToolkit.ps1' }
     else { Add-Check 'TopLevel' 'PASS' 'no unexpected top-level statements' 'Invoke-AppDeployToolkit.ps1' }
+}
+
+# --- 7: detection script exit-code contract (WARN-only) -------------------------------------------
+$detectFiles = @(Get-ChildItem -Path $PackagePath -Filter 'Detect*.ps1' -ErrorAction SilentlyContinue | ForEach-Object FullName)
+foreach ($df in $detectFiles) {
+    $leaf = Split-Path $df -Leaf
+    $dtxt = Get-Content $df -Raw
+    if ($dtxt -match '(?m)^\s*exit\s+[1-9]') {
+        Add-Check 'Detection' 'WARN' 'non-zero exit in detection script - the "not installed" path should be exit 0 + empty stdout (Intune reads a non-zero exit as a detection error/retry, not "absent")' $leaf
+    }
+    else {
+        Add-Check 'Detection' 'PASS' 'exit-code contract OK (exit 0 paths only)' $leaf
+    }
 }
 
 # --- Verdict --------------------------------------------------------------------------------------

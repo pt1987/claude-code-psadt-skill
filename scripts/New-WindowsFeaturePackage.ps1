@@ -52,6 +52,17 @@ if (-not $Author) {
 }
 $today = (Get-Item $PSCommandPath).LastWriteTime.ToString('yyyy-MM-dd')  # avoid Get-Date (sandbox)
 
+# Escape a value for embedding inside a single-quoted PowerShell literal (double internal quotes).
+function Get-SqEscaped([string]$s) { ($s -replace "'", "''") }
+# Reject a value that contains a template placeholder - it would corrupt the .Replace() templating.
+function Assert-NoTokenLeak([string]$value, [string]$paramName) {
+    if ($value -match '__[A-Z0-9_]+__') { throw "Parameter '$paramName' must not contain a template placeholder sequence ('$($Matches[0])')." }
+}
+if ($Name -match '[\\/:*?"<>|]' -or $Name -match '\.\.') { throw "Name '$Name' must be a simple folder name (no path separators or '..')." }
+foreach ($pair in @(@('Name', $Name), @('AppVendor', $AppVendor), @('AppName', $AppName), @('AppVersion', $AppVersion), @('Author', $Author), @('Changelog', $Changelog))) {
+    Assert-NoTokenLeak ([string]$pair[1]) $pair[0]
+}
+
 # --- Validate + normalize the feature list --------------------------------------------------------
 $norm = foreach ($f in $Features) {
     $type = [string]$f.Type
@@ -171,9 +182,10 @@ function Install-ADTDeployment
     ## WSUS-managed devices, and always restore the prior state in the finally block.
     $restartNeeded = $false
     $wuNeeded = @($script:WindowsFeatures | Where-Object { [string]::IsNullOrWhiteSpace($_.Source) }).Count -gt 0
-    if ($wuNeeded) { Set-ADTWindowsUpdateFodAccess }
     try
     {
+        ## Set inside the try so the finally always restores the WU/WSUS state, even if Set- itself throws.
+        if ($wuNeeded) { Set-ADTWindowsUpdateFodAccess }
         foreach ($f in $script:WindowsFeatures)
         {
             $src = ''
@@ -259,9 +271,10 @@ function Repair-ADTDeployment
     ## Idempotent re-enable (same as install). Helpers skip features already in the target state.
     $restartNeeded = $false
     $wuNeeded = @($script:WindowsFeatures | Where-Object { [string]::IsNullOrWhiteSpace($_.Source) }).Count -gt 0
-    if ($wuNeeded) { Set-ADTWindowsUpdateFodAccess }
     try
     {
+        ## Set inside the try so the finally always restores the WU/WSUS state, even if Set- itself throws.
+        if ($wuNeeded) { Set-ADTWindowsUpdateFodAccess }
         foreach ($f in $script:WindowsFeatures)
         {
             $src = ''
@@ -345,10 +358,10 @@ catch
 if (-not $Changelog) { $Changelog = "- 0.1 ($today, $Author): Initial version - enable Windows features (optional features + capabilities)." }
 
 $out = $tpl.
-    Replace('__APPVENDOR__', $AppVendor).
-    Replace('__APPNAME__', $AppName).
-    Replace('__APPVERSION__', $AppVersion).
-    Replace('__AUTHOR__', $Author).
+    Replace('__APPVENDOR__', (Get-SqEscaped $AppVendor)).
+    Replace('__APPNAME__', (Get-SqEscaped $AppName)).
+    Replace('__APPVERSION__', (Get-SqEscaped $AppVersion)).
+    Replace('__AUTHOR__', (Get-SqEscaped $Author)).
     Replace('__DATE__', $today).
     Replace('__CHANGELOG__', $Changelog).
     Replace('__FEATLITERAL__', $featLiteral)
@@ -371,7 +384,7 @@ if (-not (Test-Path -LiteralPath $psd1)) {
     FunctionsToExport = @('Enable-ADTWindowsFeatureItem', 'Disable-ADTWindowsFeatureItem', 'Set-ADTWindowsUpdateFodAccess', 'Restore-ADTWindowsUpdateFodAccess')
 }
 '@
-    [System.IO.File]::WriteAllText($psd1, $manifest.Replace('__AUTHOR__', $Author), [System.Text.UTF8Encoding]::new($true))
+    [System.IO.File]::WriteAllText($psd1, $manifest.Replace('__AUTHOR__', (Get-SqEscaped $Author)), [System.Text.UTF8Encoding]::new($true))
 }
 
 $psm1 = @'
@@ -543,6 +556,8 @@ function Set-ADTWindowsUpdateFodAccess
                     [pscustomobject]@{ Key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Servicing'; Name = 'RepairContentServerSource'; Value = 2 }
                     [pscustomobject]@{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU';          Name = 'UseWUServer';               Value = 0 }
                 )
+                # Phase 1: record the prior state of EVERY target before changing anything, so a partial write
+                # (e.g. the 2nd New-ItemProperty throws on a locked key) is still fully reversible by Restore-.
                 foreach ($t in $targets)
                 {
                     $keyExisted = Test-Path -LiteralPath $t.Key
@@ -553,13 +568,14 @@ function Set-ADTWindowsUpdateFodAccess
                         $cur = Get-ItemProperty -LiteralPath $t.Key -Name $t.Name -ErrorAction SilentlyContinue
                         if ($cur -and $cur.PSObject.Properties[$t.Name]) { $existed = $true; $prior = $cur.$($t.Name) }
                     }
-                    else
-                    {
-                        New-Item -Path $t.Key -Force | Out-Null
-                    }
                     $script:AdtFodSaved += [pscustomobject]@{ Key = $t.Key; Name = $t.Name; KeyExisted = $keyExisted; Existed = $existed; Prior = $prior }
+                }
+                # Phase 2: apply (create the key if needed, then set the value).
+                foreach ($t in $targets)
+                {
+                    if (!(Test-Path -LiteralPath $t.Key)) { New-Item -Path $t.Key -Force | Out-Null }
                     New-ItemProperty -LiteralPath $t.Key -Name $t.Name -Value $t.Value -PropertyType DWord -Force | Out-Null
-                    Write-ADTLogEntry -Message "WU FoD access: set [$($t.Key)\$($t.Name)] = $($t.Value) (prior existed=$existed)."
+                    Write-ADTLogEntry -Message "WU FoD access: set [$($t.Key)\$($t.Name)] = $($t.Value)."
                 }
                 try { Restart-Service -Name wuauserv -Force -ErrorAction SilentlyContinue } catch { }
             }

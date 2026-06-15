@@ -27,15 +27,31 @@ $ErrorActionPreference = 'Stop'
 Import-Module PSAppDeployToolkit -Force
 
 if (-not $PackageRoot) { $PackageRoot = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')).Config.paths.packageRoot }
+if (-not $Author) {
+    $cfg = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')).Config
+    if ($cfg) { $Author = "$($cfg.author.person), $($cfg.author.company)" }
+}
 $today = (Get-Item $PSCommandPath).LastWriteTime.ToString('yyyy-MM-dd')  # avoid Get-Date (sandbox)
+
+# Escape a value for embedding inside a single-quoted PowerShell literal (double internal quotes).
+function Get-SqEscaped([string]$s) { ($s -replace "'", "''") }
+# Reject a value that contains a template placeholder - it would corrupt the .Replace() templating.
+function Assert-NoTokenLeak([string]$value, [string]$paramName) {
+    if ($value -match '__[A-Z0-9_]+__') { throw "Parameter '$paramName' must not contain a template placeholder sequence ('$($Matches[0])')." }
+}
+if ($Name -match '[\\/:*?"<>|]' -or $Name -match '\.\.') { throw "Name '$Name' must be a simple folder name (no path separators or '..')." }
+foreach ($pair in @(@('Name', $Name), @('AppVendor', $AppVendor), @('AppName', $AppName), @('AppVersion', $AppVersion), @('Author', $Author), @('AdditionalArgs', $AdditionalArgs), @('InstallerFile', $InstallerFile), @('DisplayNameLike', $DisplayNameLike), @('Changelog', $Changelog))) {
+    Assert-NoTokenLeak ([string]$pair[1]) $pair[0]
+}
+if (-not (Test-Path -LiteralPath $InstallerPath)) { throw "InstallerPath not found: $InstallerPath" }
 
 # 1) Scaffold
 $pkg = Join-Path $PackageRoot $Name
 if (Test-Path $pkg) { Remove-Item $pkg -Recurse -Force }
 New-ADTTemplate -Destination $PackageRoot -Name $Name -Force | Out-Null
 
-# 2) Process list literal
-$procLiteral = if ($ProcessesToClose.Count -gt 0) { "@(" + (($ProcessesToClose | ForEach-Object { "'$_'" }) -join ', ') + ")" } else { "@()" }
+# 2) Process list literal (single-quote-escaped so a name with an apostrophe cannot break the literal)
+$procLiteral = if ($ProcessesToClose.Count -gt 0) { "@(" + (($ProcessesToClose | ForEach-Object { "'$(Get-SqEscaped $_)'" }) -join ', ') + ")" } else { "@()" }
 
 # 3) Build the customized script
 $tpl = @'
@@ -133,7 +149,7 @@ function Install-ADTDeployment
     $adtSession.InstallPhase = "Post-$($adtSession.DeploymentType)"
 
     ## Remove any desktop shortcut the installer may have created (Start Menu only policy).
-    foreach ($lnk in @("$env:Public\Desktop\__APPNAME__.lnk"))
+    foreach ($lnk in @("$env:Public\Desktop\__APPNAME_FILE__.lnk"))
     {
         if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue }
     }
@@ -262,17 +278,20 @@ catch
 '@
 
 if (-not $Changelog) { $Changelog = "- 0.1 ($today, $Author): Initial version." }
-$addArgsLine = if ($AdditionalArgs) { " -AdditionalArgumentList '$AdditionalArgs'" } else { '' }
+$addArgsLine = if ($AdditionalArgs) { " -AdditionalArgumentList '$(Get-SqEscaped $AdditionalArgs)'" } else { '' }
 
+# Values that land in single-quoted $adtSession literals are single-quote-escaped; __APPNAME_FILE__ is the
+# raw name for the double-quoted desktop-shortcut path (apostrophes are valid inside a double-quoted string).
 $out = $tpl.
-    Replace('__APPVENDOR__', $AppVendor).
-    Replace('__APPNAME__', $AppName).
-    Replace('__APPVERSION__', $AppVersion).
-    Replace('__APPARCH__', $AppArch).
+    Replace('__APPVENDOR__', (Get-SqEscaped $AppVendor)).
+    Replace('__APPNAME_FILE__', $AppName).
+    Replace('__APPNAME__', (Get-SqEscaped $AppName)).
+    Replace('__APPVERSION__', (Get-SqEscaped $AppVersion)).
+    Replace('__APPARCH__', (Get-SqEscaped $AppArch)).
     Replace('__PROCESSES__', $procLiteral).
-    Replace('__AUTHOR__', $Author).
+    Replace('__AUTHOR__', (Get-SqEscaped $Author)).
     Replace('__DATE__', $today).
-    Replace('__INSTALLER__', $InstallerFile).
+    Replace('__INSTALLER__', (Get-SqEscaped $InstallerFile)).
     Replace('__ADDARGSLINE__', $addArgsLine).
     Replace('__PRODUCTCODE__', $ProductCode).
     Replace('__CHANGELOG__', $Changelog)
@@ -300,7 +319,8 @@ foreach ($k in $keys)
         exit 0
     }
 }
-exit 1
+# Not installed: emit nothing and exit 0 (Intune detection contract; a non-zero exit reads as a detection error).
+exit 0
 '@
 $detect = $detect.Replace('__NAME__', $Name).Replace('__APPNAME__', $AppName).Replace('__APPVERSION__', $AppVersion).Replace('__PRODUCTCODE__', $ProductCode)
 [System.IO.File]::WriteAllText("$pkg\Detect-$Name.ps1", $detect, [System.Text.UTF8Encoding]::new($true))

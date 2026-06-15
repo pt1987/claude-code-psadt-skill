@@ -223,6 +223,18 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.15.1 - 15.06.2026
+- **Generator hardening from a self-review (correctness + security).** All three generators now single-quote-escape
+  values embedded in `$adtSession` literals, so an apostrophe in the App name/vendor/author (e.g. "Bob's App",
+  "L'Oreal") no longer produces an unparseable package; the MSI `-AdditionalArgumentList` / `ProcessesToClose`
+  literals are escaped too (also closing a SYSTEM code-injection path). Detection exit-code drift fixed:
+  `New-MsiPackage.ps1` + the WinGet example now `exit 0` for "not installed" (a non-zero exit reads as a detection
+  error), and a new **pre-flight Detection check** WARNs on a non-zero exit in `Detect*.ps1`. The WSUS bypass in
+  `New-WindowsFeaturePackage.ps1` now saves all prior state before writing and runs inside the `try/finally`, so a
+  partial failure can't leave `UseWUServer=0` permanently. Added input guards (`$Name` path-traversal, `__TOKEN__`
+  leak), MSI `-Author` config fallback + `-InstallerPath` validation. Stale refs fixed (SKILL.md "A-M"->"A-P",
+  `New-PsadtEntraApp.ps1` "Phase 7.5"->"Phase 9").
+
 ### 0.15.0 - 15.06.2026
 - **Windows-feature packages (optional features + capabilities / FoD).** New `scripts/New-WindowsFeaturePackage.ps1`
   — one-call generator that enables Windows **Optional Features** (`Enable-WindowsOptionalFeature`: NetFx3,
