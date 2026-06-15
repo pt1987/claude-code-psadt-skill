@@ -210,6 +210,23 @@ $vDisk   = Esc (Get-Val 'DiskMb' '')
 $vMemory = $m = Get-Val 'MemoryMb' ''
 $vMemory = if ($m) { Esc $m } else { (Bspan 'nicht relevant' 'not relevant') }
 
+# Certificate / driver-trust policy (guide Appendix N). CertPolicy = @{ Store; Thumbprint; OmaUri; Owner }
+# Owner = 'Policy' (Intune Custom OMA-URI) | 'Package' (in-script import). Default: none required.
+$cp = Get-Val 'CertPolicy' $null
+if (-not $cp) {
+    $vCertPolicy = (Badge 'b-neut' 'keine' 'none') + (NoteHtml 'kein Zertifikat erforderlich' 'no certificate required')
+} else {
+    $cpGet = { param($k) if ($cp -is [hashtable]) { $cp[$k] } elseif ($cp.PSObject -and $cp.PSObject.Properties[$k]) { $cp.$k } else { $null } }
+    $cpStore = [string](& $cpGet 'Store'); if (-not $cpStore) { $cpStore = 'TrustedPublisher' }
+    $cpOwner = [string](& $cpGet 'Owner'); if (-not $cpOwner) { $cpOwner = 'Policy' }
+    $cpThumb = [string](& $cpGet 'Thumbprint')
+    $cpOma   = [string](& $cpGet 'OmaUri')
+    $ownerBadge = if ($cpOwner -match 'Package') { Badge 'b-warn' 'Paket-Import' 'package import' } else { Badge 'b-ok' 'Intune-Policy' 'Intune policy' }
+    $vCertPolicy = (Badge 'b-info' (Esc $cpStore) (Esc $cpStore)) + ' ' + $ownerBadge
+    if ($cpThumb) { $vCertPolicy += (NoteHtml "Thumbprint $(Esc $cpThumb)" "thumbprint $(Esc $cpThumb)") }
+    if ($cpOma)   { $vCertPolicy += '<br>' + (Codei $cpOma) }
+}
+
 $vRuleFormat   = Esc (Get-Val 'RuleFormat' 'Custom Detection Script')
 $detectScript  = Get-Val 'DetectScript' ''
 $vDetectScript = if ($detectScript) { Codei $detectScript } else { Bspan 'n. z.' 'n/a' }
@@ -368,6 +385,7 @@ $tokens = [ordered]@{
     'V_MIN_OS'          = $vMinOs
     'V_DISK'            = $vDisk
     'V_MEMORY'          = $vMemory
+    'V_CERT_POLICY'     = $vCertPolicy
     'V_RULE_FORMAT'     = $vRuleFormat
     'V_DETECT_SCRIPT'   = $vDetectScript
     'V_RUN_32'          = $vRun32

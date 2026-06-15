@@ -2,6 +2,27 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.10.0 — 2026-06-15 — Certificate store deployment (driver-trust / TrustedPublisher)
+
+### Added
+- **`scripts/New-IntuneTrustedCertPolicy.ps1`** — prepares (and optionally creates via Graph) an Intune Custom
+  OMA-URI configuration profile that places a certificate into a Windows machine store (Root / CA /
+  **TrustedPublisher** / TrustedPeople) via the `RootCATrustedCertificates` CSP. The transparent, policy-based way
+  to suppress the Windows "install device software?" prompt for installers that stage a 3rd-party driver. Extracts
+  the Authenticode signer cert from a signed payload (MSI/EXE/.cat) or loads a raw `.cer`; emits single-line
+  base64 + the exact OMA-URI; read-only dry-run, `-Execute` creates the profile, and on a missing
+  `DeviceManagementConfiguration.ReadWrite.All` (403) it prints ready-to-paste manual portal steps instead of
+  failing. New `tests/New-IntuneTrustedCertPolicy.Tests.ps1` (9 cases).
+- **Guide Appendix N** — certificate store deployment: store→mechanism matrix (the built-in Trusted-certificate
+  template can't target TrustedPublisher/TrustedPeople — the CSP can), the base64/thumbprint `0x87d1fde8`
+  gotchas, the policy-vs-package single-owner rule, Graph permission + manual fallback.
+- **Dossier "Treiber-Zertifikat" row** — `New-PsadtReport.ps1` gains a `CertPolicy` metadata field
+  (Store/Owner/Thumbprint/OmaUri) rendered in the Requirements card; defaults to "none". `Report-Template.html`
+  gains `{{V_CERT_POLICY}}`.
+- **SKILL.md** — new binding Convention (certificates into a machine store), a Phase-4 driver-trust touchpoint,
+  an anti-pattern (claiming Intune can't do TrustedPublisher / multi-line base64 / dual ownership), and the
+  Appendix-N reference.
+
 ## 0.9.2 — 2026-06-12 — Reconcile diverged install copy: SYSTEM-test fix, richer report, MSI generator
 
 A separate working copy had drifted from `main`; its genuinely newer parts were merged back into the repo

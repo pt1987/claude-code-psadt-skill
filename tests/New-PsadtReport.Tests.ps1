@@ -95,4 +95,28 @@ Describe 'New-PsadtReport' {
         $txt = [System.IO.File]::ReadAllText($script:out, [System.Text.Encoding]::UTF8)
         $txt | Should -Match ([char]0xF6)
     }
+
+    It 'shows "none" for the driver certificate row by default' {
+        & $script:gen -Metadata @{ AppName = 'X' } -OutputPath $script:out
+        $html = Get-Content $script:out -Raw
+        $html | Should -Match 'Driver certificate'
+        $html | Should -Match 'no certificate required'
+    }
+
+    It 'renders the cert policy (store, owner, thumbprint, OMA-URI) when supplied' {
+        & $script:gen -Metadata @{
+            AppName    = 'X'
+            CertPolicy = @{
+                Store      = 'TrustedPublisher'
+                Owner      = 'Policy'
+                Thumbprint = '60B9CD30986049B937762AE56A657E66B02E8BE1'
+                OmaUri     = './Device/Vendor/MSFT/RootCATrustedCertificates/TrustedPublisher/60B9CD30986049B937762AE56A657E66B02E8BE1/EncodedCertificate'
+            }
+        } -OutputPath $script:out
+        $html = Get-Content $script:out -Raw
+        $html | Should -Match 'TrustedPublisher'
+        $html | Should -Match 'Intune policy'
+        $html | Should -Match '60B9CD30986049B937762AE56A657E66B02E8BE1'
+        $html | Should -Match 'RootCATrustedCertificates'
+    }
 }

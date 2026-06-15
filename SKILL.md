@@ -92,6 +92,18 @@ Context follow-ups (coexistence, processes-to-close, architecture) come situatio
   Appendix J. (The logo is uploaded separately to Intune's App-information tab; it is NOT in the `.intunewin`.)
 - **Shortcuts.** Start Menu only (`$envCommonStartMenuPrograms`). No desktop icons; remove any the installer
   creates, and clean up the Start Menu entry on uninstall.
+- **Certificates into a machine store** (driver-trust / `TrustedPublisher`, Root/CA, `TrustedPeople`). Whenever a
+  cert must land in a store - the #1 case is an installer that stages a **3rd-party driver**, whose Windows
+  "install device software?" prompt blocks a SYSTEM-silent install - treat it as a first-class deliverable:
+  extract the signer cert (from the MSI/EXE/.cat), make **single-line base64** (NO line breaks/PEM -> CSP error
+  `0x87d1fde8`), build the OMA-URI
+  `./Device/Vendor/MSFT/RootCATrustedCertificates/<Store>/<SHA1>/EncodedCertificate`. **TrustedPublisher /
+  TrustedPeople need the `RootCATrustedCertificates` CSP via a Custom OMA-URI profile** - the built-in
+  "Trusted certificate" template only does Root/Intermediate (never claim Intune "can't" do TrustedPublisher).
+  Own the cert in **exactly ONE place** - the **Intune policy** (recommended/transparent:
+  `scripts/New-IntuneTrustedCertPolicy.ps1`, dry-run/`-Execute`, prints the manual portal steps when the app
+  lacks `DeviceManagementConfiguration.ReadWrite.All`) **OR** a package import in the install hook - never both
+  (they fight on uninstall/sync). Assign the policy to the SAME scope as the app. Guide Appendix N.
 - **All three deployment types from the start** (Install / Uninstall / Repair), each acid-tested - even if
   only install is needed today, Company-Portal uninstall needs a filled Uninstall hook.
 - **Upload (opt-in).** Fill EVERY objective App-info field; NEVER auto-impose category / branded notes /
@@ -154,7 +166,10 @@ install, Start-Menu-only shortcuts, uninstall cleanup (tasks/services/firewall/r
 sub-key, NEVER the vendor root; keep user data by default), and async-retry loops (services need 30-60s after
 msiexec): guide Phase 4. WinGet hook patterns: guide Appendix I.3. The GUID-to-`-ProductCode` rule (a GUID to
 `-FilePath` throws `InvalidFilePathParameterValue` → 60001) applies to Uninstall AND Repair - Repair is the
-usual miss. Custom helpers ALWAYS in `PSAppDeployToolkit.Extensions.psm1`, never the main script.
+usual miss. Custom helpers ALWAYS in `PSAppDeployToolkit.Extensions.psm1`, never the main script. If the installer
+**stages a 3rd-party driver** (the Windows device-software prompt blocks a SYSTEM-silent install), plan the
+certificate deliverable now (Conventions / guide Appendix N) - prefer the Intune cert policy
+(`scripts/New-IntuneTrustedCertPolicy.ps1`) over an in-package import.
 
 **Phase 5 - Pre-flight (Reviewer gate).** Run `scripts/Invoke-PsadtPreflight.ps1 -PackagePath <pkg>` - it returns
 `{ Overall='GREEN'|'RED'; Checks=@(...) }` and runs all gate checks deterministically: encoding (`HasBOM=True` OR
@@ -267,6 +282,9 @@ Full symptom/HRESULT catalogue: guide Appendix A.
   NOT opt in at Gate 2; DELETING the older version instead of `-OnExisting CreateNewCoexist`.
 - Uploading without the Phase 6 SYSTEM test passing; a blanket `exit 0` or a `finally`-written detection tag in a
   fix script - both report GREEN on failure (guide K.7).
+- Claiming Intune "can't" put a cert in `TrustedPublisher` (it can - `RootCATrustedCertificates` CSP via Custom
+  OMA-URI; the built-in template is the part that can't); multi-line/PEM base64 or a mismatched thumbprint in the
+  OMA-URI value (-> `0x87d1fde8`); owning a cert in BOTH the package and a policy (they fight on uninstall/sync).
 
 ## Reference lookup
 
@@ -275,4 +293,6 @@ Full symptom/HRESULT catalogue: guide Appendix A.
 B anti-patterns · C test stubs · D URLs · E deploy checklist · F dossier template (all fields) · G lessons
 learned · H direct Graph upload · **I WinGet packaging** · **J app-logo acquisition + verification** ·
 **K script-only / remediation packages (ESP-safe)** · **L installer technologies + silent switches** ·
-**M group assignment (opt-in: config, naming, permissions)**.
+**M group assignment (opt-in: config, naming, permissions)** ·
+**N certificate store deployment (driver-trust / TrustedPublisher; RootCATrustedCertificates CSP OMA-URI;
+`New-IntuneTrustedCertPolicy.ps1`)**.
