@@ -223,6 +223,10 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.15.2 - 15.06.2026
+- **Follow-up doc fix.** A contradiction sweep after 0.15.1 caught one more stale "Phase 7.5" in
+  `New-PsadtReport.ps1` help (upload is Phase 9); corrected. No other live stale references remain.
+
 ### 0.15.1 - 15.06.2026
 - **Generator hardening from a self-review (correctness + security).** All three generators now single-quote-escape
   values embedded in `$adtSession` literals, so an apostrophe in the App name/vendor/author (e.g. "Bob's App",
