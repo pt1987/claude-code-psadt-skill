@@ -53,7 +53,8 @@ researched defaults; recommended option first.
    auto-select WinGet even if a package exists. If WinGet is chosen, follow guide Appendix I. **Package type**
    is part of this gate when ambiguous: native installer (default) · WinGet (opt-in, App. I) · script-only
    fix/remediation (App. K) · **browser-extension force-install** (Edge/Chrome/Firefox via policy keys, App. O,
-   built by `scripts/New-BrowserExtensionPackage.ps1`).
+   built by `scripts/New-BrowserExtensionPackage.ps1`) · **windows-features** (Enable-WindowsOptionalFeature /
+   Add-WindowsCapability, App. P, built by `scripts/New-WindowsFeaturePackage.ps1`).
 2. **Deployment semantics** - target audience (Required / Available / both, + AAD groups), uninstall "what
    goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641). Pre-select defaults from
    the installer type. Group assignment is **opt-in**: only when the user wants it here do you create/assign
@@ -162,7 +163,9 @@ type: switch, expected exit codes, log path, known leftovers. **Consult guide Ap
 + silent switches) BEFORE web-searching switches**; for a script-only fix/remediation/debloat package (no vendor
 installer) follow guide Appendix K instead of the normal installer flow. For a **browser-extension** package the
 research is store-availability + per-store IDs (Chrome/Edge 32-char `a-p`, Firefox `id@domain` + AMO slug), not
-silent switches - guide Appendix O.2. On a newer PSADT release, ALWAYS diff the
+silent switches - guide Appendix O.2. For a **windows-features** package the research is the exact
+`FeatureName`/capability `Name` (via `Get-WindowsOptionalFeature -Online` / `Get-WindowsCapability -Online -Name`)
+plus reboot + content-source need (bundled SxS vs Windows Update) - guide Appendix P.2. On a newer PSADT release, ALWAYS diff the
 release notes for renamed/deprecated/changed commands before building - never adopt a version by number alone;
 verify the actually-used cmdlets with `Get-Command -Module PSAppDeployToolkit` (and `Get-Help <cmdlet>
 -Parameter *` for changed params). If divergent, recommend `Update-Module PSAppDeployToolkit -Force` before
@@ -306,6 +309,9 @@ Full symptom/HRESULT catalogue: guide Appendix A.
   ignored); clobbering the whole forcelist key / hard-coding index `1` instead of merging at the next free index
   (wipes other extension packages); a detection that claims the extension is "installed" rather than that the
   policy is set.
+- Windows features (App. P): enabling WITHOUT `-NoRestart` (DISM reboots mid-install instead of returning 3010);
+  forgetting the temporary WSUS bypass on managed devices (`0x800f0950` content-not-found) or not restoring it;
+  detection run as 32-bit (DISM needs 64-bit); treating `EnablePending` as installed.
 
 ## Reference lookup
 
@@ -318,4 +324,6 @@ learned · H direct Graph upload · **I WinGet packaging** · **J app-logo acqui
 **N certificate store deployment (driver-trust / TrustedPublisher; RootCATrustedCertificates CSP OMA-URI;
 `New-IntuneTrustedCertPolicy.ps1`)** ·
 **O browser-extension force-install (opt-in: Edge/Chrome/Firefox policy keys, Firefox `REG_MULTI_SZ` trap,
-merge/selective-remove; `New-BrowserExtensionPackage.ps1`)**.
+merge/selective-remove; `New-BrowserExtensionPackage.ps1`)** ·
+**P windows-features (opt-in: Enable-WindowsOptionalFeature + Add-WindowsCapability, 3010 reboot, WU/WSUS-bypass
+content source, EnablePending detection; `New-WindowsFeaturePackage.ps1`)**.

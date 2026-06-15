@@ -168,12 +168,13 @@ psadt-deploy/
 │  ├─ New-PsadtReport.ps1           HTML package report (Phase 8, always)
 │  ├─ New-MsiPackage.ps1            reusable MSI package generator (opt-in)
 │  ├─ New-BrowserExtensionPackage.ps1  browser-extension force-install generator (opt-in)
+│  ├─ New-WindowsFeaturePackage.ps1  windows optional-feature / capability generator (opt-in)
 │  ├─ New-PsadtEntraApp.ps1         Entra app bootstrap (WAM)
 │  ├─ Get-GraphToken.ps1            app-only Graph token (cert/DPAPI)
 │  ├─ _GraphCommon.ps1              shared Graph helpers (3 upload scripts)
 │  ├─ Invoke-IntuneWin32Upload.ps1  direct Intune upload (Phase 9)
 │  └─ Invoke-IntuneAppAssignment.ps1 opt-in Entra group assignment (Phase 10)
-├─ references/   guide (App. A-O) + Report-Template.html + app-registration.md
+├─ references/   guide (App. A-P) + Report-Template.html + app-registration.md
 ├─ tests/        Pester suite for the scripts
 ├─ tools/        (gitignored)  IntuneWinAppUtil.exe + WinGet module
 ├─ config.json   (gitignored)  machine-local settings (intune.* block)
