@@ -50,7 +50,10 @@ researched defaults; recommended option first.
 
 1. **Scope confirm** - app + exact version, installer type, source strategy (local / bundle into package /
    download at runtime). WinGet is strictly opt-in here: default to the native installer, never recommend or
-   auto-select WinGet even if a package exists. If WinGet is chosen, follow guide Appendix I.
+   auto-select WinGet even if a package exists. If WinGet is chosen, follow guide Appendix I. **Package type**
+   is part of this gate when ambiguous: native installer (default) · WinGet (opt-in, App. I) · script-only
+   fix/remediation (App. K) · **browser-extension force-install** (Edge/Chrome/Firefox via policy keys, App. O,
+   built by `scripts/New-BrowserExtensionPackage.ps1`).
 2. **Deployment semantics** - target audience (Required / Available / both, + AAD groups), uninstall "what
    goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641). Pre-select defaults from
    the installer type. Group assignment is **opt-in**: only when the user wants it here do you create/assign
@@ -157,7 +160,9 @@ end. Resolve scope via decision gates 1 + 2 only; pre-fill every option from res
 concurrently, collect into the Phase-0.3 findings table, and show it before scaffold. Record per deployment
 type: switch, expected exit codes, log path, known leftovers. **Consult guide Appendix L (installer technologies
 + silent switches) BEFORE web-searching switches**; for a script-only fix/remediation/debloat package (no vendor
-installer) follow guide Appendix K instead of the normal installer flow. On a newer PSADT release, ALWAYS diff the
+installer) follow guide Appendix K instead of the normal installer flow. For a **browser-extension** package the
+research is store-availability + per-store IDs (Chrome/Edge 32-char `a-p`, Firefox `id@domain` + AMO slug), not
+silent switches - guide Appendix O.2. On a newer PSADT release, ALWAYS diff the
 release notes for renamed/deprecated/changed commands before building - never adopt a version by number alone;
 verify the actually-used cmdlets with `Get-Command -Module PSAppDeployToolkit` (and `Get-Help <cmdlet>
 -Parameter *` for changed params). If divergent, recommend `Update-Module PSAppDeployToolkit -Force` before
@@ -297,6 +302,10 @@ Full symptom/HRESULT catalogue: guide Appendix A.
 - Claiming Intune "can't" put a cert in `TrustedPublisher` (it can - `RootCATrustedCertificates` CSP via Custom
   OMA-URI; the built-in template is the part that can't); multi-line/PEM base64 or a mismatched thumbprint in the
   OMA-URI value (-> `0x87d1fde8`); owning a cert in BOTH the package and a policy (they fight on uninstall/sync).
+- Browser extensions (App. O): Firefox `ExtensionSettings` as `REG_SZ` instead of `REG_MULTI_SZ` (silently
+  ignored); clobbering the whole forcelist key / hard-coding index `1` instead of merging at the next free index
+  (wipes other extension packages); a detection that claims the extension is "installed" rather than that the
+  policy is set.
 
 ## Reference lookup
 
@@ -307,4 +316,6 @@ learned · H direct Graph upload · **I WinGet packaging** · **J app-logo acqui
 **K script-only / remediation packages (ESP-safe)** · **L installer technologies + silent switches** ·
 **M group assignment (opt-in: config, naming, permissions)** ·
 **N certificate store deployment (driver-trust / TrustedPublisher; RootCATrustedCertificates CSP OMA-URI;
-`New-IntuneTrustedCertPolicy.ps1`)**.
+`New-IntuneTrustedCertPolicy.ps1`)** ·
+**O browser-extension force-install (opt-in: Edge/Chrome/Firefox policy keys, Firefox `REG_MULTI_SZ` trap,
+merge/selective-remove; `New-BrowserExtensionPackage.ps1`)**.

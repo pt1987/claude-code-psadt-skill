@@ -2,6 +2,30 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.14.0 — 2026-06-15 — Browser-extension force-install packages (Edge / Chrome / Firefox)
+
+### Added
+- **`scripts/New-BrowserExtensionPackage.ps1`** — one-call generator for a new opt-in package type:
+  force-install browser extensions via enterprise **policy registry keys** (no vendor installer, `Files\`
+  empty, ESP-safe, no reboot). Each browser then pulls the extension from its own store. Supports **multiple
+  extensions per package** across Edge / Chrome / Firefox. Writes the launcher (data model + 3 hooks), the
+  Extensions module (4 helpers) and the detection script.
+- **Guide Appendix O** — model, Phase-2 store-availability research (per-store IDs: Chrome/Edge 32-char `a-p`,
+  Firefox `id@domain` + AMO slug), verbatim registry reference, generator usage, helpers, hooks, the honest
+  detection model, dossier additions and anti-patterns.
+- SKILL.md control-plane: Gate-1 package-type option, Phase-2 research note, three anti-patterns, reference-
+  lookup line for Appendix O.
+
+### Notes
+- **Coexistence by design.** The Chromium helper computes the **next free `ExtensionInstallForcelist` index**
+  (never hard-codes `1`), dedupes by extension ID, and removes only its own entry — so multiple extension
+  packages share the key without clobbering. Firefox merges into the single `ExtensionSettings` JSON keyed by ID.
+- **Firefox `REG_MULTI_SZ` trap.** `ExtensionSettings` is written as `REG_MULTI_SZ`; a single-line `REG_SZ` is
+  silently ignored by current Firefox (Mozilla bug 1750233).
+- Verified: generated package passes the Phase-5 pre-flight **GREEN**; all four helpers validated against a
+  scratch registry hive (next-free index, idempotent add, selective remove, `REG_MULTI_SZ` merge incl.
+  remove-last cleanup); generator is 7-bit ASCII-clean.
+
 ## 0.13.1 — 2026-06-15 — Firewall policy body fixed against the live template (verified 201)
 
 ### Fixed
