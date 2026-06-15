@@ -7,7 +7,7 @@
 .DESCRIPTION
     Fills the tokenized report template with package metadata and writes Intune-Dossier.html.
     The report is ALWAYS produced for a finished package - regardless of whether the package is
-    uploaded to Intune (Phase 7.5) or not. The output is self-contained: the logo is embedded as
+    uploaded to Intune (Phase 9) or not. The output is self-contained: the logo is embedded as
     a base64 data URI, the description preview is rendered client-side from its Markdown source,
     and the whole document switches between DE/EN in the browser (data-de/data-en).
 
