@@ -2,6 +2,28 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.11.0 — 2026-06-15 — Firewall-rules policy + app config-management permission
+
+### Added
+- **`scripts/New-IntuneFirewallPolicy.ps1`** — prepares (and optionally creates via Graph) an Intune Endpoint
+  Security "Windows Firewall Rules" policy with one program-scoped rule (`-FilePath`, `-Direction In/Out`,
+  `-Action Allow/Block`, `-Profiles Domain/Private/Public`). The policy-based way to suppress the first-run
+  Windows Firewall prompt for apps that listen inbound (e.g. MxManagementCenter) — a non-admin user cannot
+  approve it. Read-only dry-run by default; `-Execute` creates it app-only via `Get-GraphToken.ps1`, and on a
+  missing `DeviceManagementConfiguration.ReadWrite.All` (403) prints ready-to-paste manual portal steps.
+  New `tests/New-IntuneFirewallPolicy.Tests.ps1` (10 cases: profile mask, rule children, policy body, manual
+  steps, dry run).
+- **`New-PsadtEntraApp.ps1 -IncludeConfigurationManagement`** — opt-in switch that adds + admin-consents the
+  Graph application role `DeviceManagementConfiguration.ReadWrite.All`, so the upload app can create
+  config / Endpoint-Security policies app-only (firewall rules **and** the 0.10.0 trusted-cert policy). Mirrors
+  `-IncludeGroupManagement`; reflected in the reuse-app PATCH. Off by default.
+
+### Changed
+- **`New-IntuneTrustedCertPolicy.ps1`** — its help and the 403 hint now point at
+  `New-PsadtEntraApp.ps1 -Force -IncludeConfigurationManagement` as the supported way to grant the role
+  (instead of implying manual-only), now that the switch exists.
+- **SKILL.md** — Phase-0 setup documents the new `-IncludeConfigurationManagement` switch.
+
 ## 0.10.0 — 2026-06-15 — Certificate store deployment (driver-trust / TrustedPublisher)
 
 ### Added

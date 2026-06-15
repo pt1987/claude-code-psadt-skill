@@ -12,7 +12,9 @@
          MSAL unavailable) it falls back to the device-code flow. Force device code with -UseDeviceCode.
       2. creates the app registration "PSADT Intune Upload" + its service principal,
       3. grants the application permission DeviceManagementApps.ReadWrite.All and admin-consents it
-         (the appRoleAssignment IS the consent - no separate portal click),
+         (the appRoleAssignment IS the consent - no separate portal click). Optional add-on permissions:
+         -IncludeGroupManagement (Group.Create + GroupMember.Read.All) and -IncludeConfigurationManagement
+         (DeviceManagementConfiguration.ReadWrite.All, for firewall/config policies),
       4. creates a client secret (returned once),
       5. writes intune.tenantId / clientId / uploadEnabled to config.json and DPAPI-stores the secret
          via Set-PsadtConfig.ps1 - the secret is never printed and never typed by hand.
@@ -61,6 +63,11 @@ param(
     # you want the skill to manage assignment groups. Group.Create lets the app create groups it then OWNS; it is
     # NOT the tenant-wide Group.ReadWrite.All.
     [switch]$IncludeGroupManagement,
+    # Add DeviceManagementConfiguration.ReadWrite.All so the app can create/manage Intune device-configuration
+    # & Endpoint Security policies app-only (e.g. firewall-rule policies, or the trusted-certificate /
+    # driver-trust policy via New-IntuneTrustedCertPolicy.ps1). Off by default - opt in only when you want
+    # the skill to manage device-configuration / firewall / certificate policies.
+    [switch]$IncludeConfigurationManagement,
     # Certificate-based auth (preferred over client secret): pass the thumbprint of a cert already in
     # Cert:\CurrentUser\My. The cert's public key is uploaded to the app; no client secret is created.
     [switch]$UseCertificate,
@@ -87,6 +94,7 @@ $DeviceCodeClientId = '14d82eec-204b-4c2f-b7e8-296a70dab67e'  # "Microsoft Graph
 $GraphResourceAppId = '00000003-0000-0000-c000-000000000000'  # Microsoft Graph
 $RequiredAppRoles = @('DeviceManagementApps.ReadWrite.All')
 if ($IncludeGroupManagement) { $RequiredAppRoles += @('Group.Create', 'GroupMember.Read.All') }
+if ($IncludeConfigurationManagement) { $RequiredAppRoles += @('DeviceManagementConfiguration.ReadWrite.All') }
 $Scopes = 'Application.ReadWrite.All AppRoleAssignment.ReadWrite.All offline_access openid profile'
 $GraphBase = 'https://graph.microsoft.com/v1.0'
 
@@ -335,12 +343,12 @@ if ($existing) {
     }
     $app = $existing
     Write-Ok "Reusing existing app (objectId $($app.id))"
-    if ($IncludeGroupManagement) {
-        # Reflect the (possibly newly added) group roles in the app's requested permissions too.
+    if ($IncludeGroupManagement -or $IncludeConfigurationManagement) {
+        # Reflect the (possibly newly added) optional roles in the app's requested permissions too.
         Invoke-WithRetry { Invoke-Graph PATCH "$GraphBase/applications/$($app.id)" -Headers $H -Body @{
             requiredResourceAccess = @(@{ resourceAppId = $GraphResourceAppId; resourceAccess = @($roles | ForEach-Object { @{ id = $_.id; type = 'Role' } }) })
         } } | Out-Null
-        Write-Ok "Updated requested permissions to include group management."
+        Write-Ok "Updated requested permissions to include the requested optional role(s)."
     }
 } else {
     $appBody = @{

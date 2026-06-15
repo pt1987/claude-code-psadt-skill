@@ -135,7 +135,9 @@ direct-upload bootstrap: `New-PsadtEntraApp.ps1` once (WAM sign-in, device-code 
 `PSADT Intune Upload` Entra app + admin-consents `DeviceManagementApps.ReadWrite.All` + stores the credential;
 needs Global Admin / Privileged Role Admin). Add `-IncludeGroupManagement` to also consent the least-privilege
 group roles (`Group.Create` + `GroupMember.Read.All`) when the user wants opt-in group assignment (Phase 10 /
-guide Appendix M) - off by default. Manual portal route: `references/app-registration.md`.
+guide Appendix M) - off by default. Add `-IncludeConfigurationManagement` to consent
+`DeviceManagementConfiguration.ReadWrite.All` so the app can create config / Endpoint-Security policies app-only
+(`New-IntuneFirewallPolicy.ps1`, `New-IntuneTrustedCertPolicy.ps1`) - off by default. Manual portal route: `references/app-registration.md`.
 Re-triggerable via "psadt setup".
 
 **Phase 1 - Intake.** A PSADT v4 package always serves all three deployment types - plan them now, not at the

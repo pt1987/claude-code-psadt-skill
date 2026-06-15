@@ -21,9 +21,9 @@
     (.exe/.msi/.dll/.sys/.cat) has its Authenticode signer certificate extracted. Or pass -Thumbprint to read an
     already-installed cert from -SourceStore.
 
-    -Execute needs the Graph application role DeviceManagementConfiguration.ReadWrite.All (the upload app only has
-    DeviceManagementApps.ReadWrite.All). If the token/role is unavailable the script does NOT fail the run - it
-    prints the exact manual portal steps + values and returns them.
+    -Execute needs the Graph application role DeviceManagementConfiguration.ReadWrite.All. Grant it to the upload app
+    via: New-PsadtEntraApp.ps1 -Force -IncludeConfigurationManagement (Global Admin). If the token/role is unavailable
+    the script does NOT fail the run - it prints the exact manual portal steps + values and returns them.
 
 .PARAMETER CertPath      Path to a cert file OR a signed binary to extract the signer cert from.
 .PARAMETER Thumbprint    Alternative to -CertPath: SHA1 thumbprint of an already-installed certificate.
@@ -177,7 +177,7 @@ if (-not $Execute) {
             $e = Get-GraphErr $_
             if ($e.code -match 'Authorization|Forbidden' -or "$($e.message)" -match 'privile|permission|scope') {
                 Write-Warn2 "Graph denied profile creation ($($e.code)). The upload app lacks DeviceManagementConfiguration.ReadWrite.All."
-                Write-Info  "Grant that role (Global Admin) or create the profile manually:"
+                Write-Info  "Grant it (Global Admin): New-PsadtEntraApp.ps1 -Force -IncludeConfigurationManagement   - or create the profile manually:"
                 Write-Host $manual -ForegroundColor Gray
             } else { throw }
         }
