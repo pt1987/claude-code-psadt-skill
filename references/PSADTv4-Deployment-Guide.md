@@ -1316,7 +1316,7 @@ foreach ($base in $regBases) {
         Where-Object { $_.DisplayName -like '<AppName>*' } | Select-Object -First 1
     if ($match) { Write-Output "Detected: $($match.DisplayName) $($match.DisplayVersion)"; exit 0 }
 }
-exit 1
+exit 0   # not installed: no stdout + exit 0 (a non-zero exit reads as a detection error/retry, not "absent")
 ```
 For a stable manifest `ProductCode`, use the direct GUID key (`HKLM:\...\Uninstall\{<ProductCode>}`).
 

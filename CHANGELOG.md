@@ -2,6 +2,36 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.15.1 — 2026-06-15 — Generator hardening from a self-review (correctness + security)
+
+### Fixed
+- **Apostrophe in App name/vendor/author produced an unparseable package.** All three generators now
+  single-quote-escape every value embedded in a single-quoted `$adtSession` literal (`AppName`, `AppVendor`,
+  `AppVersion`, `AppScriptAuthor`) — so "Bob's App" / "L'Oreal" no longer break the generated script. The MSI
+  generator's `-AdditionalArgumentList` and `ProcessesToClose` literals are escaped too (this also closes a
+  code-injection path into a script that runs as SYSTEM). The MSI desktop-shortcut path keeps the raw name
+  (valid inside a double-quoted string) via a dedicated token.
+- **Detection exit-code contract drift.** `New-MsiPackage.ps1` and the WinGet detection example (Appendix I)
+  emitted `exit 1` for "not installed"; per the contract (stated in SKILL.md / 8.5 / App. A) that path must be
+  `exit 0` + empty stdout (a non-zero exit reads as a detection *error/retry*). Both now `exit 0`. The newer
+  Browser/Feature generators were already correct.
+- **WSUS-bypass could be left on permanently.** In `New-WindowsFeaturePackage.ps1`, `Set-ADTWindowsUpdateFodAccess`
+  now records the prior state of *all* targets before writing any (a partial write is fully reversible), and the
+  install/repair hooks call it *inside* the `try` so the `finally` always restores `RepairContentServerSource` /
+  `UseWUServer` even if the toggle itself throws.
+
+### Added
+- **Pre-flight check 7 (Detection).** `Invoke-PsadtPreflight.ps1` now scans `Detect*.ps1` and WARNs on a
+  non-zero `exit` (the "not installed" path should be `exit 0`). WARN-only — does not flip GREEN.
+- **Input guards in all three generators:** reject a `$Name` containing path separators or `..` (before the
+  `Remove-Item -Recurse` scaffold step), and reject any free-text parameter containing a `__TOKEN__` sequence
+  that would corrupt the `.Replace()` templating.
+- `New-MsiPackage.ps1` now resolves `$Author` from config when omitted (parity with the other generators) and
+  validates `-InstallerPath` exists before scaffolding.
+
+### Fixed (docs)
+- Stale `SKILL.md` intro range "Appendix A-M" -> "A-P"; `New-PsadtEntraApp.ps1` "Phase 7.5" -> "Phase 9".
+
 ## 0.15.0 — 2026-06-15 — Windows-feature packages (optional features + capabilities / FoD)
 
 ### Added

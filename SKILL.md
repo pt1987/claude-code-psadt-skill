@@ -6,7 +6,7 @@ description: Use when the user wants to build, package, test, troubleshoot, or d
 # PSADT v4.x Deployment Skill
 
 Drive a PSADT v4.x Intune Win32 package end-to-end. Depth lives in
-`references/PSADTv4-Deployment-Guide.md` (Phases 0-12 + Appendix A-M) and in each script's comment-based
+`references/PSADTv4-Deployment-Guide.md` (Phases 0-12 + Appendix A-P) and in each script's comment-based
 help. Keep THIS file as the control plane; load guide sections on demand instead of inlining them.
 
 ## Operating mode (autonomy first)

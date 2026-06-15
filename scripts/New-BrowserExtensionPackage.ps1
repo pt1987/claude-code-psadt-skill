@@ -57,6 +57,17 @@ if (-not $Author) {
 }
 $today = (Get-Item $PSCommandPath).LastWriteTime.ToString('yyyy-MM-dd')  # avoid Get-Date (sandbox)
 
+# Escape a value for embedding inside a single-quoted PowerShell literal (double internal quotes).
+function Get-SqEscaped([string]$s) { ($s -replace "'", "''") }
+# Reject a value that contains a template placeholder - it would corrupt the .Replace() templating.
+function Assert-NoTokenLeak([string]$value, [string]$paramName) {
+    if ($value -match '__[A-Z0-9_]+__') { throw "Parameter '$paramName' must not contain a template placeholder sequence ('$($Matches[0])')." }
+}
+if ($Name -match '[\\/:*?"<>|]' -or $Name -match '\.\.') { throw "Name '$Name' must be a simple folder name (no path separators or '..')." }
+foreach ($pair in @(@('Name', $Name), @('AppVendor', $AppVendor), @('AppName', $AppName), @('AppVersion', $AppVersion), @('Author', $Author), @('Changelog', $Changelog))) {
+    Assert-NoTokenLeak ([string]$pair[1]) $pair[0]
+}
+
 # --- Validate + normalize the extension list ------------------------------------------------------
 $chromiumIdPattern = '^[a-p]{32}$'
 $norm = foreach ($ext in $Extensions) {
@@ -340,10 +351,10 @@ catch
 if (-not $Changelog) { $Changelog = "- 0.1 ($today, $Author): Initial version - force-install browser extensions via policy registry keys." }
 
 $out = $tpl.
-    Replace('__APPVENDOR__', $AppVendor).
-    Replace('__APPNAME__', $AppName).
-    Replace('__APPVERSION__', $AppVersion).
-    Replace('__AUTHOR__', $Author).
+    Replace('__APPVENDOR__', (Get-SqEscaped $AppVendor)).
+    Replace('__APPNAME__', (Get-SqEscaped $AppName)).
+    Replace('__APPVERSION__', (Get-SqEscaped $AppVersion)).
+    Replace('__AUTHOR__', (Get-SqEscaped $Author)).
     Replace('__DATE__', $today).
     Replace('__CHANGELOG__', $Changelog).
     Replace('__EXTLITERAL__', $extLiteral)
@@ -366,7 +377,7 @@ if (-not (Test-Path -LiteralPath $psd1)) {
     FunctionsToExport = @('Set-ADTChromiumForcelistEntry', 'Remove-ADTChromiumForcelistEntry', 'Set-ADTFirefoxExtensionSetting', 'Remove-ADTFirefoxExtensionSetting')
 }
 '@
-    [System.IO.File]::WriteAllText($psd1, $manifest.Replace('__AUTHOR__', $Author), [System.Text.UTF8Encoding]::new($true))
+    [System.IO.File]::WriteAllText($psd1, $manifest.Replace('__AUTHOR__', (Get-SqEscaped $Author)), [System.Text.UTF8Encoding]::new($true))
 }
 
 $psm1 = @'

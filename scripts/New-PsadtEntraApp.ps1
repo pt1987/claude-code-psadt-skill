@@ -357,7 +357,7 @@ if ($UseCertificate) {
 if (-not $consentGranted) {
     Write-Host "  ACTION    : grant admin consent in the portal before the first upload." -ForegroundColor Yellow
 }
-Write-Host "Next: build a package; the upload step (Phase 7.5) will use this app." -ForegroundColor Gray
+Write-Host "Next: build a package; the upload step (Phase 9) will use this app." -ForegroundColor Gray
 Write-Host "----------------------------------------------------------------`n" -ForegroundColor DarkGray
 
 [pscustomobject]@{
