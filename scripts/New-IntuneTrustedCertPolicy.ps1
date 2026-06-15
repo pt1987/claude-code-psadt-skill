@@ -31,7 +31,10 @@
 .PARAMETER Store         Target store on the device. Root | CA | TrustedPublisher | TrustedPeople (default TrustedPublisher).
 .PARAMETER ProfileName   Intune profile displayName (default derived from the cert subject + store).
 .PARAMETER Execute       Create the profile via Graph. Without it the script is a read-only dry run.
-.PARAMETER GraphToken    Optional bearer token (testing / reuse). Default: Get-GraphToken.ps1.
+.PARAMETER Interactive   Sign in interactively via WAM (delegated) instead of the app-only upload credential.
+                         Use when there is no app registration (maximum compatibility). No device code.
+.PARAMETER TenantId      Tenant for interactive sign-in (default: config intune.tenantId, else 'organizations').
+.PARAMETER GraphToken    Optional bearer token (testing / reuse). Default: app-only Get-GraphToken.ps1.
 .PARAMETER SkillRoot     Skill root (config.json). Default: parent of this script.
 
 .OUTPUTS
@@ -45,14 +48,18 @@ param(
     [ValidateSet('Root', 'CA', 'TrustedPublisher', 'TrustedPeople')][string]$Store = 'TrustedPublisher',
     [string]$ProfileName,
     [switch]$Execute,
+    [switch]$Interactive,
+    [string]$TenantId,
     [string]$GraphToken,
     [string]$SkillRoot = (Split-Path $PSScriptRoot -Parent)
 )
 $ErrorActionPreference = 'Stop'
 $GraphBase = 'https://graph.microsoft.com/beta'
+$ConfigScope = 'https://graph.microsoft.com/DeviceManagementConfiguration.ReadWrite.All'
 
-# --- Shared Graph helpers (Write-*, Get-GraphErr, Invoke-Graph; retry + PS7-safe) ----------------
+# --- Shared Graph helpers (Write-*, Get-GraphErr, Invoke-Graph) + WAM interactive sign-in --------
 . (Join-Path $PSScriptRoot '_GraphCommon.ps1')
+. (Join-Path $PSScriptRoot '_GraphInteractive.ps1')
 $script:step = 0
 
 # --- Testable helpers ----------------------------------------------------------------------------
@@ -161,7 +168,19 @@ if (-not $Execute) {
     Write-Step "Creating Custom OMA-URI profile '$ProfileName' via Graph"
     $token = $null
     try {
-        $token = if ($GraphToken) { $GraphToken } else { (& (Join-Path $PSScriptRoot 'Get-GraphToken.ps1') -SkillRoot $SkillRoot).Token }
+        if ($GraphToken) {
+            $token = $GraphToken
+        } elseif ($Interactive) {
+            # WAM (delegated) sign-in - works with no app registration. Tenant from config if not passed.
+            $tenant = $TenantId
+            if (-not $tenant) {
+                try { $tenant = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot).Config.intune.tenantId } catch { }
+            }
+            if (-not $tenant) { $tenant = 'organizations' }
+            $token = Get-InteractiveGraphToken -Scopes @($ConfigScope) -TenantId $tenant
+        } else {
+            $token = (& (Join-Path $PSScriptRoot 'Get-GraphToken.ps1') -SkillRoot $SkillRoot).Token
+        }
     } catch {
         Write-Warn2 "No Graph token ($($_.Exception.Message)). Falling back to manual instructions."
     }
@@ -177,7 +196,9 @@ if (-not $Execute) {
             $e = Get-GraphErr $_
             if ($e.code -match 'Authorization|Forbidden' -or "$($e.message)" -match 'privile|permission|scope') {
                 Write-Warn2 "Graph denied profile creation ($($e.code)). The upload app lacks DeviceManagementConfiguration.ReadWrite.All."
-                Write-Info  "Grant it (Global Admin): New-PsadtEntraApp.ps1 -Force -IncludeConfigurationManagement   - or create the profile manually:"
+                Write-Info  "Grant it (Global Admin): New-PsadtEntraApp.ps1 -Force -IncludeConfigurationManagement"
+                Write-Info  "  - or sign in interactively (no app needed): re-run this script with -Interactive"
+                Write-Info  "  - or create the profile manually:"
                 Write-Host $manual -ForegroundColor Gray
             } else { throw }
         }

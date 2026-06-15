@@ -84,4 +84,10 @@ Describe 'Dry run (read-only, no Graph)' {
         $r.Action | Should -Be 'Allow'
         $r.Profiles | Should -Be @('Domain', 'Private', 'Public')
     }
+    It 'accepts -Interactive without touching auth in dry-run (no WAM/Graph call)' {
+        # Dry run returns before any token acquisition, so -Interactive must not trigger a sign-in here.
+        $r = & $script:FwScript -FilePath $script:exe -Interactive
+        $r.DryRun | Should -BeTrue
+        $r.Executed | Should -BeFalse
+    }
 }

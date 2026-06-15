@@ -221,6 +221,28 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.12.0 - 15.06.2026
+- **Interactive WAM sign-in for the Intune policy scripts.** `New-IntuneFirewallPolicy.ps1` and
+  `New-IntuneTrustedCertPolicy.ps1` gain `-Interactive` (+ `-TenantId`): delegated sign-in via **WAM**
+  (Windows Web Account Manager) when there is no app registration — **no device code**. The WAM machinery
+  (`Initialize-MsalBroker` / `Get-WamToken` / new `Get-InteractiveGraphToken`) was extracted from
+  `New-PsadtEntraApp.ps1` into a shared `scripts/_GraphInteractive.ps1` (one implementation, no copy-paste
+  drift); the bootstrap now consumes it. The MxManagementCenter firewall deliverable became a thin wrapper
+  over the generic script.
+
+### 0.11.0 - 15.06.2026
+- **Intune firewall-rules policy + app config-management permission.** New `scripts/New-IntuneFirewallPolicy.ps1`
+  (Endpoint Security "Windows Firewall Rules" policy, one program-scoped rule; dry-run / `-Execute` / manual
+  portal fallback) + Pester test. Suppresses the first-run Windows Firewall prompt for apps that listen inbound.
+  New `New-PsadtEntraApp.ps1 -IncludeConfigurationManagement` consents `DeviceManagementConfiguration.ReadWrite.All`
+  (needed by the firewall and trusted-cert policies for `-Execute`).
+
+### 0.10.0 - 15.06.2026
+- **Certificate store deployment (driver-trust / TrustedPublisher).** New `scripts/New-IntuneTrustedCertPolicy.ps1` —
+  a Custom OMA-URI profile that places a certificate into a Windows machine store via the
+  `RootCATrustedCertificates` CSP (the policy-based way to suppress the Windows "install device software?"
+  driver-trust prompt). Guide Appendix N, dossier "Treiber-Zertifikat" row, SKILL.md convention + Pester test.
+
 ### 0.9.2 - 12.06.2026
 - **Reconciled a diverged install copy back into the repo.** Fixed `Invoke-PsadtSystemTest.ps1` crashing at
   param binding under the WinPS 5.1 re-exec (`$SkillRoot` default is now fail-safe, so the SYSTEM Install/

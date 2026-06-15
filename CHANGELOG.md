@@ -2,6 +2,24 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.12.0 — 2026-06-15 — Interactive WAM sign-in for the Intune policy scripts
+
+### Added
+- **`-Interactive` (+ `-TenantId`) on `New-IntuneFirewallPolicy.ps1` and `New-IntuneTrustedCertPolicy.ps1`** —
+  delegated sign-in via **WAM** (Windows Web Account Manager) so the scripts run with **no app registration**
+  (maximum compatibility). No device code. Default path is still app-only via `Get-GraphToken.ps1`; the 403
+  hint now also points at `-Interactive`.
+- **`scripts/_GraphInteractive.ps1`** — shared WAM sign-in helper (`Initialize-MsalBroker` / `Get-WamToken` /
+  `Get-InteractiveGraphToken` + the pinned MSAL version set), dot-sourced after `_GraphCommon.ps1`.
+
+### Changed
+- **`New-PsadtEntraApp.ps1`** refactored to consume `_GraphInteractive.ps1` instead of its own inline WAM copy
+  (one implementation, no copy-paste drift — the concern called out in `_GraphCommon.ps1`). Behaviour unchanged
+  (WAM, device-code fallback retained in the bootstrap only).
+- **MxManagementCenter `New-MxMcFirewallPolicy.ps1` deliverable** is now a thin wrapper over
+  `New-IntuneFirewallPolicy.ps1` (DRY; inherits `-Interactive` automatically).
+- New `-Interactive` dry-run test case in `tests/New-IntuneFirewallPolicy.Tests.ps1`.
+
 ## 0.11.0 — 2026-06-15 — Firewall-rules policy + app config-management permission
 
 ### Added
