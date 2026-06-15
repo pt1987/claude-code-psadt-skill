@@ -32,22 +32,33 @@ Describe 'New-FirewallRuleChildren' {
         $n = $script:children | Where-Object { $_.settingDefinitionId -like '*_name' }
         $n.simpleSettingValue.value | Should -Be 'MxMC In'
     }
-    It 'sets the program on the _filepath simple setting' {
-        $f = $script:children | Where-Object { $_.settingDefinitionId -like '*_filepath' }
+    It 'sets the program on the _app_filepath simple setting (direct child, verified against the template)' {
+        $f = $script:children | Where-Object { $_.settingDefinitionId -like '*_app_filepath' }
         $f.simpleSettingValue.value | Should -Be $script:exe
+        $f.'@odata.type' | Should -Be '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance'
     }
-    It 'encodes direction=in and action=allow as the right choice values' {
+    It 'encodes direction=in and action=allow as the verified choice values (_direction_in / _action_type_1)' {
         ($script:children | Where-Object { $_.settingDefinitionId -like '*_direction' }).choiceSettingValue.value   | Should -Match '_direction_in$'
-        ($script:children | Where-Object { $_.settingDefinitionId -like '*_action_type' }).choiceSettingValue.value | Should -Match '_action_type_allow$'
+        ($script:children | Where-Object { $_.settingDefinitionId -like '*_action_type' }).choiceSettingValue.value | Should -Match '_action_type_1$'
     }
     It 'emits one profile choice per requested profile' {
         $p = $script:children | Where-Object { $_.settingDefinitionId -like '*_profiles' }
         $p.choiceSettingCollectionValue.Count | Should -Be 3
     }
-    It 'encodes Block + Out direction when requested' {
+    It 'attaches the template references required by the firewall template (verified by live 201)' {
+        # Each instance needs settingInstanceTemplateReference; each simple/choice value a settingValueTemplateReference.
+        $act = $script:children | Where-Object { $_.settingDefinitionId -like '*_action_type' }
+        $act.settingInstanceTemplateReference.settingInstanceTemplateId | Should -Not -BeNullOrEmpty
+        $act.choiceSettingValue.settingValueTemplateReference.settingValueTemplateId | Should -Not -BeNullOrEmpty
+        # The profiles COLLECTION carries the instance ref only - a per-value ref is rejected as a duplicate.
+        $prof = $script:children | Where-Object { $_.settingDefinitionId -like '*_profiles' }
+        $prof.settingInstanceTemplateReference.settingInstanceTemplateId | Should -Not -BeNullOrEmpty
+        ([bool]$prof.choiceSettingCollectionValue[0].Contains('settingValueTemplateReference')) | Should -BeFalse
+    }
+    It 'encodes Block + Out direction when requested (_direction_out / _action_type_0)' {
         $c = New-FirewallRuleChildren -RuleName 'r' -FilePath $script:exe -Direction Out -Action Block -Profiles @('Public')
         ($c | Where-Object { $_.settingDefinitionId -like '*_direction' }).choiceSettingValue.value   | Should -Match '_direction_out$'
-        ($c | Where-Object { $_.settingDefinitionId -like '*_action_type' }).choiceSettingValue.value | Should -Match '_action_type_block$'
+        ($c | Where-Object { $_.settingDefinitionId -like '*_action_type' }).choiceSettingValue.value | Should -Match '_action_type_0$'
         ($c | Where-Object { $_.settingDefinitionId -like '*_profiles' }).choiceSettingCollectionValue.Count | Should -Be 1
     }
 }
@@ -59,7 +70,8 @@ Describe 'New-FirewallPolicyBody' {
         $body.technologies | Should -Be 'mdm'
         $body.platforms | Should -Be 'windows10'
         $body.templateReference.templateId | Should -Be '19c8aa67-f286-4861-9aa0-f23541d31680_1'
-        $body.settings[0].settingInstance.settingDefinitionId | Should -Be 'vendor_msft_firewall_mdmstore_firewallrules'
+        $body.settings[0].settingInstance.settingDefinitionId | Should -Be 'vendor_msft_firewall_mdmstore_firewallrules_{firewallrulename}'
+        $body.settings[0].settingInstance.settingInstanceTemplateReference.settingInstanceTemplateId | Should -Be '76c7a8be-67d2-44bf-81a5-38c94926b1a1'
         $body.settings[0].settingInstance.groupSettingCollectionValue[0].children.Count | Should -Be $children.Count
     }
 }

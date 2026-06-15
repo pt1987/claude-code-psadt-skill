@@ -221,6 +221,15 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.13.1 - 15.06.2026
+- **Firewall policy body fixed against the live template (verified 201).** `New-IntuneFirewallPolicy.ps1`
+  produced a body Graph rejected (400). Corrected via the **msgraph skill** (not guessed): the group id needs
+  the `{firewallrulename}` token, the program path is the direct child `..._app_filepath`, action values are
+  `_action_type_1`/`_0`, and a template-based policy requires `settingInstanceTemplateReference` per instance +
+  `settingValueTemplateReference` per simple/choice value (profiles collection: instance ref only — a per-value
+  ref is a duplicate). Confirmed by a live **201 Create**; tests assert the references. Mirrored into the
+  MxManagementCenter Output deliverable.
+
 ### 0.13.0 - 15.06.2026
 - **Self-contained firewall deliverable (copy-to-client safe).** `scripts/New-IntuneFirewallPolicy.ps1` is now
   fully self-contained — no dot-sourcing of `_GraphCommon`/`_GraphInteractive`, no skill path; WAM sign-in +

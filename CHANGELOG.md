@@ -2,6 +2,21 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.13.1 — 2026-06-15 — Firewall policy body fixed against the live template (verified 201)
+
+### Fixed
+- **`New-IntuneFirewallPolicy.ps1` built a body Graph rejected (400 BadRequest).** Corrected against the live
+  "Windows Firewall Rules" template (looked up via the **msgraph skill**, not guessed):
+  - the group setting id needs the `{firewallrulename}` token (`vendor_msft_firewall_mdmstore_firewallrules_{firewallrulename}`);
+  - the program path is the **direct child** `..._{firewallrulename}_app_filepath` (not a nested `_app` group);
+  - action values are numeric: `_action_type_1` = Allow, `_action_type_0` = Block (not `_allow`/`_block`);
+  - a template-based settings-catalog policy REQUIRES `settingInstanceTemplateReference` on every instance and
+    `settingValueTemplateReference` on each simple/choice value; the profiles **collection** takes the instance
+    ref only (a per-value ref is rejected as a duplicate). All template GUIDs are embedded.
+  Confirmed by a live **201 Create** against the tenant; the generated body is byte-identical to the accepted one.
+- Mirrored the same correct body into the MxManagementCenter self-contained Output deliverable.
+- `tests/New-IntuneFirewallPolicy.Tests.ps1` now asserts the template references and the verified option values.
+
 ## 0.13.0 — 2026-06-15 — Self-contained firewall deliverable (copy-to-client safe)
 
 ### Changed

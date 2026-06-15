@@ -172,39 +172,60 @@ function New-FirewallRuleChildren {
     )
     $base = 'vendor_msft_firewall_mdmstore_firewallrules_{firewallrulename}'
     $dirVal = if ($Direction -eq 'In') { "${base}_direction_in" } else { "${base}_direction_out" }
-    $actVal = if ($Action -eq 'Allow') { "${base}_action_type_allow" } else { "${base}_action_type_block" }
+    # Action choice values are numeric: _0 = Block, _1 = Allow (verified against the live template definitions).
+    $actVal = if ($Action -eq 'Allow') { "${base}_action_type_1" } else { "${base}_action_type_0" }
     $profMasks = Get-FirewallProfileMask -Profiles $Profiles
+
+    # Template-reference GUIDs from the live "Windows Firewall Rules" template (19c8aa67-...). REQUIRED: a
+    # template-based settings-catalog policy needs settingInstanceTemplateReference on each instance and
+    # settingValueTemplateReference on each simple/choice value. The profiles COLLECTION carries the instance
+    # ref only - a per-value ref there is rejected as a duplicate. Verified by a live 201 Create.
+    $T = @{
+        name_i = '116a696a-3270-493e-9938-c336cf05ea98'; name_v = '12994a33-6185-4c3d-a0e8-69316f6293ea'
+        en_i   = '4e150e1a-6a10-49b2-a20c-911bf44ea767'; en_v   = '7562f243-f281-4f6f-b7e6-ecdb76dc1f1b'
+        dir_i  = '2114ad3d-157c-47d3-b646-60fcf50949c7'; dir_v  = '8b45e13b-952d-4164-bbac-37f4e97b7985'
+        act_i  = '0565cfd1-21c2-4965-b87f-6bde2b8d2cbd'; act_v  = '419773d8-bffe-4d6f-a91f-286871963f5c'
+        fp_i   = 'dd825fa0-961b-4fcc-a6b3-4d2dc0419d4e'; fp_v   = '8c94fefa-67e5-40b5-8d97-6fca4f0c1e98'
+        prof_i = '7dc9b243-cdd2-4359-b5f5-0c48edb8fd34'
+    }
 
     $children = @(
         [ordered]@{
-            '@odata.type'       = '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance'
-            settingDefinitionId = "${base}_name"
-            simpleSettingValue  = [ordered]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationStringSettingValue'; value = $RuleName }
+            '@odata.type'                    = '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance'
+            settingDefinitionId              = "${base}_name"
+            settingInstanceTemplateReference = @{ settingInstanceTemplateId = $T.name_i }
+            simpleSettingValue               = [ordered]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationStringSettingValue'; settingValueTemplateReference = @{ settingValueTemplateId = $T.name_v }; value = $RuleName }
         },
         [ordered]@{
-            '@odata.type'       = '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance'
-            settingDefinitionId = "${base}_enabled"
-            choiceSettingValue  = [ordered]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationChoiceSettingValue'; value = "${base}_enabled_1"; children = @() }
+            '@odata.type'                    = '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance'
+            settingDefinitionId              = "${base}_enabled"
+            settingInstanceTemplateReference = @{ settingInstanceTemplateId = $T.en_i }
+            choiceSettingValue               = [ordered]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationChoiceSettingValue'; settingValueTemplateReference = @{ settingValueTemplateId = $T.en_v }; value = "${base}_enabled_1"; children = @() }
         },
         [ordered]@{
-            '@odata.type'       = '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance'
-            settingDefinitionId = "${base}_direction"
-            choiceSettingValue  = [ordered]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationChoiceSettingValue'; value = $dirVal; children = @() }
+            '@odata.type'                    = '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance'
+            settingDefinitionId              = "${base}_direction"
+            settingInstanceTemplateReference = @{ settingInstanceTemplateId = $T.dir_i }
+            choiceSettingValue               = [ordered]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationChoiceSettingValue'; settingValueTemplateReference = @{ settingValueTemplateId = $T.dir_v }; value = $dirVal; children = @() }
         },
         [ordered]@{
-            '@odata.type'       = '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance'
-            settingDefinitionId = "${base}_action_type"
-            choiceSettingValue  = [ordered]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationChoiceSettingValue'; value = $actVal; children = @() }
+            '@odata.type'                    = '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance'
+            settingDefinitionId              = "${base}_action_type"
+            settingInstanceTemplateReference = @{ settingInstanceTemplateId = $T.act_i }
+            choiceSettingValue               = [ordered]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationChoiceSettingValue'; settingValueTemplateReference = @{ settingValueTemplateId = $T.act_v }; value = $actVal; children = @() }
         },
         [ordered]@{
-            '@odata.type'       = '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance'
-            settingDefinitionId = "${base}_filepath"
-            simpleSettingValue  = [ordered]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationStringSettingValue'; value = $FilePath }
+            # Program path: DIRECT child (id ..._app_filepath), verified against the live template.
+            '@odata.type'                    = '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance'
+            settingDefinitionId              = "${base}_app_filepath"
+            settingInstanceTemplateReference = @{ settingInstanceTemplateId = $T.fp_i }
+            simpleSettingValue               = [ordered]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationStringSettingValue'; settingValueTemplateReference = @{ settingValueTemplateId = $T.fp_v }; value = $FilePath }
         },
         [ordered]@{
-            '@odata.type'                = '#microsoft.graph.deviceManagementConfigurationChoiceSettingCollectionInstance'
-            settingDefinitionId          = "${base}_profiles"
-            choiceSettingCollectionValue = @($profMasks | ForEach-Object {
+            '@odata.type'                    = '#microsoft.graph.deviceManagementConfigurationChoiceSettingCollectionInstance'
+            settingDefinitionId              = "${base}_profiles"
+            settingInstanceTemplateReference = @{ settingInstanceTemplateId = $T.prof_i }
+            choiceSettingCollectionValue     = @($profMasks | ForEach-Object {
                 [ordered]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationChoiceSettingValue'; value = "${base}_profiles_$_"; children = @() }
             })
         }
@@ -231,9 +252,10 @@ function New-FirewallPolicyBody {
             [ordered]@{
                 '@odata.type'   = '#microsoft.graph.deviceManagementConfigurationSetting'
                 settingInstance = [ordered]@{
-                    '@odata.type'               = '#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance'
-                    settingDefinitionId         = 'vendor_msft_firewall_mdmstore_firewallrules'
-                    groupSettingCollectionValue = @([ordered]@{ children = $RuleChildren })
+                    '@odata.type'                    = '#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance'
+                    settingDefinitionId              = 'vendor_msft_firewall_mdmstore_firewallrules_{firewallrulename}'
+                    settingInstanceTemplateReference = @{ settingInstanceTemplateId = '76c7a8be-67d2-44bf-81a5-38c94926b1a1' }
+                    groupSettingCollectionValue      = @([ordered]@{ children = $RuleChildren })
                 }
             }
         )
