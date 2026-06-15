@@ -223,6 +223,27 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.15.0 - 15.06.2026
+- **Windows-feature packages (optional features + capabilities / FoD).** New `scripts/New-WindowsFeaturePackage.ps1`
+  — one-call generator that enables Windows **Optional Features** (`Enable-WindowsOptionalFeature`: NetFx3,
+  Hyper-V, WSL, TelnetClient, …) and **Capabilities / Features on Demand** (`Add-WindowsCapability`: RSAT.*,
+  OpenSSH, …) from one typed list, multiple per package. Uninstall reverts (disable/remove); Repair re-enables
+  (idempotent). Reboot surfaces **3010** via `$adtSession.SetExitCode(3010)` (`-NoRestart`); detection treats
+  `EnablePending` as not-yet-done. Content comes from a bundled `-Source` (offline SxS) else Windows Update
+  behind a **temporary** WSUS bypass (`RepairContentServerSource=2`, `UseWUServer=0`) whose exact prior state is
+  restored. Guide **Appendix P**, SKILL.md Gate-1/anti-patterns/ref-lookup. Pre-flight GREEN; helper logic
+  verified against an in-memory registry sim; ASCII-clean.
+
+### 0.14.0 - 15.06.2026
+- **Browser-extension force-install packages (Edge / Chrome / Firefox).** New
+  `scripts/New-BrowserExtensionPackage.ps1` — one-call generator for force-installing browser extensions via
+  enterprise **policy registry keys** (policy-only, no installer, ESP-safe). Multiple extensions per package.
+  Chromium helper computes the **next free `ExtensionInstallForcelist` index** (never hard-codes `1`), dedupes by
+  ID and removes only its own entry (coexistence); Firefox merges into the single `ExtensionSettings` JSON written
+  as **`REG_MULTI_SZ`** (single-line `REG_SZ` is silently ignored — Mozilla bug 1750233). Guide **Appendix O**,
+  SKILL.md Gate-1/anti-patterns/ref-lookup. Pre-flight GREEN; helpers validated against a scratch registry hive;
+  ASCII-clean.
+
 ### 0.13.1 - 15.06.2026
 - **Firewall policy body fixed against the live template (verified 201).** `New-IntuneFirewallPolicy.ps1`
   produced a body Graph rejected (400). Corrected via the **msgraph skill** (not guessed): the group id needs
