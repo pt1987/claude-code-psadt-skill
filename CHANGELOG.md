@@ -2,6 +2,21 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.13.0 — 2026-06-15 — Self-contained firewall deliverable (copy-to-client safe)
+
+### Changed
+- **`scripts/New-IntuneFirewallPolicy.ps1` is now fully SELF-CONTAINED** — no dot-sourcing of
+  `_GraphCommon` / `_GraphInteractive`, no skill path; the WAM interactive sign-in, the policy body builder
+  and console helpers are embedded in the one file. It is copied into an app's Output folder and runs on test
+  clients that do NOT have the skill installed (`-Interactive` WAM, or a passed `-GraphToken`). This fixes the
+  "Skill script not found … Pass the correct -SkillRoot" failure when the deliverable was run on another machine.
+
+### Added
+- **SKILL.md binding convention "Self-contained deliverables"** — anything shipped in an app's Output folder
+  must carry everything it needs (no dot-source of skill files, no hardcoded skill/user path, no `-SkillRoot`).
+- **`tests/New-IntuneFirewallPolicy.Tests.ps1`** self-containment assertions (no dot-source, no skill path,
+  embeds its own WAM) — enforces the convention. Authored test-first (RED->GREEN) per superpowers:writing-skills.
+
 ## 0.12.0 — 2026-06-15 — Interactive WAM sign-in for the Intune policy scripts
 
 ### Added

@@ -1,34 +1,36 @@
 <#
 .SYNOPSIS
-    Prepares (and optionally creates in the tenant) an Intune Endpoint Security "Windows Firewall Rules" policy
-    with ONE program-scoped firewall rule. Read-only dry-run by default; -Execute creates it via Microsoft Graph.
-    Always emits ready-to-paste manual portal values.
+    SELF-CONTAINED: prepares (and optionally creates via Graph) an Intune Endpoint Security "Windows Firewall
+    Rules" policy with ONE program-scoped rule. Read-only dry-run by default; -Execute creates it.
+
+    This script has NO external dependencies (no dot-sourcing of skill helpers, no hardcoded skill path): it is
+    copied into an app's Output folder and run on test clients that do NOT have the skill installed. Everything
+    it needs - WAM interactive sign-in, the policy body builder, console helpers - is embedded. See SKILL.md,
+    binding convention "Self-contained deliverables".
 
 .DESCRIPTION
-    Some apps (e.g. MxManagementCenter) listen for inbound connections and trigger the Windows Defender Firewall
-    prompt on first launch - which a non-admin user cannot approve. Pre-creating an inbound ALLOW rule centrally
-    suppresses that prompt. This builds a settings-catalog firewall-rules policy (template
-    19c8aa67-f286-4861-9aa0-f23541d31680_1) with a single program-scoped rule on -FilePath.
+    Some apps listen for inbound connections and trigger the Windows Defender Firewall prompt on first launch,
+    which a non-admin user cannot approve. Pre-creating an inbound ALLOW rule centrally suppresses that prompt.
+    Own the rule in EXACTLY ONE place: this policy OR the package install hook - never both.
 
-    Own the rule in EXACTLY ONE place: either this policy OR the package (Add-NetFirewallRule in the install hook)
-    - never both, or they fight on uninstall/sync.
+    Auth for -Execute:
+      - -Interactive : WAM (Windows Web Account Manager) delegated sign-in. No app registration, no device code.
+                       The signed-in user needs the delegated Intune permission (an Intune admin). Works on any
+                       client. WAM downloads the MSAL broker assemblies once to %LOCALAPPDATA%\PsadtIntune\msal.
+      - -GraphToken  : pass an existing bearer token (e.g. the skill's app-only Get-GraphToken on the authoring
+                       machine: -GraphToken (& scripts/Get-GraphToken.ps1).Token).
+    Without either, -Execute prints the manual portal steps (no silent failure).
 
-    -Execute needs the Graph application role DeviceManagementConfiguration.ReadWrite.All. The upload app gets it
-    via: New-PsadtEntraApp.ps1 -Force -IncludeConfigurationManagement (Global Admin). If the token/role is
-    unavailable the script does NOT fail the run - it prints the exact manual portal steps + values and returns them.
-
-.PARAMETER FilePath      Program the rule scopes to, e.g. C:\Program Files\Mobotix\MxManagementCenter\MxManagementCenter.exe
+.PARAMETER FilePath      Program the rule scopes to (mandatory), e.g. C:\Program Files\Vendor\App\app.exe
 .PARAMETER RuleName      Firewall rule display name (default derived from the program file name + direction).
 .PARAMETER Direction     In | Out (default In).
 .PARAMETER Action        Allow | Block (default Allow).
 .PARAMETER Profiles      Any of Domain, Private, Public (default all three).
 .PARAMETER PolicyName    Intune policy displayName (default derived from the rule name).
 .PARAMETER Execute       Create the policy via Graph. Without it the script is a read-only dry run.
-.PARAMETER Interactive   Sign in interactively via WAM (delegated) instead of the app-only upload credential.
-                         Use when there is no app registration (maximum compatibility). No device code.
-.PARAMETER TenantId      Tenant for interactive sign-in (default: config intune.tenantId, else 'organizations').
-.PARAMETER GraphToken    Optional bearer token (testing / reuse). Default: app-only Get-GraphToken.ps1.
-.PARAMETER SkillRoot     Skill root (config.json). Default: parent of this script.
+.PARAMETER Interactive   WAM (delegated) sign-in. Recommended on a client without the skill / app registration.
+.PARAMETER TenantId      Tenant for interactive sign-in (default 'organizations' - pick the account at sign-in).
+.PARAMETER GraphToken    Optional bearer token instead of interactive sign-in.
 
 .OUTPUTS
     PSCustomObject: Executed, PolicyName, RuleName, FilePath, Direction, Action, Profiles, PolicyId, DryRun, ManualSteps
@@ -43,24 +45,116 @@ param(
     [string]$PolicyName,
     [switch]$Execute,
     [switch]$Interactive,
-    [string]$TenantId,
-    [string]$GraphToken,
-    [string]$SkillRoot = (Split-Path $PSScriptRoot -Parent)
+    [string]$TenantId = 'organizations',
+    [string]$GraphToken
 )
 $ErrorActionPreference = 'Stop'
-$GraphBase = 'https://graph.microsoft.com/beta'
+
+$GraphCliClientId = '14d82eec-204b-4c2f-b7e8-296a70dab67e'   # "Microsoft Graph Command Line Tools" (public)
 $FirewallRulesTemplateId = '19c8aa67-f286-4861-9aa0-f23541d31680_1'
 $ConfigScope = 'https://graph.microsoft.com/DeviceManagementConfiguration.ReadWrite.All'
 
-# --- Shared Graph helpers (Write-*, Get-GraphErr, Invoke-Graph) + WAM interactive sign-in --------
-. (Join-Path $PSScriptRoot '_GraphCommon.ps1')
-. (Join-Path $PSScriptRoot '_GraphInteractive.ps1')
-$script:step = 0
+# --- console helpers (embedded) ------------------------------------------------------------------
+function Write-Info([string]$m) { Write-Host "    $m" -ForegroundColor Gray }
+function Write-Warn2([string]$m) { Write-Host "    !   $m" -ForegroundColor Yellow }
 
-# --- Testable helpers ----------------------------------------------------------------------------
+# ============================ WAM interactive sign-in (embedded, self-contained) ============================
+$script:MsalVersions  = @{ Client = '4.66.2'; Broker = '4.66.2'; Native = '0.16.2'; Abstractions = '6.35.0' }
+$script:MsalCacheRoot = Join-Path $env:LOCALAPPDATA 'PsadtIntune\msal'
+$script:MsalReady = $false
+
+function Save-NuGetPackage {
+    param([string]$Id, [string]$Version, [string]$DestDir)
+    $idl = $Id.ToLower(); $verl = $Version.ToLower()
+    $url = "https://api.nuget.org/v3-flatcontainer/$idl/$verl/$idl.$verl.nupkg"
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "$idl.$verl.nupkg"
+    Write-Info "downloading $Id $Version ..."
+    Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -ErrorAction Stop
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (Test-Path $DestDir) { Remove-Item $DestDir -Recurse -Force }
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($tmp, $DestDir)
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+}
+function Get-PackageDir {
+    param([string]$Id, [string]$Version, [string]$LocalRoot)
+    $global = Join-Path $env:USERPROFILE ".nuget\packages\$Id\$Version"
+    if (Test-Path $global) { return $global }
+    $local = Join-Path $LocalRoot "$Id\$Version"
+    if ((Test-Path $local) -and (Get-ChildItem $local -ErrorAction SilentlyContinue)) { return $local }
+    Save-NuGetPackage -Id $Id -Version $Version -DestDir $local
+    return $local
+}
+function Initialize-MsalBroker {
+    param([hashtable]$Versions = $script:MsalVersions, [string]$CacheRoot = $script:MsalCacheRoot)
+    if ($script:MsalReady) { return $true }
+    if (-not [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
+        throw "WAM is only available on Windows."
+    }
+    $isCore = $PSVersionTable.PSEdition -eq 'Core'
+    $clientTfm = if ($isCore) { 'net6.0' }        else { 'net462' }
+    $brokerTfm = if ($isCore) { 'netstandard2.0' } else { 'net462' }
+    $nativeTfm = if ($isCore) { 'netstandard2.0' } else { 'net461' }
+    $arch = switch ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture) {
+        'Arm64' { 'win-arm64' } 'X86' { 'win-x86' } default { 'win-x64' }
+    }
+    $clientVer = $Versions.Client
+    $cb = Join-Path $env:USERPROFILE ".nuget\packages\microsoft.identity.client"
+    if (-not (Test-Path (Join-Path $cb $clientVer)) -and (Test-Path $cb)) {
+        $newer = Get-ChildItem $cb -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like '4.66.*' -and (Test-Path (Join-Path $_.FullName "lib\$clientTfm\Microsoft.Identity.Client.dll")) } |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+        if ($newer) { $clientVer = $newer.Name }
+    }
+    $abstrDll  = Join-Path (Get-PackageDir 'microsoft.identitymodel.abstractions'    $Versions.Abstractions $CacheRoot) "lib\$clientTfm\Microsoft.IdentityModel.Abstractions.dll"
+    $clientDll = Join-Path (Get-PackageDir 'microsoft.identity.client'              $clientVer        $CacheRoot) "lib\$clientTfm\Microsoft.Identity.Client.dll"
+    $brokerDll = Join-Path (Get-PackageDir 'microsoft.identity.client.broker'       $Versions.Broker  $CacheRoot) "lib\$brokerTfm\Microsoft.Identity.Client.Broker.dll"
+    $nativePkg =           (Get-PackageDir 'microsoft.identity.client.nativeinterop' $Versions.Native  $CacheRoot)
+    $nativeMgr = Join-Path $nativePkg "lib\$nativeTfm\Microsoft.Identity.Client.NativeInterop.dll"
+    $nativeRun = Join-Path $nativePkg "runtimes\$arch\native"
+    foreach ($f in @($abstrDll, $clientDll, $brokerDll, $nativeMgr)) {
+        if (-not (Test-Path $f)) { throw "MSAL assembly not found: $f" }
+    }
+    if (-not (Test-Path $nativeRun)) { throw "MSAL native runtime folder not found: $nativeRun" }
+    $runDir = Join-Path $CacheRoot "native\$arch"
+    New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+    Get-ChildItem $nativeRun -Filter 'msalruntime*.dll' | ForEach-Object { Copy-Item $_.FullName (Join-Path $runDir $_.Name) -Force }
+    if (-not (Test-Path (Join-Path $runDir 'msalruntime.dll'))) {
+        $alt = Get-ChildItem $runDir -Filter 'msalruntime*.dll' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($alt) { Copy-Item $alt.FullName (Join-Path $runDir 'msalruntime.dll') -Force }
+    }
+    if ($env:PATH -notlike "*$runDir*") { $env:PATH = "$runDir;$env:PATH" }
+    [System.Reflection.Assembly]::LoadFrom($abstrDll)  | Out-Null
+    [System.Reflection.Assembly]::LoadFrom($clientDll) | Out-Null
+    [System.Reflection.Assembly]::LoadFrom($nativeMgr) | Out-Null
+    [System.Reflection.Assembly]::LoadFrom($brokerDll) | Out-Null
+    if (-not ([System.Management.Automation.PSTypeName]'PsadtNative.Win').Type) {
+        Add-Type -Namespace PsadtNative -Name Win -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();
+[System.Runtime.InteropServices.DllImport("user32.dll")]   public static extern System.IntPtr GetForegroundWindow();
+'@
+    }
+    $script:MsalReady = $true
+    return $true
+}
+function Get-InteractiveGraphToken {
+    param([string[]]$Scopes = @($ConfigScope), [string]$Tenant = 'organizations', [string]$ClientId = $GraphCliClientId)
+    Initialize-MsalBroker | Out-Null
+    Write-Info "Interactive sign-in: WAM (Windows Web Account Manager)."
+    $authority = "https://login.microsoftonline.com/$Tenant"
+    $builder = [Microsoft.Identity.Client.PublicClientApplicationBuilder]::Create($ClientId).WithAuthority($authority)
+    $bo = New-Object 'Microsoft.Identity.Client.BrokerOptions' -ArgumentList ([Microsoft.Identity.Client.BrokerOptions+OperatingSystems]::Windows)
+    $builder = [Microsoft.Identity.Client.Broker.BrokerExtension]::WithBroker($builder, $bo)
+    $pca = $builder.Build()
+    $hwnd = [PsadtNative.Win]::GetConsoleWindow()
+    if ($hwnd -eq [System.IntPtr]::Zero) { $hwnd = [PsadtNative.Win]::GetForegroundWindow() }
+    Write-Host "    A Windows sign-in window (Web Account Manager) will open ..." -ForegroundColor Gray
+    $req = $pca.AcquireTokenInteractive([string[]]$Scopes).WithParentActivityOrWindow($hwnd).WithPrompt([Microsoft.Identity.Client.Prompt]::SelectAccount)
+    return $req.ExecuteAsync().GetAwaiter().GetResult().AccessToken
+}
+
+# ============================ Testable helpers (pure) ============================
 function Get-FirewallProfileMask {
-    # Windows firewall profile flags: Domain=1, Private=2, Public=4. Returns the settings-catalog
-    # choice-value suffixes for the requested profiles.
+    # Windows firewall profile flags: Domain=1, Private=2, Public=4. Returns the sorted mask integers.
     param([Parameter(Mandatory)][string[]]$Profiles)
     $map = @{ Domain = 1; Private = 2; Public = 4 }
     return @($Profiles | ForEach-Object { $map[$_] } | Sort-Object)
@@ -151,9 +245,8 @@ function Get-FirewallPolicyManualSteps {
     param([string]$PolicyName, [string]$RuleName, [string]$FilePath, [string]$Direction, [string]$Action, [string[]]$Profiles)
     $dirText = if ($Direction -eq 'In') { 'In' } else { 'Out' }
     return @"
-Manual creation (Intune portal) - if Graph is unavailable or the app lacks DeviceManagementConfiguration.ReadWrite.All:
-  1. Endpoint security > Firewall > Create Policy
-       Platform = Windows ; Profile = Windows Firewall Rules
+Manual creation (Intune portal):
+  1. Endpoint security > Firewall > Create Policy   (Platform = Windows ; Profile = Windows Firewall Rules)
   2. Policy name: $PolicyName
   3. Add a Firewall rule:
        Firewall Rule Name = $RuleName
@@ -168,7 +261,7 @@ Note: own the rule in ONE place only - this policy OR the package, never both.
 "@
 }
 
-# --- Resolve names -------------------------------------------------------------------------------
+# ============================ main ============================
 $leaf = [System.IO.Path]::GetFileNameWithoutExtension($FilePath)
 if (-not $RuleName)   { $RuleName = "$leaf ($Direction $Action)" }
 if (-not $PolicyName) { $PolicyName = "Firewall - $RuleName" }
@@ -185,48 +278,40 @@ Write-Info "Direction: $Direction   Action: $Action   Profiles: $($Profiles -joi
 
 $policyId = $null
 if (-not $Execute) {
-    Write-Host "`n--- DRY RUN (read-only). Re-run with -Execute to create the policy via Graph. ---" -ForegroundColor Yellow
+    Write-Host "`n--- DRY RUN (read-only). Re-run with -Execute (and -Interactive for WAM sign-in) to create it. ---" -ForegroundColor Yellow
     Write-Host $manual -ForegroundColor Gray
 } else {
-    Write-Step "Creating firewall-rules policy '$PolicyName' via Graph"
     $token = $null
     try {
-        if ($GraphToken) {
-            $token = $GraphToken
-        } elseif ($Interactive) {
-            # WAM (delegated) sign-in - works with no app registration. Tenant from config if not passed.
-            $tenant = $TenantId
-            if (-not $tenant) {
-                try { $tenant = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot).Config.intune.tenantId } catch { }
-            }
-            if (-not $tenant) { $tenant = 'organizations' }
-            $token = Get-InteractiveGraphToken -Scopes @($ConfigScope) -TenantId $tenant
-        } else {
-            $token = (& (Join-Path $PSScriptRoot 'Get-GraphToken.ps1') -SkillRoot $SkillRoot).Token
+        if ($GraphToken)      { $token = $GraphToken }
+        elseif ($Interactive) { $token = Get-InteractiveGraphToken -Scopes @($ConfigScope) -Tenant $TenantId }
+        else {
+            Write-Warn2 "No credential: this self-contained script has no app registration. Re-run with -Interactive (WAM) or pass -GraphToken."
+            Write-Host $manual -ForegroundColor Gray
         }
     } catch {
-        Write-Warn2 "No Graph token ($($_.Exception.Message)). Falling back to manual instructions."
+        Write-Warn2 "Sign-in failed: $($_.Exception.Message)"
     }
 
     if ($token) {
-        $H = @{ Authorization = "Bearer $token" }
+        $headers = @{ Authorization = "Bearer $token" }
         $body = New-FirewallPolicyBody -PolicyName $PolicyName -Description $description -RuleChildren $children -TemplateId $FirewallRulesTemplateId
+        $json = $body | ConvertTo-Json -Depth 20
         try {
-            $created = Invoke-Graph POST "$GraphBase/deviceManagement/configurationPolicies" -Headers $H -Body $body
+            $created = Invoke-RestMethod -Method Post -Uri 'https://graph.microsoft.com/beta/deviceManagement/configurationPolicies' -Headers $headers -ContentType 'application/json' -Body $json -ErrorAction Stop
             $policyId = $created.id
-            Write-Ok "Policy created ($policyId). Assign it to the app's device scope in the portal (or via assignments API)."
+            Write-Host "    OK  Policy created ($policyId). Assign it to a device group in the portal." -ForegroundColor Green
         } catch {
-            $e = Get-GraphErr $_
-            if ($e.code -match 'Authorization|Forbidden' -or "$($e.message)" -match 'privile|permission|scope') {
-                Write-Warn2 "Graph denied policy creation ($($e.code)). The upload app lacks DeviceManagementConfiguration.ReadWrite.All."
-                Write-Info  "Grant it (Global Admin): New-PsadtEntraApp.ps1 -Force -IncludeConfigurationManagement"
-                Write-Info  "  - or sign in interactively (no app needed): re-run this script with -Interactive"
-                Write-Info  "  - or create the policy manually:"
-                Write-Host $manual -ForegroundColor Gray
-            } else { throw }
+            $resp = $_.Exception.Response
+            $code = if ($resp) { try { [int]$resp.StatusCode } catch { 0 } } else { 0 }
+            $detail = ''
+            if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $detail = $_.ErrorDetails.Message }
+            if ($code -eq 403) {
+                Write-Warn2 "403 Forbidden - the account/app lacks DeviceManagementConfiguration.ReadWrite.All (Intune admin needed)."
+            }
+            Write-Host "    Graph error ($code): $detail" -ForegroundColor Red
+            Write-Host $manual -ForegroundColor Gray
         }
-    } else {
-        Write-Host $manual -ForegroundColor Gray
     }
 }
 

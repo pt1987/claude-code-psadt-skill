@@ -104,6 +104,16 @@ Context follow-ups (coexistence, processes-to-close, architecture) come situatio
   `scripts/New-IntuneTrustedCertPolicy.ps1`, dry-run/`-Execute`, prints the manual portal steps when the app
   lacks `DeviceManagementConfiguration.ReadWrite.All`) **OR** a package import in the install hook - never both
   (they fight on uninstall/sync). Assign the policy to the SAME scope as the app. Guide Appendix N.
+- **Self-contained deliverables (BINDING).** Any helper script placed in an app's **Output folder** (the
+  firewall-policy creator, a cert-policy creator, etc.) is COPIED to and run on **test clients that do NOT have
+  the skill installed**. It therefore MUST be fully self-contained: **no** dot-sourcing of skill files
+  (`_GraphCommon` / `_GraphInteractive`), **no** hardcoded skill/user path, **no** `-SkillRoot` dependency -
+  everything it needs (WAM interactive sign-in, body builders, console helpers) is embedded in the one file.
+  Auth on a client = `-Interactive` (WAM, no device code) or a passed `-GraphToken`. A wrapper that dot-sources
+  or hard-codes the author's skill path is a defect (it throws "Skill script not found" on any other machine).
+  Reference implementation: `scripts/New-IntuneFirewallPolicy.ps1` (the self-containment is enforced by
+  `tests/New-IntuneFirewallPolicy.Tests.ps1`). Skill-internal scripts that only ever run on the authoring
+  machine may still share `_Graph*` helpers - the rule applies to what ships in Output.
 - **All three deployment types from the start** (Install / Uninstall / Repair), each acid-tested - even if
   only install is needed today, Company-Portal uninstall needs a filled Uninstall hook.
 - **Upload (opt-in).** Fill EVERY objective App-info field; NEVER auto-impose category / branded notes /

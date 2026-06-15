@@ -221,6 +221,14 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.13.0 - 15.06.2026
+- **Self-contained firewall deliverable (copy-to-client safe).** `scripts/New-IntuneFirewallPolicy.ps1` is now
+  fully self-contained — no dot-sourcing of `_GraphCommon`/`_GraphInteractive`, no skill path; WAM sign-in +
+  policy body builder + console helpers are embedded. It runs on a test client that does **not** have the skill
+  installed (`-Interactive` WAM, or `-GraphToken`). Fixes the "Skill script not found … -SkillRoot" failure when
+  the deliverable was copied to another machine. New **binding SKILL.md convention "Self-contained deliverables"**
+  + a Pester test that enforces it (no dot-source / no skill path / embeds WAM). Test-first per writing-skills.
+
 ### 0.12.0 - 15.06.2026
 - **Interactive WAM sign-in for the Intune policy scripts.** `New-IntuneFirewallPolicy.ps1` and
   `New-IntuneTrustedCertPolicy.ps1` gain `-Interactive` (+ `-TenantId`): delegated sign-in via **WAM**

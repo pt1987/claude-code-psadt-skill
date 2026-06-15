@@ -91,3 +91,22 @@ Describe 'Dry run (read-only, no Graph)' {
         $r.Executed | Should -BeFalse
     }
 }
+
+Describe 'Self-contained deliverable (copy-to-client safety)' {
+    # This script is copied into an app Output folder and run on arbitrary test clients that do NOT have the
+    # skill installed. It must therefore carry everything it needs - no dot-sourcing of skill helpers and no
+    # hardcoded skill/user path. (Binding convention: SKILL.md "self-contained deliverables".)
+    BeforeAll { $script:src = Get-Content -LiteralPath $script:FwScript -Raw }
+    It 'does not dot-source shared skill helpers (_GraphCommon / _GraphInteractive)' {
+        $script:src | Should -Not -Match '_GraphCommon\.ps1'
+        $script:src | Should -Not -Match '_GraphInteractive\.ps1'
+    }
+    It 'has no hardcoded skill/user path' {
+        $script:src | Should -Not -Match 'PatrickTaubert'
+        $script:src | Should -Not -Match 'skills[\\/]psadt-deploy'
+    }
+    It 'embeds its own WAM interactive sign-in (no external dependency)' {
+        $script:src | Should -Match 'function Initialize-MsalBroker'
+        $script:src | Should -Match 'function Get-InteractiveGraphToken'
+    }
+}
