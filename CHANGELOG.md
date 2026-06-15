@@ -2,6 +2,14 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.15.2 — 2026-06-15 — Follow-up: one more stale phase reference
+
+### Fixed (docs)
+- A contradiction sweep after 0.15.1 found a residual stale **"Phase 7.5"** in `New-PsadtReport.ps1`
+  comment-based help - upload is **Phase 9**. 0.15.1 had only corrected `New-PsadtEntraApp.ps1`. No other live
+  stale references remain (verified across all `.ps1`/`.md`; the `exit 1` occurrences left in the guide are
+  legitimate prose / the fix-script "couldn't run" guard, not detection paths).
+
 ## 0.15.1 — 2026-06-15 — Generator hardening from a self-review (correctness + security)
 
 ### Fixed
