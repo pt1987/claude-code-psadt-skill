@@ -90,6 +90,13 @@ Context follow-ups (coexistence, processes-to-close, architecture) come situatio
   browser-translatable) document = Intune dossier (App Info, Markdown description, Program, return codes incl.
   60001/60008=Failed, Requirements, Detection, Dependencies, Supersedence, Assignments) + technical package
   report (the 3 hooks, PSADT cmdlets used, pre-flight + SYSTEM-test results, logo + `.intunewin` verification).
+  **Dossier stays in sync (BINDING, no reminder needed).** ANY change to the package scripts - launcher
+  (`Invoke-AppDeployToolkit.ps1`), Extensions module, the detection script, version/changelog, return codes,
+  or re-packaging - REQUIRES re-checking and regenerating `Intune-Dossier.html` in the SAME pass, on your own
+  initiative. Never wait to be asked. A script edit whose dossier still shows the old version, old detection
+  logic, old hooks, or stale pre-flight/SYSTEM-test results is a defect. If no dossier exists yet for the app,
+  generate it now via `scripts/New-PsadtReport.ps1` (still never hand-assembled). After every fix-and-repackage,
+  the closing step is: regenerate the dossier, then state what changed in it.
 - **Real logo only.** Download the REAL app logo (PNG, transparent, >=512px, square preferred) → `Assets\` +
   `Output\<App>\`. NEVER the PSADT default `AppIcon.png`/Banner (the upload script blocks them by SHA256).
   Verify real corner-pixel alpha AND look at the image. Sources + MSI-icon fallback + verification: guide

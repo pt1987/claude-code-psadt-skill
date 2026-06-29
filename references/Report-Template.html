@@ -110,11 +110,12 @@
   .lang-switch button:hover { opacity: 1; }
   .lang-switch button.active { background: #fff; color: var(--accent-dark); opacity: 1; }
   .pill-lg {
-    display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,.16);
-    border: 1px solid rgba(255,255,255,.34); padding: 9px 16px; border-radius: 30px;
-    font-weight: 600; font-size: 13.5px; backdrop-filter: blur(4px); white-space: nowrap;
+    display: inline-flex; align-items: flex-start; gap: 8px; background: rgba(255,255,255,.16);
+    border: 1px solid rgba(255,255,255,.34); padding: 9px 16px; border-radius: 18px;
+    font-weight: 600; font-size: 13.5px; backdrop-filter: blur(4px);
+    max-width: 230px; text-align: right; line-height: 1.35; overflow-wrap: anywhere;
   }
-  .pill-lg .dot { width: 9px; height: 9px; border-radius: 50%; background: #6BE675; box-shadow: 0 0 0 4px rgba(107,230,117,.28); }
+  .pill-lg .dot { flex: 0 0 auto; margin-top: 5px; width: 9px; height: 9px; border-radius: 50%; background: #6BE675; box-shadow: 0 0 0 4px rgba(107,230,117,.28); }
 
   /* ---------- Layout ---------- */
   .wrap {

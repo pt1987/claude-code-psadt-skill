@@ -2,6 +2,24 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.16.0 — 2026-06-29 — Dossier stays in sync after script changes + report header layout fix
+
+### Added
+- **Dossier auto-sync convention (BINDING).** The "HTML report ALWAYS" convention in `SKILL.md` now states
+  that ANY change to the package scripts — launcher, Extensions module, detection script, version/changelog,
+  return codes, or a re-packaging — REQUIRES re-checking and regenerating `Intune-Dossier.html` in the same
+  pass, on the agent's own initiative, without being asked. A dossier still showing the old version, detection
+  logic, hooks, or stale pre-flight/SYSTEM-test results is now classed as a defect; if no dossier exists yet it
+  is generated then. (Driven by repeated real-world friction: a fix would land but the dossier went stale.)
+
+### Fixed
+- **Report header overlap with longer status text.** In `references/Report-Template.html` the `.pill-lg` status
+  badge had `white-space: nowrap` and no `max-width`, so a multi-word status grew leftward as one infinite line
+  over the hero subtitle and title (the absolutely-positioned `.hero-status` reserves only a 230px gutter). The
+  pill now caps at `max-width: 230px`, wraps (`overflow-wrap: anywhere`, right-aligned, tighter `line-height`),
+  and the status dot is pinned to the first line (`align-self`/`margin-top`). Short statuses are unaffected;
+  long ones form a compact multi-line badge inside the gutter instead of colliding with the text.
+
 ## 0.15.2 — 2026-06-15 — Follow-up: one more stale phase reference
 
 ### Fixed (docs)
