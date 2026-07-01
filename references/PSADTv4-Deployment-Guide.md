@@ -732,6 +732,15 @@ AppWorkload.log sequence:
 10. **Extensions in the main script instead of in `PSAppDeployToolkit.Extensions`**.
 11. **-o inside -c with IntuneWinAppUtil** - nested .intunewin.
 12. **No stakeholder intake (Phase 1.2)** - the most common reason for "the installer doesn't do what I want" after 2 weeks.
+13. **Identifying the installer engine from a lone string match, then never running it**. A coincidental `nsis`
+    substring made an install4j installer look like NSIS -> `/S` hung on the language dialog. Confirm the engine by
+    its definitive fingerprint (Appendix L.1) AND behaviorally verify the silent switch (run it once, timeout+kill,
+    expect exit 0 with no dialog) before packaging.
+14. **A trademark sign breaking a DisplayName filter** - `-match 'Name'` misses `Name(R)`, so uninstall finds
+    nothing and silently no-ops. Use a tolerant regex (Appendix L.3).
+15. **Shipping a driver/cert as a note instead of a deliverable**. If the installer stages a driver via dpinst,
+    extract the signer `.cer`, bundle it, and import it to TrustedPublisher in Pre-Install (Appendix N) - don't
+    just mention it in the dossier.
 
 ---
 
@@ -1528,11 +1537,26 @@ the natural detection rule.
 - File metadata/strings: `(Get-Item setup.exe).VersionInfo`; a `strings`-style scan for marker text.
 - **Inno Setup:** EXE contains `Inno Setup` / `JR.Inno.Setup`; uninstaller `unins000.exe`.
 - **NSIS:** EXE contains `Nullsoft.NSIS` / `NullsoftInst`; uninstaller `Uninstall.exe` / `uninst.exe`.
-- **InstallShield:** `setup.exe` + `*.cab` / `data1.hdr` / `0x0409.ini`; strings `InstallShield`.
+- **InstallShield:** `setup.exe` + `*.cab` / `data1.hdr` / `0x0409.ini`; strings `InstallShield` / `ISSetupStream`;
+  `ISInternalDescription "Setup Launcher"`. Basic-MSI vs InstallScript: extract (7-Zip) - an embedded `.msi`
+  + `Windows Installer` strings => Basic MSI; `data1.cab`/`setup.inx`/`_isres*` => InstallScript.
+- **install4j (Java):** EXE strings `com/install4j/runtime` / `exe4j` / `i4jparams.conf` / `-Duser.language`;
+  extracts an `e4j*.tmp_dir*` with a bundled `jre\` + `i4jparams.conf` (XML: `install4jVersion`, screens/actions).
+  Uninstaller is `<installdir>\uninstall.exe`. **`/S` is NOT its switch** - passing `/S` shows the
+  language-selection dialog and hangs; the unattended switch is **`-q`**, and it needs elevation (a
+  `RequestPrivilegesAction`) or it stalls waiting for it.
 - **WiX Burn bundle:** EXE strings `WixBundle` / `.wixburn`; has a `BundleProviderKey`.
 - **MSI:** a `.msi` (or an EXE that strings-shows `Windows Installer` / extracts an MSI).
 - **Squirrel:** `Update.exe` + `*.nupkg`; per-user `%LocalAppData%\<App>`.
 - **MSIX/AppX:** `.msix` / `.appx` / `.msixbundle`.
+
+> **A single string match is a HINT, not proof (BINDING).** A coincidental substring (e.g. `nsis` inside an
+> unrelated blob) can misidentify the framework - a real case: an install4j Aperio installer was mistaken for
+> NSIS, so `/S` was used, which hung on the language dialog forever. Confirm the framework by its *definitive*
+> fingerprint (install4j -> `i4jparams.conf`; InstallShield Basic MSI -> `ISSetupStream` + embedded MSI), and
+> then **behaviorally verify the silent switch**: run `installer <switch>` once with a timeout + a window/exit
+> watch (kill on timeout) and confirm it exits 0 with no dialog BEFORE building the package. "Runs infinitely"
+> or "a dialog appears under /S" means the switch is wrong for that engine - do not ship it untested.
 
 ### L.2 Switch reference
 | Tech | Silent install | Silent uninstall | No reboot | Log | Detect | Notes |
@@ -1546,7 +1570,8 @@ the natural detection rule.
 | **WiX Burn bundle** | `bundle.exe /quiet /norestart` | `bundle.exe /uninstall /quiet` | `/norestart` | `/log "log"` | registry (BundleProviderKey) / file version | wraps MSIs; a single ProductCode is unreliable |
 | **Squirrel (Electron)** | `Setup.exe --silent` | `%LocalAppData%\<App>\Update.exe --uninstall -s` | n/a | n/a | file version under `%LocalAppData%` | usually PER-USER; a System/Win32 install needs care |
 | **MSIX / AppX** | provisioning (`Add-AppxProvisionedPackage`) | `Remove-AppxPackage` | n/a | n/a | package name / version | different model; not a classic Win32 installer |
-| **install4j / IzPack (Java)** | `installer.exe -q -overwrite` / `-options resp.txt` | uninstaller `-q` | n/a | `-Dinstall4j.logToStderr=true` | registry / file | response-file driven |
+| **install4j (Java)** | `installer.exe -q` (unattended) | `<installdir>\uninstall.exe -q` | n/a | `-Dinstall4j.logToStderr=true` | registry / file version | **NOT `/S`** (that shows the language dialog + hangs). Needs elevation (runs as SYSTEM under Intune). QuietUninstallString is often EMPTY -> pass `-q` via `-AdditionalArgumentList`. Bundles its own JRE (no external dep). May `dpinst`-install drivers - extract the signer `.cer` and pre-trust it (TrustedPublisher). |
+| **IzPack (Java)** | `installer.jar auto-install.xml` / `-options resp.txt` | uninstaller `-q` | n/a | varies | registry / file | response-file driven |
 | **InstallAware / Wise** | `/s` or `/silent` | vendor-specific | varies | varies | registry / file | confirm per build; often MSI underneath |
 
 ### L.3 Detection-rule choice
@@ -1554,6 +1579,12 @@ the natural detection rule.
 - EXE / other -> a **PowerShell detection script** (file version / registry value), OR an Intune **file/registry
   version rule**. Never mix a script rule and a file/registry rule for the same app.
 - Per-user installers (Squirrel) detect under `%LocalAppData%` - run detection in the right context.
+
+> **Trademark-sign gotcha in DisplayName filters.** ARP `DisplayName` / `Publisher` often carry a `(R)`/`(TM)`
+> sign (e.g. `Aperio(R) Programming Application`, `ASSA ABLOY(R)`). A literal `-match 'Aperio Programming
+> Application'` then FAILS (the sign sits between the words), so `Uninstall-ADTApplication` / `Get-ADTApplication`
+> find nothing, report success, and remove nothing. Use a tolerant regex - `-match 'Aperio.*Programming
+> Application'` - and apply the same in the detection script's registry match.
 
 ---
 

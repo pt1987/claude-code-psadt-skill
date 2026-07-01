@@ -223,6 +223,21 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.17.0 - 01.07.2026
+- **install4j fingerprint + behavioral silent-switch verification.** Appendix L.1 now recognises install4j
+  (Java) installers (`com/install4j/runtime`, `exe4j`, `i4jparams.conf`, bundled `jre\`) and records that `/S`
+  is NOT its switch (it hangs on the language dialog) — the unattended switch is `-q`, run elevated. New BINDING
+  rule: a single string match is a hint, not proof; confirm the engine by its definitive fingerprint AND run the
+  silent switch once (timeout+kill, expect exit 0, no dialog) before packaging. Appendix L.3 adds the
+  trademark-sign gotcha (`Name(R)` breaks `-match 'Name'` → tolerant regex); Appendix B adds anti-patterns 13–15.
+  (Driven by an Aperio install4j installer misidentified as NSIS, where `/S` hung on the language dialog.)
+
+### 0.16.0 - 29.06.2026
+- **Dossier auto-sync convention (BINDING)** + report header layout fix. Any change to the package scripts
+  (launcher, Extensions, detection, version/changelog, return codes, re-packaging) now requires regenerating
+  `Intune-Dossier.html` in the same pass; a stale dossier is a defect. The `.pill-lg` status badge caps at 230px
+  and wraps so a long status no longer overlaps the hero title.
+
 ### 0.15.2 - 15.06.2026
 - **Follow-up doc fix.** A contradiction sweep after 0.15.1 caught one more stale "Phase 7.5" in
   `New-PsadtReport.ps1` help (upload is Phase 9); corrected. No other live stale references remain.

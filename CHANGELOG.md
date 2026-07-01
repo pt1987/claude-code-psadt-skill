@@ -2,6 +2,31 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.17.0 — 2026-07-01 — install4j fingerprint + behavioral silent-switch verification
+
+### Added
+- **install4j installer fingerprint (Appendix L.1).** Recognise install4j (Java) installers by
+  `com/install4j/runtime` / `exe4j` / `i4jparams.conf` / `-Duser.language` strings and a bundled `jre\` in the
+  extracted `e4j*.tmp_dir*`. Records that **`/S` is NOT its switch** — passing `/S` shows the language-selection
+  dialog and hangs forever; the unattended switch is **`-q`**, and it needs elevation or it stalls. Also sharpened
+  the InstallShield fingerprint (`ISSetupStream`, Basic-MSI vs InstallScript).
+- **BINDING rule: a single string match is a hint, not proof (Appendix L.1).** Confirm the engine by its
+  definitive fingerprint AND **behaviorally verify the silent switch** — run `installer <switch>` once with a
+  timeout + window/exit watch (kill on timeout) and confirm exit 0 with no dialog — BEFORE building the package.
+- **Trademark-sign gotcha in DisplayName filters (Appendix L.3).** A `(R)`/`(TM)` sign (e.g.
+  `Aperio(R) Programming Application`) breaks a literal `-match 'Name'`, so `Uninstall-ADTApplication` /
+  `Get-ADTApplication` find nothing and silently no-op; use a tolerant regex (`-match 'Name.*Rest'`).
+- **Anti-patterns 13–15 (Appendix B).** Guessing the installer engine from a lone string match without ever
+  running it; a trademark sign breaking a DisplayName filter; shipping a driver/cert as a note instead of a
+  bundled deliverable (extract the signer `.cer`, import to TrustedPublisher in Pre-Install).
+
+### Changed
+- **Appendix L.2 install4j row corrected** (`-q`, elevation, empty QuietUninstallString → append `-q` via
+  `-AdditionalArgumentList`, bundled JRE, dpinst driver-cert pre-trust); IzPack split into its own row.
+
+_Driven by real-world friction: an ASSA ABLOY Aperio install4j installer carried a coincidental `nsis` string,
+was mistaken for NSIS, and `/S` hung on the language dialog during install._
+
 ## 0.16.0 — 2026-06-29 — Dossier stays in sync after script changes + report header layout fix
 
 ### Added
