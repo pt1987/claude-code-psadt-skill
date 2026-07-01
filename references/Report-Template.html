@@ -11,29 +11,34 @@
      Self-contained: no external assets, logo embedded as data URI.
      DE/EN toggle: data-de/data-en (text) + .only-de/.only-en (blocks).
      ============================================================ */
+  /* HanseMerkur corporate fonts: family names are kept first in the stack so a locally-installed
+     Metric face (corporate device) is used when present; otherwise the Segoe fallback applies.
+     No @font-face web fetch -> opening the file locally (file://) triggers no CORS-blocked request
+     and no console errors. To embed the real fonts offline, add @font-face with base64 woff2. */
   :root {
-    --accent:        #0F6CBD;
-    --accent-dark:   #0C5391;
-    --accent-soft:   #EFF6FC;
-    --bg:            #F5F5F5;
+    /* HanseMerkur corporate design - green brand family on light/mint canvas */
+    --accent:        #00A075;   /* secondary green - interactive / structural highlights   */
+    --accent-dark:   #005E52;   /* dark green - hero band, emphasis                         */
+    --accent-soft:   #EDF6F2;   /* mint - soft surfaces, section-icon bg, TOC hover         */
+    --bg:            #F1F7F4;   /* light mint page canvas                                   */
     --card:          #FFFFFF;
-    --line:          #E1DFDD;
-    --line-soft:     #EDEBE9;
-    --ink:           #242424;
-    --ink-2:         #424242;
-    --ink-3:         #707070;
-    --ok:            #0E7A0B;
-    --ok-bg:         #E6F4E6;
-    --warn:          #9D5D00;
-    --warn-bg:       #FFF4E5;
-    --fail:          #B10E1C;
-    --fail-bg:       #FDE7E9;
-    --neutral:       #5C5C5C;
-    --neutral-bg:    #F0F0F0;
-    --radius:        8px;
-    --shadow:        0 1.6px 3.6px rgba(0,0,0,.10), 0 .3px .9px rgba(0,0,0,.07);
-    --font:          "Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,sans-serif;
-    --font-display:  "Segoe UI Variable Display","Segoe UI Semibold","Segoe UI",sans-serif;
+    --line:          #DCEBE4;
+    --line-soft:     #E8F1EC;
+    --ink:           #1A1A1A;
+    --ink-2:         #333333;
+    --ink-3:         #666666;
+    --ok:            #007A5E;
+    --ok-bg:         #E3F5EE;
+    --warn:          #B7541C;   /* brand-orange family                                      */
+    --warn-bg:       #FDECE3;
+    --fail:          #B3261E;   /* red retained - semantic necessity for Failed states      */
+    --fail-bg:       #FBE9E7;
+    --neutral:       #4F6B62;
+    --neutral-bg:    #EAF2EE;
+    --radius:        14px;
+    --shadow:        0 1px 2px rgba(0,94,82,.07), 0 4px 12px rgba(0,94,82,.08);
+    --font:          "Metric-Regular","Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,sans-serif;
+    --font-display:  "Metric-SemiBold","Segoe UI Variable Display","Segoe UI Semibold","Segoe UI",sans-serif;
     --mono:          "Cascadia Code","Cascadia Mono",Consolas,"Courier New",monospace;
   }
   * { box-sizing: border-box; }
@@ -41,7 +46,12 @@
      content height sits right at the viewport edge the scrollbar toggles on/off, each
      toggle changes the content width, which (via the header's vw-based clamps) reflows
      and re-toggles -> a wild flicker loop. Reserving the gutter keeps the width constant. */
-  html { scroll-behavior: smooth; overflow-y: scroll; scrollbar-gutter: stable; }
+  /* overflow-anchor:none is CRITICAL: the sticky hero changes height by ~100px when it
+     condenses, and Chrome/Edge scroll-anchoring would compensate by teleporting scrollY
+     across the shrink/grow threshold -> an endless class-toggle flicker loop. Disabling
+     anchoring makes the collapse a single smooth shift instead. */
+  html { scroll-behavior: smooth; overflow-y: scroll; scrollbar-gutter: stable; overflow-anchor: none; }
+  html, body { overflow-anchor: none; }
   body {
     margin: 0; font-family: var(--font); color: var(--ink); background: var(--bg);
     font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
@@ -54,8 +64,8 @@
   /* ---------- Header band (sticky + shrink) ---------- */
   .hero {
     background:
-      radial-gradient(120% 140% at 88% -20%, rgba(255,255,255,.20), transparent 60%),
-      linear-gradient(120deg, var(--accent-dark) 0%, var(--accent) 60%, #2886d6 100%);
+      radial-gradient(120% 140% at 88% -20%, rgba(255,255,255,.16), transparent 60%),
+      linear-gradient(120deg, #004A41 0%, var(--accent-dark) 55%, var(--accent) 100%);
     color: #fff; padding: 34px clamp(20px, 5vw, 64px) 30px;
     position: sticky; top: 0; z-index: 50; overflow: hidden;
     transition: padding .22s ease, box-shadow .22s ease;
@@ -70,8 +80,8 @@
     pointer-events: none;
   }
   .hero-inner {
-    max-width: 1180px; margin: 0 auto; display: flex; gap: 26px; align-items: flex-start;
-    position: relative; z-index: 1; flex-wrap: nowrap; padding-right: 230px;
+    max-width: 1600px; margin: 0 auto; display: flex; gap: 26px; align-items: flex-start;
+    position: relative; z-index: 1; flex-wrap: nowrap;
   }
   .hero .htext { flex: 1 1 auto; min-width: 0; }   /* middle text column absorbs all slack */
   .hero.scrolled .hero-inner { gap: 16px; align-items: center; }
@@ -96,8 +106,8 @@
   .hero-meta .v { font-weight: 600; opacity: 1; }
   /* Status is ABSOLUTELY positioned -> fully decoupled from the text flow.
      Switching language can never move it. */
-  .hero-status { position: absolute; top: 0; right: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
-  .hero.scrolled .hero-status { top: 50%; transform: translateY(-50%); flex-direction: row; align-items: center; }
+  .hero-status { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  .hero.scrolled .hero-status { flex-direction: row; align-items: center; }
   .lang-switch {
     display: inline-flex; border: 1px solid rgba(255,255,255,.36); border-radius: 20px;
     overflow: hidden; background: rgba(255,255,255,.10);
@@ -113,13 +123,13 @@
     display: inline-flex; align-items: flex-start; gap: 8px; background: rgba(255,255,255,.16);
     border: 1px solid rgba(255,255,255,.34); padding: 9px 16px; border-radius: 18px;
     font-weight: 600; font-size: 13.5px; backdrop-filter: blur(4px);
-    max-width: 230px; text-align: right; line-height: 1.35; overflow-wrap: anywhere;
+    max-width: 300px; text-align: right; line-height: 1.35; overflow-wrap: anywhere;
   }
-  .pill-lg .dot { flex: 0 0 auto; margin-top: 5px; width: 9px; height: 9px; border-radius: 50%; background: #6BE675; box-shadow: 0 0 0 4px rgba(107,230,117,.28); }
+  .pill-lg .dot { flex: 0 0 auto; margin-top: 5px; width: 9px; height: 9px; border-radius: 50%; background: #7DBF68; box-shadow: 0 0 0 4px rgba(125,191,104,.32); }
 
   /* ---------- Layout ---------- */
   .wrap {
-    max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 232px 1fr;
+    max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: 260px 1fr;
     gap: 32px; padding: 28px clamp(20px, 5vw, 64px) 80px;
   }
   nav.toc { position: sticky; top: 92px; align-self: start; font-size: 13px; }
@@ -152,7 +162,7 @@
   tr:last-child td { border-bottom: none; }
   td.k { width: 32%; color: var(--ink-2); font-weight: 600; }
   td .note { color: var(--ink-3); font-size: 12px; display: block; margin-top: 2px; }
-  code, .mono { font-family: var(--mono); font-size: 12.5px; background: #f3f2f1; padding: 1.5px 6px; border-radius: 4px; color: #1b4566; }
+  code, .mono { font-family: var(--mono); font-size: 12.5px; background: #EDF6F2; padding: 1.5px 6px; border-radius: 4px; color: #005E52; }
 
   /* ---------- Badges ---------- */
   .badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -172,12 +182,12 @@
   .preview ul { margin: 4px 0 4px; padding-left: 20px; } .preview li { margin: 2px 0; }
   .preview p { margin: 0 0 8px; } .preview .strong { font-weight: 600; }
   pre.md { margin: 0; padding: 14px 16px; font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: pre-wrap; line-height: 1.55; background: #fcfcfc; max-height: 460px; overflow: auto; }
-  .copy-btn { font-family: var(--font); font-size: 11px; font-weight: 600; color: var(--accent-dark); background: var(--accent-soft); border: 1px solid #cfe4f7; border-radius: 5px; padding: 2px 9px; cursor: pointer; }
+  .copy-btn { font-family: var(--font); font-size: 11px; font-weight: 600; color: var(--accent-dark); background: var(--accent-soft); border: 1px solid #CFE7DD; border-radius: 5px; padding: 2px 9px; cursor: pointer; }
   .copy-btn.copied { color: var(--ok); background: var(--ok-bg); border-color: var(--ok); }
   td.cpv { position: relative; padding-right: 40px; }
   .copy-ic { position: absolute; right: 8px; top: 6px; width: 24px; height: 24px; display: inline-grid; place-items: center; padding: 0; border: 1px solid var(--line-soft); background: #fff; color: var(--ink-3); border-radius: 5px; cursor: pointer; opacity: .4; transition: opacity .12s, background .12s, color .12s, border-color .12s; }
   tr:hover .copy-ic { opacity: 1; }
-  .copy-ic:hover { background: var(--accent-soft); color: var(--accent-dark); border-color: #cfe4f7; }
+  .copy-ic:hover { background: var(--accent-soft); color: var(--accent-dark); border-color: #CFE7DD; }
   .copy-ic.copied { opacity: 1; background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
   .copy-ic svg { display: block; }
 
@@ -199,9 +209,9 @@
   .check .ct { font-weight: 600; } .check .cd { color: var(--ink-3); font-size: 12.5px; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 7px; margin: 6px 0 2px; }
-  .chip { font-family: var(--mono); font-size: 12px; background:#f3f2f1; border:1px solid var(--line-soft); color:#1b4566; padding: 3px 9px; border-radius: 5px; }
+  .chip { font-family: var(--mono); font-size: 12px; background:#EDF6F2; border:1px solid var(--line-soft); color:#005E52; padding: 3px 9px; border-radius: 5px; }
 
-  footer.report-foot { max-width: 1180px; margin: 0 auto; padding: 0 clamp(20px,5vw,64px) 50px; color: var(--ink-3); font-size: 12px; display:flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  footer.report-foot { max-width: 1600px; margin: 0 auto; padding: 0 clamp(20px,5vw,64px) 50px; color: var(--ink-3); font-size: 12px; display:flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
   .watermark { font-weight:600; color: var(--ink-2); }
 
   @media (max-width: 920px) {
@@ -221,6 +231,74 @@
     td.cpv { padding-right: 12px; }
     .wrap { grid-template-columns: 1fr; padding: 12px; }
     section.card { break-inside: avoid; box-shadow: none; }
+  }
+  /* =====================================================================
+     EDITORIAL DATA-REPORT  -  modern overrides (last in the cascade so they win).
+     Flat hairline sections, oversized section numerals, at-a-glance KPI band,
+     generous air.  Stays fully within the HanseMerkur corporate palette.
+     ===================================================================== */
+  .hero { padding-top: 46px; padding-bottom: 40px; }
+  .hero.scrolled { padding-top: 12px; padding-bottom: 12px; }
+  .hero h1 { font-size: clamp(28px, 3.6vw, 42px); font-weight: 400; letter-spacing: -.6px; line-height: 1.06; }
+  .hero .sub { font-size: 15.5px; opacity: .9; }
+
+  /* ---- KPI band: at-a-glance strip directly under the hero ---- */
+  .kpi-band { background: var(--card); border-bottom: 1px solid var(--line); }
+  .kpi-inner { max-width: 1600px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 64px);
+    display: grid; grid-template-columns: repeat(4, 1fr); }
+  .kpi { padding: 22px 26px; border-left: 1px solid var(--line-soft); min-width: 0; }
+  .kpi:first-child { border-left: none; padding-left: 0; }
+  .kpi .kpi-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--ink-3); font-weight: 600; margin-bottom: 7px; }
+  .kpi .kpi-value { font-family: var(--font-display); font-weight: 400; font-size: clamp(19px, 2vw, 25px);
+    color: var(--ink); line-height: 1.15; display: flex; align-items: center; gap: 9px; overflow-wrap: anywhere; }
+  .kpi .kdot { flex: 0 0 auto; width: 11px; height: 11px; border-radius: 50%; }
+  .kpi .kdot.ok      { background: var(--ok);      box-shadow: 0 0 0 4px var(--ok-bg); }
+  .kpi .kdot.warn    { background: var(--warn);    box-shadow: 0 0 0 4px var(--warn-bg); }
+  .kpi .kdot.fail    { background: var(--fail);    box-shadow: 0 0 0 4px var(--fail-bg); }
+  .kpi .kdot.neutral { background: var(--neutral); box-shadow: 0 0 0 4px var(--neutral-bg); }
+
+  /* ---- Flat, numbered editorial sections ---- */
+  .wrap { padding-top: 40px; gap: 44px; }
+  main { counter-reset: sec; }
+  section.card { background: var(--card); border: 1px solid var(--line); border-radius: 20px;
+    box-shadow: none; margin-bottom: 26px; scroll-margin-top: 104px; }
+  section.card > h2 { counter-increment: sec; background: none; border-bottom: 1px solid var(--line);
+    padding: 24px 34px 18px; font-size: 20px; font-weight: 400; gap: 18px; align-items: baseline; letter-spacing: -.3px; }
+  section.card > h2 .ix { background: none; border-radius: 0; width: auto; height: auto;
+    display: inline; flex: 0 0 auto; color: var(--accent); font-family: var(--font-display); font-size: 0; }
+  section.card > h2 .ix::before { content: counter(sec, decimal-leading-zero);
+    font-size: 23px; font-weight: 400; color: var(--accent); letter-spacing: .5px; }
+  section.card > h2 .tag { align-self: center; }
+  .card-body { padding: 12px 34px 28px; }
+
+  /* ---- group labels ---- */
+  .group-label { margin: 22px 0 20px; }
+  .group-label h3 { font-size: 12px; letter-spacing: 2px; color: var(--accent-dark); }
+
+  /* ---- airier tables ---- */
+  th, td { padding: 11px 14px; }
+  td.k { color: var(--ink-3); font-weight: 600; font-size: 12.5px; text-transform: none; }
+
+  /* ---- collapsible detection script (folded away by default) ---- */
+  details.script-fold { margin-top: 2px; }
+  details.script-fold > summary { cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12.5px; font-weight: 600; color: var(--accent-dark); background: var(--accent-soft);
+    border: 1px solid #CFE7DD; border-radius: 8px; padding: 6px 12px; list-style: none; user-select: none; }
+  details.script-fold > summary::-webkit-details-marker { display: none; }
+  details.script-fold > summary::before { content: "\25B8"; font-size: 10px; transition: transform .15s ease; }
+  details.script-fold[open] > summary::before { transform: rotate(90deg); }
+  details.script-fold[open] > summary { border-radius: 8px 8px 0 0; }
+  details.script-fold pre.det-src { margin: 0; border: 1px solid #CFE7DD; border-top: none;
+    border-radius: 0 0 8px 8px; background: #FBFDFC; padding: 14px 16px; max-height: 360px; overflow: auto;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: pre; line-height: 1.5; }
+  details.script-fold pre.det-src code { background: none; padding: 0; color: inherit; border-radius: 0; }
+
+  @media (max-width: 920px) {
+    .kpi-inner { grid-template-columns: repeat(2, 1fr); }
+    .kpi { border-left: none; padding-left: 0; }
+    .card-body { padding: 8px 20px 20px; }
+    section.card > h2 { padding: 18px 20px 14px; }
   }
 </style>
 </head>
@@ -247,11 +325,19 @@
       <div class="lang-switch" title="Sprache umschalten / Switch language">
         <button data-lang="de" onclick="setLang('de')">DE</button>
         <button data-lang="en" onclick="setLang('en')">EN</button>
-      </div>
-      <div class="pill-lg"><span class="dot"></span> <span data-de="{{STATUS_DE}}" data-en="{{STATUS_EN}}">{{STATUS_DE}}</span></div>
-    </div>
+      </div>    </div>
   </div>
 </header>
+
+<!-- ===================== KPI BAND ===================== -->
+<div class="kpi-band">
+  <div class="kpi-inner">
+    <div class="kpi"><div class="kpi-label" data-de="App-Version" data-en="App version">App-Version</div><div class="kpi-value">{{APP_VERSION}}</div></div>
+    <div class="kpi"><div class="kpi-label" data-de="Pre-flight" data-en="Pre-flight">Pre-flight</div><div class="kpi-value"><span class="kdot {{KPI_STATUS_CLS}}"></span><span data-de="{{KPI_STATUS_DE}}" data-en="{{KPI_STATUS_EN}}">{{KPI_STATUS_DE}}</span></div></div>
+    <div class="kpi"><div class="kpi-label" data-de="Minimum OS" data-en="Minimum OS">Minimum OS</div><div class="kpi-value">{{V_MIN_OS}}</div></div>
+    <div class="kpi"><div class="kpi-label" data-de="Architektur" data-en="Architecture">Architektur</div><div class="kpi-value">{{V_OS_ARCH}}</div></div>
+  </div>
+</div>
 
 <div class="wrap">
 
@@ -368,7 +454,7 @@
       <div class="card-body">
         <table>
           <tr><td class="k" data-de="Regelformat" data-en="Rule format">Regelformat</td><td>{{V_RULE_FORMAT}}</td></tr>
-          <tr><td class="k" data-de="Skript" data-en="Script">Skript</td><td>{{V_DETECT_SCRIPT}}</td></tr>
+          <tr><td class="k" data-de="Skript" data-en="Script">Skript</td><td><details class="script-fold"><summary data-de="Detection-Skript anzeigen" data-en="Show detection script">Detection-Skript anzeigen</summary><pre class="det-src">{{V_DETECT_SCRIPT}}</pre></details></td></tr>
           <tr><td class="k" data-de="Als 32-bit ausf&uuml;hren" data-en="Run as 32-bit">Als 32-bit ausf&uuml;hren</td><td>{{V_RUN_32}}</td></tr>
           <tr><td class="k" data-de="Signaturpr&uuml;fung" data-en="Signature check">Signaturpr&uuml;fung</td><td>{{V_SIG_CHECK}}</td></tr>
         </table>

@@ -2,6 +2,35 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.18.0 — 2026-07-01 — HanseMerkur corporate design + editorial report redesign
+
+### Changed
+- **Report/dossier re-themed to the HanseMerkur corporate design** (`references/Report-Template.html`):
+  green brand family (`#005E52` / `#00A075`) on a light mint canvas, Metric-Regular/-SemiBold font stack
+  (family names only — a locally-installed corporate face is used, else Segoe fallback; **no** web `@font-face`
+  fetch, so opening the dossier from a local `file://` no longer triggers CORS console errors).
+- **Editorial Data-Report layout.** Flat hairline sections (no drop shadows, 20px radius), oversized
+  auto-numbered section headings (CSS counter, `01…13`), an at-a-glance **KPI band** under the hero
+  (App-Version · Pre-flight status · Minimum OS · Architecture), and a wider container (1180 → 1600px).
+- **Detection script folded away by default.** The rule summary (format, run-as-32bit, signature check) stays
+  visible; the full PowerShell detection script now sits behind a collapsed "Detection-Skript anzeigen"
+  `<details>` instead of dominating the section.
+- **German dossier text uses real umlauts** (`GRÜN`, `für`, `Gerätesoftware`, …). Scripts stay 7-bit ASCII;
+  the report carries the umlauts (via UTF-8 / HTML entities).
+
+### Fixed
+- **Sticky-header flicker eliminated.** The condensing hero changes height by ~100px; Chrome/Edge
+  scroll-anchoring compensated by teleporting `scrollY` across the shrink/grow threshold → an endless
+  class-toggle loop that the 30–80px hysteresis could not contain. Added `overflow-anchor: none` (html/body)
+  so the collapse is a single smooth shift. Reproduced and verified with Playwright (self-sustained toggles
+  at the threshold: 36 → 1).
+- **Redundant hero status pill removed.** The verbose multi-line pill overlapped the title / looked cramped;
+  the Pre-flight status now lives in the KPI band. The hero keeps only the DE/EN language switch.
+
+### Added
+- `New-PsadtReport.ps1` derives a compact KPI pre-flight roll-up (`GRÜN` / `GELB` / `ROT` / `nicht ausgeführt`)
+  and exposes it as `KPI_STATUS_DE` / `KPI_STATUS_EN` / `KPI_STATUS_CLS` tokens for the KPI band.
+
 ## 0.17.0 — 2026-07-01 — install4j fingerprint + behavioral silent-switch verification
 
 ### Added

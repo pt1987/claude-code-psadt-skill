@@ -334,6 +334,16 @@ $pfChecks = @(foreach ($c in $pf) {
     "          <div class=`"check`"><span class=`"ci $($c.Cls)`">$sym</span><div><div class=`"ct`">$(Esc $c.Title)</div><div class=`"cd`" data-de=`"$(AttrHtml $c.De)`" data-en=`"$(AttrHtml $c.En)`">$($c.De)</div></div><span class=`"badge $bcls`" data-de=`"$(AttrHtml $c.BDe)`" data-en=`"$(AttrHtml $c.BEn)`">$($c.BDe)</span></div>"
 }) -join "`n"
 
+# KPI band status: a compact roll-up of the pre-flight result for the header KPI band.
+# fail (any non-ok/warn/neutral Cls) -> ROT; all neutral -> not run; any warn -> GELB; else GRUEN.
+$pfClsList = @($pf | ForEach-Object { $_.Cls })
+$pfHasFail = @($pfClsList | Where-Object { $_ -notin @('ok', 'warn', 'neutral') }).Count -gt 0
+$pfAllNeut = ($pfClsList.Count -gt 0) -and (@($pfClsList | Where-Object { $_ -ne 'neutral' }).Count -eq 0)
+if     ($pfHasFail) { $kpiStatusDe = 'ROT';               $kpiStatusEn = 'RED';     $kpiStatusCls = 'fail' }
+elseif ($pfAllNeut) { $kpiStatusDe = 'nicht ausgef&uuml;hrt'; $kpiStatusEn = 'not run'; $kpiStatusCls = 'neutral' }
+elseif ($pfClsList -contains 'warn') { $kpiStatusDe = 'GELB'; $kpiStatusEn = 'AMBER'; $kpiStatusCls = 'warn' }
+else                { $kpiStatusDe = 'GR&Uuml;N';          $kpiStatusEn = 'GREEN';   $kpiStatusCls = 'ok' }
+
 # ----------------------------------------------------------------------------- system test
 # Default = NOT RUN (neutral) - same honesty rule as pre-flight: no synthetic "Success" rows.
 $defaultSt = @(
@@ -363,6 +373,9 @@ $tokens = [ordered]@{
     'SUB_EN'            = (AttrHtml $subEn)
     'STATUS_DE'         = (AttrHtml $statusDe)
     'STATUS_EN'         = (AttrHtml $statusEn)
+    'KPI_STATUS_DE'     = $kpiStatusDe
+    'KPI_STATUS_EN'     = $kpiStatusEn
+    'KPI_STATUS_CLS'    = $kpiStatusCls
     'LOGO_IMG_SRC'      = $logoSrc
     'V_DEVELOPER'       = (Esc $developer)
     'V_OWNER'           = (Esc $owner)

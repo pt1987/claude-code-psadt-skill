@@ -223,6 +223,16 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.18.0 - 01.07.2026
+- **HanseMerkur corporate design + editorial report redesign.** The dossier/report template is re-themed to the
+  HanseMerkur CD (green brand family on a light mint canvas; Metric font stack with Segoe fallback and no
+  web-font fetch → no CORS console errors on a local `file://` open) and relaid out as an "editorial
+  data-report": flat hairline sections, auto-numbered headings (`01…13`), an at-a-glance KPI band under the hero
+  (version · pre-flight · min OS · arch), and a wider 1600px layout. The detection script is folded behind a
+  collapsed `<details>` (the rule summary stays visible). German report text now uses real umlauts. Fixed the
+  sticky-header flicker (Chrome/Edge scroll-anchoring vs. the condensing hero → `overflow-anchor: none`,
+  Playwright-verified) and removed the redundant hero status pill.
+
 ### 0.17.0 - 01.07.2026
 - **install4j fingerprint + behavioral silent-switch verification.** Appendix L.1 now recognises install4j
   (Java) installers (`com/install4j/runtime`, `exe4j`, `i4jparams.conf`, bundled `jre\`) and records that `/S`
