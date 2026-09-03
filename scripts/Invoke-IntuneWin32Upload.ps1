@@ -32,6 +32,9 @@
 .PARAMETER Architecture             applicableArchitectures (x64/x86/arm64). Default x64.
 .PARAMETER MinWindowsRelease        minimumSupportedWindowsRelease (e.g. 1607). Default 1607.
 .PARAMETER RestartBehavior          deviceRestartBehavior. Default basedOnReturnCode.
+.PARAMETER MaxRunTimeMinutes        installExperience.maxRunTimeInMinutes. 0 (default) omits the field and
+                                    keeps the service default of 60 min. Raise it for long-running
+                                    installs (e.g. 240 for an OS in-place upgrade) or the IME kills them.
 .PARAMETER LogoPath                 PNG (transparent, square) used as largeIcon.
 .PARAMETER Execute                  Perform the writes. Without it the script is a read-only dry run.
 .PARAMETER UpdateAppId              Update this existing app id in place instead of creating a new one.
@@ -80,6 +83,11 @@ param(
     [int]$MinFreeDiskSpaceMB = 0,
     [int]$MinMemoryMB = 0,
     [ValidateSet('basedOnReturnCode','allow','suppress','force')][string]$RestartBehavior = 'basedOnReturnCode',
+    # installExperience.maxRunTimeInMinutes - how long the IME lets the install run before killing it.
+    # The service default is 60 minutes, which is fine for ordinary installers but kills long-running ones
+    # (OS in-place upgrades, large suites). 0 = do not send the field, keeping the service default and the
+    # previous behaviour of this script unchanged. Intune's portal maximum is 1440.
+    [ValidateRange(0,1440)][int]$MaxRunTimeMinutes = 0,
     [string]$LogoPath,
     [switch]$AllowDefaultLogo,
     [switch]$Execute,
@@ -242,6 +250,9 @@ $body = [ordered]@{
 }
 if ($MinFreeDiskSpaceMB -gt 0) { $body.minimumFreeDiskSpaceInMB = $MinFreeDiskSpaceMB }
 if ($MinMemoryMB        -gt 0) { $body.minimumMemoryInMB        = $MinMemoryMB }
+# Only send maxRunTimeInMinutes when explicitly asked for, so omitting the parameter leaves the service
+# default (60) in place exactly as before.
+if ($MaxRunTimeMinutes  -gt 0) { $body.installExperience.maxRunTimeInMinutes = $MaxRunTimeMinutes }
 if ($LogoPath -and (Test-Path $LogoPath)) {
     # GUARD: never ship the PSADT template's default Assets\AppIcon.png (or Banner) as the app logo.
     # The Company Portal tile must show the REAL application logo - this is a hard rule, not a preference.

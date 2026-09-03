@@ -2,6 +2,18 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.18.1 — 2026-09-03 — Upload: configurable install time limit
+
+### Added
+- **`Invoke-IntuneWin32Upload.ps1 -MaxRunTimeMinutes`** — sets `installExperience.maxRunTimeInMinutes`
+  (1–1440). `0` (default) omits the field, keeping the Intune service default of 60 minutes and the previous
+  request shape unchanged. Raise it for long-running installs (e.g. 240 for an OS in-place upgrade) so the IME
+  does not kill them. Eight new tests guard the binding range and the "only when > 0" body shape.
+
+### Notes
+- Reconciles a finished change that lived only in the installed working copy back into `main` (same class of
+  drift as 0.9.2).
+
 ## 0.18.0 — 2026-07-01 — HanseMerkur corporate design + editorial report redesign
 
 ### Changed

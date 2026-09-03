@@ -223,6 +223,11 @@ configurable per machine.
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
 
+### 0.18.1 - 03.09.2026
+- **Upload: `-MaxRunTimeMinutes`.** `Invoke-IntuneWin32Upload.ps1` can now set
+  `installExperience.maxRunTimeInMinutes` (1–1440); `0` (default) omits the field and keeps the service default
+  of 60 min. Raise it for long-running installs (OS in-place upgrades, large suites) so the IME does not kill them.
+
 ### 0.18.0 - 01.07.2026
 - **HanseMerkur corporate design + editorial report redesign.** The dossier/report template is re-themed to the
   HanseMerkur CD (green brand family on a light mint canvas; Metric font stack with Segoe fallback and no
