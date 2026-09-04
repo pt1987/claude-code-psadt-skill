@@ -206,3 +206,61 @@ Describe 'New-PsadtReport -ManifestPath (0.21.0)' {
             Should -Throw -ExpectedMessage '*ManifestPath not found*'
     }
 }
+
+Describe 'New-PsadtReport: the driver-trust row (0.22.0)' {
+    BeforeEach {
+        $script:dpkg = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item $script:dpkg -ItemType Directory -Force | Out-Null
+        $script:dmf  = Join-Path $script:dpkg 'psadt-package.json'
+        $script:dout = Join-Path $script:dpkg 'Intune-Dossier.html'
+        $script:baseMf = @{
+            schema  = 1
+            app     = @{ vendor = 'Mobotix'; name = 'Printer Driver'; version = '3.1.4'; arch = 'x64' }
+            package = @{ type = 'driver' }
+        }
+    }
+
+    It 'states "no drivers" for an ordinary package instead of leaving the cell empty' {
+        $script:baseMf | ConvertTo-Json -Depth 12 | Set-Content $script:dmf -Encoding UTF8
+        & $script:gen -ManifestPath $script:dmf -OutputPath $script:dout
+        $html = Get-Content $script:dout -Raw
+        $html | Should -Match 'no drivers'
+        $html | Should -Not -Match '\{\{V_DRIVERS\}\}'
+    }
+
+    It 'renders the classification, the certificate owner and the per-INF rows' {
+        $m = $script:baseMf.Clone()
+        $m.driverTrust = @{
+            classification = 'YELLOW'; owner = 'policy'; thumbprint = 'AABBCC'
+            assumeSecureBootOff = $false
+            drivers = @(@{ inf = 'mxdriver.inf'; classification = 'VendorSigned'; kernelMode = $false; provider = 'Mobotix AG'; version = '3.1.4.0' })
+        }
+        $m | ConvertTo-Json -Depth 12 | Set-Content $script:dmf -Encoding UTF8
+        & $script:gen -ManifestPath $script:dmf -OutputPath $script:dout
+        $html = Get-Content $script:dout -Raw
+        $html | Should -Match 'vendor-signed'
+        $html | Should -Match 'Intune policy'
+        $html | Should -Match 'AABBCC'
+        $html | Should -Match 'mxdriver\.inf'
+        $html | Should -Match 'VendorSigned'
+    }
+
+    It 'says a Microsoft-signed package needs no certificate at all' {
+        $m = $script:baseMf.Clone()
+        $m.driverTrust = @{ classification = 'GREEN'; owner = 'none'; drivers = @(@{ inf = 'usb.inf'; classification = 'MicrosoftSigned'; kernelMode = $true }) }
+        $m | ConvertTo-Json -Depth 12 | Set-Content $script:dmf -Encoding UTF8
+        & $script:gen -ManifestPath $script:dmf -OutputPath $script:dout
+        $html = Get-Content $script:dout -Raw
+        $html | Should -Match 'Microsoft-signed'
+        $html | Should -Match 'no certificate needed'
+        $html | Should -Match 'kernel'
+    }
+
+    It 'documents an assumed-off Secure Boot as the fleet decision it is' {
+        $m = $script:baseMf.Clone()
+        $m.driverTrust = @{ classification = 'YELLOW'; owner = 'policy'; assumeSecureBootOff = $true; drivers = @() }
+        $m | ConvertTo-Json -Depth 12 | Set-Content $script:dmf -Encoding UTF8
+        & $script:gen -ManifestPath $script:dmf -OutputPath $script:dout
+        (Get-Content $script:dout -Raw) | Should -Match 'Secure Boot assumed off'
+    }
+}

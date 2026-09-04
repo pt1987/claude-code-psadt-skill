@@ -93,6 +93,7 @@ if ($ManifestPath) {
     if ($mf.artifacts.intunewin) { Set-FromManifest 'IntuneWin' ([IO.Path]::GetFileName([string]$mf.artifacts.intunewin)) }
     if ($mf.artifacts.detection) { Set-FromManifest 'DetectScript' ([IO.Path]::GetFileName([string]$mf.artifacts.detection)) }
     Set-FromManifest 'SetupFile'    $mf.results.package.setupFile
+    Set-FromManifest 'DriverTrust'  $mf.driverTrust
 
     # The identity floor. Everything else - IntuneWin, Preflight, SystemTest - renders neutrally, because
     # "report ALWAYS" has to hold for a package that is not packed or tested yet. But a dossier that says
@@ -264,6 +265,48 @@ if (-not $cp) {
     $vCertPolicy = (Badge 'b-info' (Esc $cpStore) (Esc $cpStore)) + ' ' + $ownerBadge
     if ($cpThumb) { $vCertPolicy += (NoteHtml "Thumbprint $(Esc $cpThumb)" "thumbprint $(Esc $cpThumb)") }
     if ($cpOma)   { $vCertPolicy += '<br>' + (Codei $cpOma) }
+}
+
+# Driver trust (guide Appendix Q). Fed from the manifest's driverTrust when -ManifestPath was used, or via
+# -Metadata DriverTrust. A package without drivers renders a neutral row rather than an empty cell - "no
+# drivers" is a fact worth stating in a dossier that a reviewer reads.
+$dt = Get-Val 'DriverTrust' $null
+if (-not $dt) {
+    $vDrivers = (Badge 'b-neut' 'keine Treiber' 'no drivers') + (NoteHtml 'das Paket liefert keine Treiber aus' 'this package ships no drivers')
+} else {
+    $dtGet = { param($k) if ($dt -is [hashtable]) { $dt[$k] } elseif ($dt.PSObject -and $dt.PSObject.Properties[$k]) { $dt.$k } else { $null } }
+    $dtClass = [string](& $dtGet 'classification')
+    $dtOwner = [string](& $dtGet 'owner')
+    $dtThumb = [string](& $dtGet 'thumbprint')
+    $dtSbOff = [bool](& $dtGet 'assumeSecureBootOff')
+    $dtList  = @(& $dtGet 'drivers')
+
+    $classBadge = switch ($dtClass) {
+        'GREEN'  { Badge 'b-ok'   'Microsoft-signiert' 'Microsoft-signed' }
+        'YELLOW' { Badge 'b-warn' 'herstellersigniert' 'vendor-signed' }
+        'RED'    { Badge 'b-fail' 'nicht vertrauenswuerdig' 'not trusted' }
+        default  { Badge 'b-neut' (Esc $dtClass) (Esc $dtClass) }
+    }
+    $ownerBadge2 = switch ($dtOwner) {
+        'policy'  { Badge 'b-ok'   'Zertifikat: Intune-Policy' 'certificate: Intune policy' }
+        'package' { Badge 'b-warn' 'Zertifikat: Paket-Import'  'certificate: package import' }
+        'none'    { Badge 'b-neut' 'kein Zertifikat noetig'    'no certificate needed' }
+        default   { '' }
+    }
+    $vDrivers = $classBadge + ' ' + $ownerBadge2
+    if ($dtThumb) { $vDrivers += (NoteHtml "Signer-Thumbprint $(Esc $dtThumb)" "signer thumbprint $(Esc $dtThumb)") }
+    if ($dtSbOff) {
+        $vDrivers += (NoteHtml 'Secure Boot als deaktiviert angenommen - Flottenentscheidung, im Manifest dokumentiert' 'Secure Boot assumed off - a fleet decision, recorded in the manifest')
+    }
+    if ($dtList.Count) {
+        $rows = foreach ($d in $dtList) {
+            $dGet = { param($k) if ($d -is [hashtable]) { $d[$k] } elseif ($d.PSObject -and $d.PSObject.Properties[$k]) { $d.$k } else { $null } }
+            $mode = if ([bool](& $dGet 'kernelMode')) { 'kernel' } else { 'user' }
+            '<br>' + (Codei ([string](& $dGet 'inf'))) + ' &middot; ' + (Esc ([string](& $dGet 'classification'))) +
+                ' &middot; ' + $mode + ' &middot; ' + (Esc ([string](& $dGet 'version')))
+        }
+        $vDrivers += ($rows -join '')
+    }
 }
 
 $vRuleFormat   = Esc (Get-Val 'RuleFormat' 'Custom Detection Script')
@@ -438,6 +481,7 @@ $tokens = [ordered]@{
     'V_DISK'            = $vDisk
     'V_MEMORY'          = $vMemory
     'V_CERT_POLICY'     = $vCertPolicy
+    'V_DRIVERS'         = $vDrivers
     'V_RULE_FORMAT'     = $vRuleFormat
     'V_DETECT_SCRIPT'   = $vDetectScript
     'V_RUN_32'          = $vRun32
