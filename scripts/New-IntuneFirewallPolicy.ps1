@@ -136,11 +136,29 @@ function Initialize-MsalBroker {
     $script:MsalReady = $true
     return $true
 }
+
+# --- Embedded role assertion (kept LOCAL on purpose: this script must stay self-contained) -----------
+function Assert-ConfigRole([string]$Token) {
+    # An app-only token carries its granted roles in the 'roles' claim, so the missing permission can be
+    # named BEFORE the first write instead of surfacing as a 403 afterwards - and it costs no request.
+    # Graph tokens are opaque by contract: anything undecodable, and any token without a roles claim
+    # (delegated -Interactive sign-in, whose Intune RBAC is not in the token at all), falls through and
+    # lets Graph decide.
+    $role = 'DeviceManagementConfiguration.ReadWrite.All'
+    try {
+        $p = $Token.Split('.')[1].Replace('-', '+').Replace('_', '/')
+        switch ($p.Length % 4) { 2 { $p += '==' } 3 { $p += '=' } }
+        $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p)) | ConvertFrom-Json
+    } catch { return }
+    $roles = if ($null -eq $claims.roles) { @() } else { @($claims.roles) }
+    if ($roles.Count -eq 0 -or $roles -contains $role) { return }
+    throw "The app-only token has no '$role', so this policy cannot be created (it has: $($roles -join ', ')). Run New-PsadtEntraApp.ps1 -IncludeConfigurationManagement as Global Admin, or re-run with -Interactive."
+}
 function Get-InteractiveGraphToken {
-    param([string[]]$Scopes = @($ConfigScope), [string]$Tenant = 'organizations', [string]$ClientId = $GraphCliClientId)
+    param([string[]]$Scopes = @($ConfigScope), [string]$TenantId = 'organizations', [string]$ClientId = $GraphCliClientId)
     Initialize-MsalBroker | Out-Null
     Write-Info "Interactive sign-in: WAM (Windows Web Account Manager)."
-    $authority = "https://login.microsoftonline.com/$Tenant"
+    $authority = "https://login.microsoftonline.com/$TenantId"
     $builder = [Microsoft.Identity.Client.PublicClientApplicationBuilder]::Create($ClientId).WithAuthority($authority)
     $bo = New-Object 'Microsoft.Identity.Client.BrokerOptions' -ArgumentList ([Microsoft.Identity.Client.BrokerOptions+OperatingSystems]::Windows)
     $builder = [Microsoft.Identity.Client.Broker.BrokerExtension]::WithBroker($builder, $bo)
@@ -306,7 +324,7 @@ if (-not $Execute) {
     $token = $null
     try {
         if ($GraphToken)      { $token = $GraphToken }
-        elseif ($Interactive) { $token = Get-InteractiveGraphToken -Scopes @($ConfigScope) -Tenant $TenantId }
+        elseif ($Interactive) { $token = Get-InteractiveGraphToken -Scopes @($ConfigScope) -TenantId $TenantId }
         else {
             Write-Warn2 "No credential: this self-contained script has no app registration. Re-run with -Interactive (WAM) or pass -GraphToken."
             Write-Host $manual -ForegroundColor Gray
@@ -316,6 +334,7 @@ if (-not $Execute) {
     }
 
     if ($token) {
+        Assert-ConfigRole $token
         $headers = @{ Authorization = "Bearer $token" }
         $body = New-FirewallPolicyBody -PolicyName $PolicyName -Description $description -RuleChildren $children -TemplateId $FirewallRulesTemplateId
         $json = $body | ConvertTo-Json -Depth 20

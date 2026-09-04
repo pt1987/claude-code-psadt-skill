@@ -9,7 +9,7 @@ BeforeAll {
     . (Join-Path $PSScriptRoot '_helpers.ps1')
     $script:FwScript = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\New-IntuneFirewallPolicy.ps1')).Path
 
-    foreach ($fn in 'Get-FirewallProfileMask', 'New-FirewallRuleChildren', 'New-FirewallPolicyBody', 'Get-FirewallPolicyManualSteps') {
+    foreach ($fn in 'Get-FirewallProfileMask', 'New-FirewallRuleChildren', 'New-FirewallPolicyBody', 'Get-FirewallPolicyManualSteps', 'Assert-ConfigRole') {
         . ([scriptblock]::Create((Get-ScriptFunctionText -Path $script:FwScript -Name $fn)))
     }
     $script:exe = 'C:\Program Files\Mobotix\MxManagementCenter\MxManagementCenter.exe'
@@ -120,5 +120,29 @@ Describe 'Self-contained deliverable (copy-to-client safety)' {
     It 'embeds its own WAM interactive sign-in (no external dependency)' {
         $script:src | Should -Match 'function Initialize-MsalBroker'
         $script:src | Should -Match 'function Get-InteractiveGraphToken'
+    }
+}
+
+Describe 'Assert-ConfigRole (the embedded copy - this script stays self-contained)' {
+    BeforeAll {
+        function New-RoleToken([object]$Roles) {
+            $claims = if ($null -eq $Roles) { @{ idtyp = 'app' } } else { @{ idtyp = 'app'; roles = $Roles } }
+            $json = $claims | ConvertTo-Json -Compress
+            $b64  = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+            return "eyJhbGciOiJSUzI1NiJ9.$b64.signature"
+        }
+    }
+    It 'passes silently when the token carries the config role' {
+        { Assert-ConfigRole (New-RoleToken @('DeviceManagementConfiguration.ReadWrite.All')) } | Should -Not -Throw
+    }
+    It 'names the missing permission and the way to get it' {
+        { Assert-ConfigRole (New-RoleToken @('DeviceManagementApps.ReadWrite.All')) } |
+            Should -Throw -ExpectedMessage '*DeviceManagementConfiguration.ReadWrite.All*IncludeConfigurationManagement*'
+    }
+    It 'falls through for a roleless token - a delegated -Interactive sign-in carries no roles claim' {
+        { Assert-ConfigRole (New-RoleToken $null) } | Should -Not -Throw
+    }
+    It 'falls through for an opaque token instead of blocking - Graph tokens are opaque by contract' {
+        { Assert-ConfigRole 'not-a-jwt' } | Should -Not -Throw
     }
 }

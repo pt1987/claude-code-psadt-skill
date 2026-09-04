@@ -85,3 +85,14 @@ Describe 'Dry run (read-only, no Graph)' {
         $r.Base64Length | Should -BeGreaterThan 0
     }
 }
+
+Describe 'Assert-ConfigRole is embedded in BOTH policy scripts and must not drift' {
+    It 'is byte-identical to the copy in New-IntuneFirewallPolicy.ps1' {
+        # Both policy scripts carry their own copy on purpose (they must stay self-contained), which is
+        # exactly the setup that let a retry-guard bug live in one copy only before _GraphCommon existed.
+        $fw   = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\New-IntuneFirewallPolicy.ps1')).Path
+        $here = Get-ScriptFunctionText -Path $script:CertScript -Name 'Assert-ConfigRole'
+        $there = Get-ScriptFunctionText -Path $fw -Name 'Assert-ConfigRole'
+        $here | Should -Be $there
+    }
+}

@@ -60,6 +60,24 @@ $ConfigScope = 'https://graph.microsoft.com/DeviceManagementConfiguration.ReadWr
 # --- Shared Graph helpers (Write-*, Get-GraphErr, Invoke-Graph) + WAM interactive sign-in --------
 . (Join-Path $PSScriptRoot '_GraphCommon.ps1')
 . (Join-Path $PSScriptRoot '_GraphInteractive.ps1')
+
+# --- Embedded role assertion (kept LOCAL on purpose: this script must stay self-contained) -----------
+function Assert-ConfigRole([string]$Token) {
+    # An app-only token carries its granted roles in the 'roles' claim, so the missing permission can be
+    # named BEFORE the first write instead of surfacing as a 403 afterwards - and it costs no request.
+    # Graph tokens are opaque by contract: anything undecodable, and any token without a roles claim
+    # (delegated -Interactive sign-in, whose Intune RBAC is not in the token at all), falls through and
+    # lets Graph decide.
+    $role = 'DeviceManagementConfiguration.ReadWrite.All'
+    try {
+        $p = $Token.Split('.')[1].Replace('-', '+').Replace('_', '/')
+        switch ($p.Length % 4) { 2 { $p += '==' } 3 { $p += '=' } }
+        $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p)) | ConvertFrom-Json
+    } catch { return }
+    $roles = if ($null -eq $claims.roles) { @() } else { @($claims.roles) }
+    if ($roles.Count -eq 0 -or $roles -contains $role) { return }
+    throw "The app-only token has no '$role', so this policy cannot be created (it has: $($roles -join ', ')). Run New-PsadtEntraApp.ps1 -IncludeConfigurationManagement as Global Admin, or re-run with -Interactive."
+}
 $script:step = 0
 
 # --- Testable helpers ----------------------------------------------------------------------------
@@ -186,6 +204,7 @@ if (-not $Execute) {
     }
 
     if ($token) {
+        Assert-ConfigRole $token
         $H = @{ Authorization = "Bearer $token" }
         $body = New-CustomOmaProfileBody -DisplayName $ProfileName -Description $description -OmaUri $omaUri -Base64Value $b64
         try {

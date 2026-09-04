@@ -158,6 +158,12 @@ $tok = & (Join-Path $PSScriptRoot 'Get-GraphToken.ps1') -SkillRoot $SkillRoot
 $H = @{ Authorization = "Bearer $($tok.Token)" }
 Write-Ok "Token for tenant $($tok.TenantId) (expires $($tok.ExpiresOn.ToString('HH:mm')))"
 
+# --- Permission gate ------------------------------------------------------------------------------
+# Two layers, cheapest first: the token itself says which roles were granted (no request, names the exact
+# missing permission), then the read probe proves the permission is effective against the real endpoint.
+Assert-GraphRole -Token $tok.Token -Role 'DeviceManagementApps.ReadWrite.All' `
+    -Hint 'Run New-PsadtEntraApp.ps1 (Global Admin) to grant and consent it, then Test-PsadtIntuneAccess.ps1 to verify.' | Out-Null
+
 # --- Permission probe (read-only) -----------------------------------------------------------------
 Write-Step "Probe permission (read-only)"
 try { $null = Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps?`$top=1" -Headers $H; Write-Ok "DeviceManagementApps.ReadWrite.All effective." }

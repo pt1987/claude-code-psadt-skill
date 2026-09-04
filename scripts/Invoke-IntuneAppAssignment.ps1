@@ -69,6 +69,13 @@ $token = if ($GraphToken) { $GraphToken } else { (& (Join-Path $PSScriptRoot 'Ge
 $H  = @{ Authorization = "Bearer $token" }
 $Hc = @{ Authorization = "Bearer $token"; ConsistencyLevel = 'eventual' }   # directory reads
 
+# Group assignment needs BOTH roles, and a half-granted app is the nastiest case: it creates the group and
+# then cannot read its members. Name the missing half before anything is created.
+foreach ($role in 'Group.Create', 'GroupMember.Read.All') {
+    Assert-GraphRole -Token $token -Role $role `
+        -Hint 'Run New-PsadtEntraApp.ps1 -IncludeGroupManagement (Global Admin), then Test-PsadtIntuneAccess.ps1 to verify.' | Out-Null
+}
+
 # --- Intents -------------------------------------------------------------------------------------
 $configured = @('required', 'available', 'uninstall') | Where-Object { $naming.$_ }
 $targetIntents = if ($Intents) { @($Intents | Where-Object { $configured -contains $_ }) } else { $configured }
