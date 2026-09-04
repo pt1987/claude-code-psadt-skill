@@ -51,3 +51,30 @@ Describe 'New-BrowserExtensionPackage: one log per run + manifest (0.21.0)' {
         $script:raw | Should -Match "'package\.type'\s+= 'browser-extension'"
     }
 }
+
+Describe 'New-BrowserExtensionPackage: the template Replace chain is unbroken' {
+    BeforeAll { $script:chainRaw = Get-Content $script:src -Raw }
+
+    It 'has no statement wedged into the $out = $tpl.Replace(...) chain' {
+        # This is NOT caught by a parse check: '$tpl.' followed by a comment and then '$logStem = ...'
+        # parses fine as '$tpl.$logStem = ...' and fails only at RUN time with
+        # "The property '' cannot be found on this object". A sed insert put exactly that into two
+        # generators in 0.21.0. So: from '$out = $tpl.' until the chain ends, every non-empty line must be
+        # a .Replace(...) continuation.
+        $lines = $script:chainRaw -split "`r?`n"
+        $start = ($lines | Select-String -SimpleMatch '$out = $tpl.' | Select-Object -First 1).LineNumber
+        $start | Should -Not -BeNullOrEmpty
+        for ($i = $start; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i].Trim()
+            if ($line -eq '') { continue }
+            $line | Should -Match '^Replace\('
+            if ($line -notmatch '\.$') { break }      # last link in the chain
+        }
+    }
+    It 'computes the log stem BEFORE the chain uses it' {
+        $stemAt  = $script:chainRaw.IndexOf('$logStem = (&')
+        $chainAt = $script:chainRaw.IndexOf('$out = $tpl.')
+        $stemAt  | Should -BeGreaterThan 0
+        $chainAt | Should -BeGreaterThan $stemAt
+    }
+}

@@ -363,12 +363,13 @@ catch
 
 if (-not $Changelog) { $Changelog = "- 0.1 ($today, $Author): Initial version - enable Windows features (optional features + capabilities)." }
 
-$out = $tpl.
-    Replace('__APPVENDOR__', (Get-SqEscaped $AppVendor)).
-    Replace('__APPNAME__', (Get-SqEscaped $AppName)).
 # The per-run log name shares the artifact stem, and the sanitizing rule lives in exactly ONE place
 # (Get-PsadtPackageManifest -Identity) so a second copy can never drift and rename an app.
 $logStem = (& (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -Identity @{ vendor = $AppVendor; name = $AppName; version = $AppVersion; arch = 'x64' }).Stem
+
+$out = $tpl.
+    Replace('__APPVENDOR__', (Get-SqEscaped $AppVendor)).
+    Replace('__APPNAME__', (Get-SqEscaped $AppName)).
     Replace('__APPVERSION__', (Get-SqEscaped $AppVersion)).
     Replace('__LOGSTEM__', $logStem).
     Replace('__AUTHOR__', (Get-SqEscaped $Author)).
