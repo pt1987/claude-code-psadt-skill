@@ -21,6 +21,7 @@ desktop.ini
 
 # Pester / test artifacts
 testResults*.xml
+_pester.out
 
 # Local planning / specs (superpowers) - NEVER commit, stays local
 docs/superpowers/
