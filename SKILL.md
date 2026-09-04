@@ -55,7 +55,9 @@ researched defaults; recommended option first.
    is part of this gate when ambiguous: native installer (default) · WinGet (opt-in, App. I) · script-only
    fix/remediation (App. K) · **browser-extension force-install** (Edge/Chrome/Firefox via policy keys, App. O,
    built by `scripts/New-BrowserExtensionPackage.ps1`) · **windows-features** (Enable-WindowsOptionalFeature /
-   Add-WindowsCapability, App. P, built by `scripts/New-WindowsFeaturePackage.ps1`).
+   Add-WindowsCapability, App. P, built by `scripts/New-WindowsFeaturePackage.ps1`) · **driver** (pnputil
+   staging, App. Q, built by `scripts/New-DriverPackage.ps1` - classify FIRST with
+   `Get-DriverSignatureInfo.ps1`; unsigned = no package).
 2. **Deployment semantics** - target audience (Required / Available / both, + AAD groups), uninstall "what
    goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641). Pre-select defaults from
    the installer type. Group assignment is **opt-in**: only when the user wants it here do you create/assign
@@ -211,9 +213,12 @@ sub-key, NEVER the vendor root; keep user data by default), and async-retry loop
 msiexec): guide Phase 4. WinGet hook patterns: guide Appendix I.3. The GUID-to-`-ProductCode` rule (a GUID to
 `-FilePath` throws `InvalidFilePathParameterValue` → 60001) applies to Uninstall AND Repair - Repair is the
 usual miss. Custom helpers ALWAYS in `PSAppDeployToolkit.Extensions.psm1`, never the main script. If the installer
-**stages a 3rd-party driver** (the Windows device-software prompt blocks a SYSTEM-silent install), plan the
-certificate deliverable now (Conventions / guide Appendix N) - prefer the Intune cert policy
-(`scripts/New-IntuneTrustedCertPolicy.ps1`) over an in-package import.
+**stages a 3rd-party driver** (the Windows device-software prompt blocks a SYSTEM-silent install), classify it
+FIRST: `pwsh scripts/Get-DriverSignatureInfo.ps1 -Path <extracted installer content>`. MicrosoftSigned →
+pre-stage with pnputil in Pre-Install, then run the installer. VendorSigned → certificate deliverable now,
+prefer the Intune policy (`scripts/New-IntuneTrustedCertPolicy.ps1`) over an in-package import, then
+pre-stage. Unsigned → STOP, there is no packaging trick. Kernel-mode + vendor signature is RED, not a
+warning: TrustedPublisher silences the prompt but never satisfies Code Integrity. Tree: guide Appendix Q.
 
 **Phase 5 - Pre-flight (Reviewer gate).** Run `scripts/Invoke-PsadtPreflight.ps1 -PackagePath <pkg>` - it returns
 `{ Overall='GREEN'|'RED'; Checks=@(...) }` and runs all gate checks deterministically: encoding (`HasBOM=True` OR
@@ -318,6 +323,9 @@ Full symptom/HRESULT catalogue: guide Appendix A.
 - v3 cmdlet names (`Execute-Process`, `Write-Log`, `Show-InstallationWelcome`, ...); any em-dash/smart-quote or
   other non-ASCII in a `.ps1` (comments too) without a UTF-8 BOM - the #1 encoding failure. Top-level code outside try/catch.
 - GUID to `Start-ADTMsiProcess -FilePath` (Uninstall AND Repair - Repair is the usual miss) -> 60001.
+- Drivers: enabling `testsigning`/`nointegritychecks` (never - it weakens the whole device for one app);
+  selling `TrustedPublisher` as the fix for an UNSIGNED driver or for a kernel driver under Secure Boot;
+  deleting `oemNN.inf` by an index from another machine; trusting a collective multi-INF pnputil exit code.
 - `-o` inside `-c`; not mapping 60001/60008 as Failed; "runs locally = runs in Intune" without the acid test;
   hand-rolling the pre-flight instead of `scripts/Invoke-PsadtPreflight.ps1` (its GREEN/RED verdict IS the gate).
 - Shipping the PSADT default `AppIcon.png`/Banner as the logo; skipping or hand-assembling the HTML report.
@@ -351,4 +359,7 @@ learned · H direct Graph upload · **I WinGet packaging** · **J app-logo acqui
 **O browser-extension force-install (opt-in: Edge/Chrome/Firefox policy keys, Firefox `REG_MULTI_SZ` trap,
 merge/selective-remove; `New-BrowserExtensionPackage.ps1`)** ·
 **P windows-features (opt-in: Enable-WindowsOptionalFeature + Add-WindowsCapability, 3010 reboot, WU/WSUS-bypass
-content source, EnablePending detection; `New-WindowsFeaturePackage.ps1`)**.
+content source, EnablePending detection; `New-WindowsFeaturePackage.ps1`)** ·
+**Q third-party drivers (classification matrix, PnP install vs. Code Integrity, pnputil 0/259/3010 + the two
+0xE... failures, oemNN.inf resolution, installer-bundled drivers; `Get-DriverSignatureInfo.ps1`,
+`New-DriverPackage.ps1`)**.

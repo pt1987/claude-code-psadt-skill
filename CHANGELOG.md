@@ -2,6 +2,64 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.22.0 — 2026-09-04 — Third-party drivers
+
+### Added
+- **`scripts/Get-DriverSignatureInfo.ps1` — the driver trust classifier.** Per INF it reads
+  `Class` / `Provider` / `DriverVer` / `CatalogFile` from `[Version]` and checks the signature of the
+  **catalog**, not the `.sys`: a dual-signed `.sys` reports only its primary signature, which would
+  misclassify exactly the drivers that are hardest to get right, and the catalog is what PnP validates
+  anyway. Results: `MicrosoftSigned` (WHQL/Attestation publisher or inbox `CN=Microsoft Windows*`),
+  `VendorSigned`, `Unsigned` (no catalog / `NotSigned` / `HashMismatch`).
+  - **A vendor-signed KERNEL driver is RED, not a warning.** With Secure Boot on (Windows 10 1607+ / 11)
+    the kernel loads only Microsoft Dev-Portal-signed drivers. Importing the signer certificate into
+    `TrustedPublisher` satisfies the PnP *installation* check and does nothing for Code Integrity — so the
+    driver installs, the deployment reports success, and the device never loads it. Selling
+    TrustedPublisher as the fix there is the expensive mistake this check exists to prevent.
+    `-AssumeSecureBootOff` downgrades it to YELLOW for the real exceptions (in-place-upgraded machines,
+    Secure Boot off, cross-signing before 2015-07-29) and demands the reason be recorded in `driverTrust`.
+  - **`Unsigned` is a hard stop** with three honest options in English — a signed driver from the vendor,
+    vendor-side Attestation signing via Partner Center, or an isolated lab. `testsigning` is not among
+    them, and the skill never enables it or disables integrity checks.
+- **`scripts/New-DriverPackage.ps1` — the driver package generator.** Classifies **before** it scaffolds
+  (a rejected source leaves no half-package behind), defaults `-CertOwner policy|package|none` from the
+  classification, and writes `package.type='driver'` plus the whole `driverTrust` decision into the
+  manifest. Install stages every INF individually; uninstall resolves the DriverStore's `oemNN.inf` via
+  `/enum-drivers` by Original Name + Provider + Version; repair re-adds idempotently. Detection uses
+  `Get-WindowsDriver -Online` and compares the **leaf** of `OriginalFileName` (which is a full DriverStore
+  path). Four extension helpers: `Add-ADTDriverPackage`, `Remove-ADTDriverPackage`, `Get-ADTStagedDriver`,
+  `Import-ADTTrustedPublisherCert`.
+- **Guide Appendix Q** — the decision tree, the PnP-install-vs-Code-Integrity distinction, the pnputil exit
+  codes, `oemNN.inf` resolution, detection, the installer-bundled-driver tree (a vendor EXE calling dpinst
+  internally, e.g. the install4j case in L.1) and the anti-patterns. Anti-pattern 15 points there.
+- **Pre-flight check 10 `DriverTrust`** — runs whenever the package ships an `.inf` under `Files\`,
+  regardless of `package.type`, because a vendor installer that stages a driver is the case nobody declares
+  as a driver package. FAIL on an unsigned driver and on a vendor-signed one whose certificate has no owner
+  in the manifest; WARN for a vendor-signed kernel driver. No `.inf` means no row at all.
+- **Report: a driver-trust row** (`{{V_DRIVERS}}`) with classification, certificate owner, signer
+  thumbprint and one line per INF. A package without drivers gets a neutral "no drivers" row rather than an
+  empty cell.
+
+### Changed
+- **`New-IntuneTrustedCertPolicy.ps1` is now self-contained**, like the firewall script: it dot-sources
+  nothing and reads no config, because it is a deliverable that gets copied to test clients with no skill
+  installed. Console helpers, WAM sign-in and Graph error extraction are embedded (a test asserts the WAM
+  block is byte-identical to the firewall copy); the config-tenant fallback is deliberately gone.
+  Credentials come from outside: `-Interactive`, or
+  `-GraphToken (& scripts/Get-GraphToken.ps1).Token`. `-SkillRoot` is kept for call-site compatibility and
+  documented as unused.
+- **SKILL.md**: `driver` is a Gate-1 package type; Phase 4 says classify-first for an installer-bundled
+  driver; the driver anti-patterns and Appendix Q are in the lookup.
+
+### Notes
+- **pnputil exit codes are documented, NOT verified here.** `0` / `259` (`ERROR_NO_MORE_ITEMS` — staged, no
+  matching device or a newer driver already in use) / `3010`, plus `0xE000022F`
+  (`ERROR_NO_CATALOG_FOR_OEM_INF`) and `0xE0000247` (`ERROR_DRIVER_STORE_ADD_FAILED`), are taken from
+  Microsoft's documentation. Confirming them against `setupapi.dev.log` on a DEV VM with a real
+  vendor-signed printer driver and a real Microsoft-signed USB driver is still open — this entry does not
+  claim that verification happened.
+- Test suite: 251 → **307** tests, all green.
+
 ## 0.21.0 — 2026-09-04 — Package manifest, deterministic packaging, one log per run
 
 ### Added

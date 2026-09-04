@@ -190,6 +190,8 @@ psadt-deploy/
 │  ├─ Get-PsadtPackageManifest.ps1  per-package manifest read (+ artifact stem)
 │  ├─ Set-PsadtPackageManifest.ps1  per-package manifest write (merge / append)
 │  ├─ Invoke-PsadtPackage.ps1       build the .intunewin (Phase 7, named + verified)
+│  ├─ Get-DriverSignatureInfo.ps1   driver trust classifier (signed? kernel? deployable?)
+│  ├─ New-DriverPackage.ps1         driver package generator (pnputil staging, opt-in)
 │  ├─ Get-PsadtConfig.ps1           config read + config-home resolver
 │  ├─ Set-PsadtConfig.ps1           config write (+ DPAPI secret, -Remove)
 │  ├─ Get-PsadtModule.ps1           PSADT module (self-heal)
@@ -261,6 +263,22 @@ configurable per machine.
 
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
+
+### 0.22.0 - 04.09.2026
+- **Third-party drivers.** New `scripts/Get-DriverSignatureInfo.ps1` classifies a driver folder before
+  anything is built — Microsoft-signed / vendor-signed / unsigned — by checking the **catalog** signature
+  rather than the `.sys` (a dual-signed `.sys` reports only its primary signature). New
+  `scripts/New-DriverPackage.ps1` builds the package: pnputil staging per INF, uninstall that resolves
+  `oemNN.inf` by original name instead of a remembered index, `Get-WindowsDriver` detection.
+- **The rule that saves the most time:** a vendor-signed *kernel* driver is RED, not a warning. With Secure
+  Boot on, only Microsoft Dev-Portal-signed kernel drivers load — importing the signer certificate removes
+  the "install device software?" prompt but does nothing for Code Integrity, so the driver installs and
+  then never loads. Unsigned drivers are refused outright, with three honest options and no testsigning.
+- Pre-flight gained a `DriverTrust` check that fires for **any** package shipping an `.inf` (a vendor
+  installer staging a driver is the case nobody declares), the dossier has a driver-trust row, and
+  `New-IntuneTrustedCertPolicy.ps1` is now fully self-contained like the firewall script.
+- New guide **Appendix Q** with the decision tree, pnputil exit codes and the installer-bundled-driver
+  case. Suite 251 → 307 tests.
 
 ### 0.21.0 - 04.09.2026
 - **Every package gets a manifest** (`psadt-package.json`): identity, gate decisions, research findings,
