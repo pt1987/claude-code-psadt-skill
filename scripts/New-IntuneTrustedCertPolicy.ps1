@@ -25,6 +25,12 @@
     via: New-PsadtEntraApp.ps1 -Force -IncludeConfigurationManagement (Global Admin). If the token/role is unavailable
     the script does NOT fail the run - it prints the exact manual portal steps + values and returns them.
 
+    SELF-CONTAINED (0.22.0): this script dot-sources nothing and reads no config, because it is one of the
+    deliverables that gets copied to a test client which has no skill installed. Console helpers and the WAM
+    sign-in are embedded (mirroring New-IntuneFirewallPolicy.ps1; a test asserts the two copies match). Credentials
+    come in from outside: -Interactive for WAM, or -GraphToken (& scripts/Get-GraphToken.ps1).Token for app-only
+    from the authoring machine.
+
 .PARAMETER CertPath      Path to a cert file OR a signed binary to extract the signer cert from.
 .PARAMETER Thumbprint    Alternative to -CertPath: SHA1 thumbprint of an already-installed certificate.
 .PARAMETER SourceStore   Where -Thumbprint lives (default Cert:\LocalMachine\TrustedPublisher).
@@ -33,9 +39,9 @@
 .PARAMETER Execute       Create the profile via Graph. Without it the script is a read-only dry run.
 .PARAMETER Interactive   Sign in interactively via WAM (delegated) instead of the app-only upload credential.
                          Use when there is no app registration (maximum compatibility). No device code.
-.PARAMETER TenantId      Tenant for interactive sign-in (default: config intune.tenantId, else 'organizations').
-.PARAMETER GraphToken    Optional bearer token (testing / reuse). Default: app-only Get-GraphToken.ps1.
-.PARAMETER SkillRoot     Config home override; default = the resolved config home.
+.PARAMETER TenantId      Tenant for interactive sign-in (default 'organizations').
+.PARAMETER GraphToken    Bearer token for -Execute. From the authoring machine: (& scripts/Get-GraphToken.ps1).Token
+.PARAMETER SkillRoot     Accepted for call-site compatibility and UNUSED: this script reads no config.
 
 .OUTPUTS
     PSCustomObject: Executed, ProfileName, Store, Thumbprint, OmaUri, Base64Length, ProfileId, DryRun, ManualSteps
@@ -57,9 +63,130 @@ $ErrorActionPreference = 'Stop'
 $GraphBase = 'https://graph.microsoft.com/beta'
 $ConfigScope = 'https://graph.microsoft.com/DeviceManagementConfiguration.ReadWrite.All'
 
-# --- Shared Graph helpers (Write-*, Get-GraphErr, Invoke-Graph) + WAM interactive sign-in --------
-. (Join-Path $PSScriptRoot '_GraphCommon.ps1')
-. (Join-Path $PSScriptRoot '_GraphInteractive.ps1')
+# --- Console + sign-in helpers, EMBEDDED on purpose ----------------------------------------------
+# This script gets copied to test clients that do not have the skill installed, so it dot-sources
+# NOTHING. The block below mirrors New-IntuneFirewallPolicy.ps1 - a drift test compares them.
+
+# --- console helpers (embedded) ------------------------------------------------------------------
+function Write-Info([string]$m) { Write-Host "    $m" -ForegroundColor Gray }
+function Write-Warn2([string]$m) { Write-Host "    !   $m" -ForegroundColor Yellow }
+
+# ============================ WAM interactive sign-in (embedded, self-contained) ============================
+$script:MsalVersions  = @{ Client = '4.66.2'; Broker = '4.66.2'; Native = '0.16.2'; Abstractions = '6.35.0' }
+$script:MsalCacheRoot = Join-Path $env:LOCALAPPDATA 'PsadtIntune\msal'
+$script:MsalReady = $false
+
+function Save-NuGetPackage {
+    param([string]$Id, [string]$Version, [string]$DestDir)
+    $idl = $Id.ToLower(); $verl = $Version.ToLower()
+    $url = "https://api.nuget.org/v3-flatcontainer/$idl/$verl/$idl.$verl.nupkg"
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "$idl.$verl.nupkg"
+    Write-Info "downloading $Id $Version ..."
+    Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -ErrorAction Stop
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (Test-Path $DestDir) { Remove-Item $DestDir -Recurse -Force }
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($tmp, $DestDir)
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+}
+function Get-PackageDir {
+    param([string]$Id, [string]$Version, [string]$LocalRoot)
+    $global = Join-Path $env:USERPROFILE ".nuget\packages\$Id\$Version"
+    if (Test-Path $global) { return $global }
+    $local = Join-Path $LocalRoot "$Id\$Version"
+    if ((Test-Path $local) -and (Get-ChildItem $local -ErrorAction SilentlyContinue)) { return $local }
+    Save-NuGetPackage -Id $Id -Version $Version -DestDir $local
+    return $local
+}
+function Initialize-MsalBroker {
+    param([hashtable]$Versions = $script:MsalVersions, [string]$CacheRoot = $script:MsalCacheRoot)
+    if ($script:MsalReady) { return $true }
+    if (-not [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
+        throw "WAM is only available on Windows."
+    }
+    $isCore = $PSVersionTable.PSEdition -eq 'Core'
+    $clientTfm = if ($isCore) { 'net6.0' }        else { 'net462' }
+    $brokerTfm = if ($isCore) { 'netstandard2.0' } else { 'net462' }
+    $nativeTfm = if ($isCore) { 'netstandard2.0' } else { 'net461' }
+    $arch = switch ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture) {
+        'Arm64' { 'win-arm64' } 'X86' { 'win-x86' } default { 'win-x64' }
+    }
+    $clientVer = $Versions.Client
+    $cb = Join-Path $env:USERPROFILE ".nuget\packages\microsoft.identity.client"
+    if (-not (Test-Path (Join-Path $cb $clientVer)) -and (Test-Path $cb)) {
+        $newer = Get-ChildItem $cb -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like '4.66.*' -and (Test-Path (Join-Path $_.FullName "lib\$clientTfm\Microsoft.Identity.Client.dll")) } |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+        if ($newer) { $clientVer = $newer.Name }
+    }
+    $abstrDll  = Join-Path (Get-PackageDir 'microsoft.identitymodel.abstractions'    $Versions.Abstractions $CacheRoot) "lib\$clientTfm\Microsoft.IdentityModel.Abstractions.dll"
+    $clientDll = Join-Path (Get-PackageDir 'microsoft.identity.client'              $clientVer        $CacheRoot) "lib\$clientTfm\Microsoft.Identity.Client.dll"
+    $brokerDll = Join-Path (Get-PackageDir 'microsoft.identity.client.broker'       $Versions.Broker  $CacheRoot) "lib\$brokerTfm\Microsoft.Identity.Client.Broker.dll"
+    $nativePkg =           (Get-PackageDir 'microsoft.identity.client.nativeinterop' $Versions.Native  $CacheRoot)
+    $nativeMgr = Join-Path $nativePkg "lib\$nativeTfm\Microsoft.Identity.Client.NativeInterop.dll"
+    $nativeRun = Join-Path $nativePkg "runtimes\$arch\native"
+    foreach ($f in @($abstrDll, $clientDll, $brokerDll, $nativeMgr)) {
+        if (-not (Test-Path $f)) { throw "MSAL assembly not found: $f" }
+    }
+    if (-not (Test-Path $nativeRun)) { throw "MSAL native runtime folder not found: $nativeRun" }
+    $runDir = Join-Path $CacheRoot "native\$arch"
+    New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+    Get-ChildItem $nativeRun -Filter 'msalruntime*.dll' | ForEach-Object { Copy-Item $_.FullName (Join-Path $runDir $_.Name) -Force }
+    if (-not (Test-Path (Join-Path $runDir 'msalruntime.dll'))) {
+        $alt = Get-ChildItem $runDir -Filter 'msalruntime*.dll' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($alt) { Copy-Item $alt.FullName (Join-Path $runDir 'msalruntime.dll') -Force }
+    }
+    if ($env:PATH -notlike "*$runDir*") { $env:PATH = "$runDir;$env:PATH" }
+    [System.Reflection.Assembly]::LoadFrom($abstrDll)  | Out-Null
+    [System.Reflection.Assembly]::LoadFrom($clientDll) | Out-Null
+    [System.Reflection.Assembly]::LoadFrom($nativeMgr) | Out-Null
+    [System.Reflection.Assembly]::LoadFrom($brokerDll) | Out-Null
+    if (-not ([System.Management.Automation.PSTypeName]'PsadtNative.Win').Type) {
+        Add-Type -Namespace PsadtNative -Name Win -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();
+[System.Runtime.InteropServices.DllImport("user32.dll")]   public static extern System.IntPtr GetForegroundWindow();
+'@
+    }
+    $script:MsalReady = $true
+    return $true
+}
+
+# --- Embedded role assertion (kept LOCAL on purpose: this script must stay self-contained) -----------
+function Get-InteractiveGraphToken {
+    param([string[]]$Scopes = @($ConfigScope), [string]$TenantId = 'organizations', [string]$ClientId = $GraphCliClientId)
+    Initialize-MsalBroker | Out-Null
+    Write-Info "Interactive sign-in: WAM (Windows Web Account Manager)."
+    $authority = "https://login.microsoftonline.com/$TenantId"
+    $builder = [Microsoft.Identity.Client.PublicClientApplicationBuilder]::Create($ClientId).WithAuthority($authority)
+    $bo = New-Object 'Microsoft.Identity.Client.BrokerOptions' -ArgumentList ([Microsoft.Identity.Client.BrokerOptions+OperatingSystems]::Windows)
+    $builder = [Microsoft.Identity.Client.Broker.BrokerExtension]::WithBroker($builder, $bo)
+    $pca = $builder.Build()
+    $hwnd = [PsadtNative.Win]::GetConsoleWindow()
+    if ($hwnd -eq [System.IntPtr]::Zero) { $hwnd = [PsadtNative.Win]::GetForegroundWindow() }
+    Write-Host "    A Windows sign-in window (Web Account Manager) will open ..." -ForegroundColor Gray
+    $req = $pca.AcquireTokenInteractive([string[]]$Scopes).WithParentActivityOrWindow($hwnd).WithPrompt([Microsoft.Identity.Client.Prompt]::SelectAccount)
+    return $req.ExecuteAsync().GetAwaiter().GetResult().AccessToken
+}
+
+# --- Graph error text (embedded; PS5.1 + PS7 response shapes) --------------------------------------
+function Get-GraphErrText($err) {
+    # PS7 puts the response body in ErrorDetails.Message; PS5.1 needs the response stream. Returns the
+    # Graph error message when it can be parsed, otherwise the raw exception text.
+    $body = $null
+    if ($err.ErrorDetails -and $err.ErrorDetails.Message) { $body = [string]$err.ErrorDetails.Message }
+    elseif ($err.Exception.Response -is [System.Net.HttpWebResponse]) {
+        try { $body = (New-Object System.IO.StreamReader($err.Exception.Response.GetResponseStream())).ReadToEnd() } catch { }
+    }
+    if ($body) {
+        try { $e = (ConvertFrom-Json $body).error; if ($e.message) { return "$($e.code): $($e.message)" } } catch { }
+        return $body
+    }
+    return $err.Exception.Message
+}
+
+# --- Step/status helpers (embedded) ---------------------------------------------------------------
+function Write-Step([string]$m) { if ($null -eq $script:step) { $script:step = 0 }; $script:step++; Write-Host "`n[$script:step] $m" -ForegroundColor Cyan }
+function Write-Ok  ([string]$m) { Write-Host "    OK  $m" -ForegroundColor Green }
+function Write-Fail([string]$m) { Write-Host "    X   $m" -ForegroundColor Red }
 
 # --- Embedded role assertion (kept LOCAL on purpose: this script must stay self-contained) -----------
 function Assert-ConfigRole([string]$Token) {
@@ -187,17 +314,17 @@ if (-not $Execute) {
     $token = $null
     try {
         if ($GraphToken) {
+            # App-only from the authoring machine:
+            #   -GraphToken (& scripts/Get-GraphToken.ps1).Token
+            # Passed IN rather than fetched here, because this script also runs on clients that have no
+            # skill config and no sibling scripts.
             $token = $GraphToken
         } elseif ($Interactive) {
-            # WAM (delegated) sign-in - works with no app registration. Tenant from config if not passed.
-            $tenant = $TenantId
-            if (-not $tenant) {
-                try { $tenant = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot).Config.intune.tenantId } catch { }
-            }
-            if (-not $tenant) { $tenant = 'organizations' }
+            # WAM (delegated) sign-in - works with no app registration at all.
+            $tenant = if ($TenantId) { $TenantId } else { 'organizations' }
             $token = Get-InteractiveGraphToken -Scopes @($ConfigScope) -TenantId $tenant
         } else {
-            $token = (& (Join-Path $PSScriptRoot 'Get-GraphToken.ps1') -SkillRoot $SkillRoot).Token
+            Write-Warn2 "No credential: this self-contained script reads no config. Re-run with -Interactive (WAM), or pass -GraphToken (& scripts/Get-GraphToken.ps1).Token from the authoring machine."
         }
     } catch {
         Write-Warn2 "No Graph token ($($_.Exception.Message)). Falling back to manual instructions."
@@ -208,13 +335,18 @@ if (-not $Execute) {
         $H = @{ Authorization = "Bearer $token" }
         $body = New-CustomOmaProfileBody -DisplayName $ProfileName -Description $description -OmaUri $omaUri -Base64Value $b64
         try {
-            $created = Invoke-Graph POST "$GraphBase/deviceManagement/deviceConfigurations" -Headers $H -Body $body
+            # Raw Invoke-RestMethod, like the firewall script: one POST needs no retry wrapper, and a
+            # wrapper would be one more thing to embed.
+            $created = Invoke-RestMethod -Method Post -Uri "$GraphBase/deviceManagement/deviceConfigurations" `
+                -Headers $H -ContentType 'application/json' -Body ($body | ConvertTo-Json -Depth 20) -ErrorAction Stop
             $profileId = $created.id
             Write-Ok "Profile created ($profileId). Assign it to the app's device scope in the portal (or via assignments API)."
         } catch {
-            $e = Get-GraphErr $_
-            if ($e.code -match 'Authorization|Forbidden' -or "$($e.message)" -match 'privile|permission|scope') {
-                Write-Warn2 "Graph denied profile creation ($($e.code)). The upload app lacks DeviceManagementConfiguration.ReadWrite.All."
+            $errText = Get-GraphErrText $_
+            $status = 0
+            try { $status = [int]$_.Exception.Response.StatusCode } catch { }
+            if ($status -eq 403 -or $status -eq 401 -or $errText -match 'Authorization|Forbidden|privile|permission|scope') {
+                Write-Warn2 "Graph denied profile creation ($errText). The app lacks DeviceManagementConfiguration.ReadWrite.All."
                 Write-Info  "Grant it (Global Admin): New-PsadtEntraApp.ps1 -Force -IncludeConfigurationManagement"
                 Write-Info  "  - or sign in interactively (no app needed): re-run this script with -Interactive"
                 Write-Info  "  - or create the profile manually:"

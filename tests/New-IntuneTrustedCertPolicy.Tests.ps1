@@ -96,3 +96,43 @@ Describe 'Assert-ConfigRole is embedded in BOTH policy scripts and must not drif
         $here | Should -Be $there
     }
 }
+
+Describe 'New-IntuneTrustedCertPolicy is self-contained (0.22.0)' {
+    BeforeAll { $script:certRaw = Get-Content -LiteralPath $script:CertScript -Raw }
+
+    It 'dot-sources nothing - it runs on clients that have no skill installed' {
+        $script:certRaw | Should -Not -Match '_GraphCommon'
+        $script:certRaw | Should -Not -Match '_GraphInteractive'
+        $script:certRaw | Should -Not -Match '(?m)^\s*\.\s+\(Join-Path'
+    }
+    It 'reads no skill config and calls no sibling script' {
+        # A deliverable copied to a test client has no config.json and no sibling scripts. The comment
+        # showing the -GraphToken call site is fine; an actual invocation is not.
+        $script:certRaw | Should -Not -Match '&\s*\(Join-Path \$PSScriptRoot'
+        $script:certRaw | Should -Not -Match 'Get-PsadtConfig'
+    }
+    It 'brings its own console helpers and WAM sign-in' {
+        foreach ($fn in 'Write-Info', 'Write-Warn2', 'Write-Step', 'Write-Ok', 'Initialize-MsalBroker', 'Get-InteractiveGraphToken') {
+            $script:certRaw | Should -Match "function $fn"
+        }
+    }
+    It 'brings its own Graph error extraction instead of Get-GraphErr' {
+        $script:certRaw | Should -Match 'function Get-GraphErrText'
+        $script:certRaw | Should -Not -Match 'Invoke-Graph POST'
+    }
+    It 'takes the credential from outside: -Interactive or -GraphToken' {
+        $script:certRaw | Should -Match '\[switch\]\$Interactive'
+        $script:certRaw | Should -Match '\[string\]\$GraphToken'
+        $script:certRaw | Should -Match 'this self-contained script reads no config'
+    }
+    It 'keeps its WAM sign-in signature identical to the firewall copy' {
+        $fw = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\New-IntuneFirewallPolicy.ps1')).Path
+        $here  = Get-ScriptFunctionText -Path $script:CertScript -Name 'Get-InteractiveGraphToken'
+        $there = Get-ScriptFunctionText -Path $fw -Name 'Get-InteractiveGraphToken'
+        $here | Should -Be $there
+    }
+    It 'is 7-bit ASCII only (encoding cleanliness)' {
+        $bytes = [System.IO.File]::ReadAllBytes($script:CertScript)
+        ($bytes | Where-Object { $_ -gt 127 }).Count | Should -Be 0
+    }
+}
