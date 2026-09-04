@@ -20,6 +20,11 @@
                       -FilePath throws InvalidFilePathParameterValue -> 60001). Checked in all hooks.
       7. Detection  - any Detect*.ps1 in the package: the "not installed" path should be `exit 0` + empty stdout
                       (Intune reads a non-zero exit as a detection error/retry, not "absent"). Non-zero exit = WARN.
+      8. Manifest   - psadt-package.json exists and its identity is complete (app.vendor/name/version/arch,
+                      package.type). FAIL: the artifact name is derived from that identity, so a package
+                      that cannot say what it is cannot be packed, reported on or uploaded consistently.
+      9. LogName    - the launcher sets a per-run LogName. WARN only: a pre-0.21 scaffold works, it just
+                      appends every run of every version into one PSADT log.
 
     GREEN = no FAIL checks. WARN does not flip the verdict. Works under Windows PowerShell 5.1 and PowerShell 7.
 
@@ -170,6 +175,30 @@ foreach ($df in $detectFiles) {
     else {
         Add-Check 'Detection' 'PASS' 'exit-code contract OK (exit 0 paths only)' $leaf
     }
+}
+
+# --- 8: manifest (the package's own identity) -----------------------------------------------------
+# A package that cannot say what it is cannot be packed (the artifact name is derived from the identity),
+# cannot be reported on and cannot be uploaded consistently. So this is a hard gate, not advice.
+$mf = & (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -PackagePath $PackagePath
+if (-not $mf.Exists) {
+    Add-Check 'Manifest' 'FAIL' 'no psadt-package.json - run a generator, or write the identity with Set-PsadtPackageManifest.ps1' 'psadt-package.json'
+} elseif ($mf.Error) {
+    Add-Check 'Manifest' 'FAIL' $mf.Error 'psadt-package.json'
+} elseif ($mf.Missing) {
+    Add-Check 'Manifest' 'FAIL' "incomplete identity: $($mf.Missing -join ', ')" 'psadt-package.json'
+} else {
+    Add-Check 'Manifest' 'PASS' "identity complete, artifact stem '$($mf.Stem)'" 'psadt-package.json'
+}
+
+# --- 9: per-run log name (WARN only) --------------------------------------------------------------
+# Without LogName the launcher inherits PSADT's fixed default name AND LogAppend, so every run of every
+# version piles into one file. Packages scaffolded before 0.21.0 are in that state; they still work.
+$launcherText = Get-Content $launcher -Raw
+if ($launcherText -match '(?m)^\s*LogName\s*=') {
+    Add-Check 'LogName' 'PASS' 'launcher sets a per-run log name' 'Invoke-AppDeployToolkit.ps1'
+} else {
+    Add-Check 'LogName' 'WARN' 'launcher sets no LogName - every run appends to the same PSADT log (pre-0.21 scaffold); re-generate or add LogName to $adtSession' 'Invoke-AppDeployToolkit.ps1'
 }
 
 # --- Verdict --------------------------------------------------------------------------------------
