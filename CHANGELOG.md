@@ -2,6 +2,51 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.19.0 — 2026-09-04 — Config home + setup doctor
+
+### Added
+- **`scripts/Initialize-PsadtSkill.ps1` — the setup doctor.** One idempotent script replaces the Phase 0
+  prose wizard. It reports **GREEN / YELLOW / RED** over 13 checks (PowerShell 7, Windows PowerShell 5.1,
+  elevation, git, PSAppDeployToolkit, IntuneWinAppUtil, Invoke-CommandAs, Pester, config, legacy config,
+  skill tree, pending skill update, Intune access), each with a status and a concrete fix hint — so a
+  missing prerequisite is a line in a table instead of a failure three phases later.
+  - `-Fix` does everything that needs no decision: migrates a legacy config home, installs the modules,
+    downloads the content-prep tool, fills the `language.*` defaults (EN/DE) and records
+    `paths.intuneWinAppUtil`.
+  - `-Set @{...}` persists user values *before* anything is judged; `-Json` / `-JsonPath` emit the result
+    for non-PowerShell callers; `-SkipUpdateCheck` skips the only network call.
+  - `.Missing` deliberately lists **only what a human must supply** — `paths.packageRoot`,
+    `paths.outputRoot`, `author.person`, `author.company` — never a key the doctor could fill itself.
+
+### Changed
+- **Config, secret and tools moved out of the skill folder into a per-user config home.**
+  `Get-PsadtConfig.ps1` is now the single resolver: explicit `-SkillRoot` > `$env:PSADT_DEPLOY_HOME` >
+  `%LOCALAPPDATA%\psadt-deploy`, and it returns `.Home` / `.DefaultHome` / `.LegacyInUse` alongside the
+  config. Every other script derives `config.json`, `secret.dpapi` and `tools/` from `.Home` and no longer
+  defaults `-SkillRoot` to the skill folder. **Why:** the old layout lost the whole setup on a re-clone or
+  re-install, and broke as soon as a script ran from an output folder.
+- **A legacy `config.json` beside `scripts/` keeps working, read-only**, and is reported as
+  `LegacyConfig WARN` until `-Fix` migrates it. Migration copies config and secret into the home and
+  renames the originals to `*.migrated` — **nothing is deleted** — moves `tools/*`, and rebases a recorded
+  `paths.intuneWinAppUtil`.
+- **`Set-PsadtConfig.ps1` writes to the resolved home** (creating it on demand) and gained `-Remove` for
+  deleting dotted leaves, so a credential switch can clean up `intune.certThumbprint` / `intune.secretRef`
+  instead of leaving both behind.
+- **`Update-PsadtSkill.ps1`** keeps `-SkillRoot` as the skill *tree* but resolves the config separately
+  (tree if it still holds one, else the config home), so the recorded commit is read and written in one place.
+
+### Fixed
+- **`New-PsadtEntraApp.ps1` reported the wrong config path** ("Saved to `<skill>\config.json`" plus
+  `ConfigPath` in its result object) whenever the config did not actually live in the skill folder. Both now
+  come from the resolver.
+- **Four config-home tests could not run**: `$script:home` collides with the read-only automatic variable
+  `$HOME` (`SessionStateUnauthorizedAccessException`). Renamed to `$script:cfgHome`.
+- **`Update-PsadtSkill` tests pin `$env:PSADT_DEPLOY_HOME`** to an empty temp dir, so the machine's real
+  config home can no longer leak into a test run.
+
+### Notes
+- Test suite: 120 → **128** tests, all green.
+
 ## 0.18.1 — 2026-09-03 — Upload: configurable install time limit
 
 ### Added

@@ -31,8 +31,9 @@ description until a task makes it relevant, then the full body loads on demand.
 
 ## Features
 
-- **First-run setup** — a one-time wizard persists machine config (paths, language, author) so
-  conventions are configured once, in one place.
+- **Setup doctor** — one idempotent script checks every prerequisite (GREEN/YELLOW/RED with a fix hint per
+  line), provisions what needs no decision, and asks only for the four values it cannot invent. Machine
+  config (paths, language, author) is persisted once, in a per-user config home outside the skill folder.
 - **Self-healing prerequisites** — auto-installs the PSAppDeployToolkit module from the PowerShell
   Gallery if missing, and auto-downloads `IntuneWinAppUtil.exe`, keeping both current against their
   official sources. No manual provisioning, no roadblocks.
@@ -110,7 +111,8 @@ description until a task makes it relevant, then the full body loads on demand.
   code fallback). Certificate or client-secret auth (cert via `-UseCertificate -CertThumbprint`). Manual
   portal route: `references/app-registration.md`.
 - For the optional **WinGet packaging** path: nothing extra — `scripts/Get-WinGetModule.ps1` auto-downloads
-  the `PSAppDeployToolkit.WinGet` extension into `tools/` (and into the package) the first time you choose WinGet.
+  the `PSAppDeployToolkit.WinGet` extension into the config home's `tools/` (and into the package) the first
+  time you choose WinGet.
 - **Optional (recommended): the [superpowers](https://github.com/obra/superpowers) plugin.** If installed, the
   skill uses `superpowers:dispatching-parallel-agents` for the research fan-out and `superpowers:requesting-code-review`
   for the Reviewer gate. It is **not required** — without it the skill falls back to the native Agent tool and
@@ -133,21 +135,46 @@ git clone https://github.com/pt1987/claude-code-psadt-skill.git "$env:USERPROFIL
 The skill activates automatically when you ask Claude Code to build an Intune package, or when you work
 in a folder containing `Invoke-AppDeployToolkit.ps1`.
 
+Then run the setup doctor once:
+
+```powershell
+pwsh ~/.claude/skills/psadt-deploy/scripts/Initialize-PsadtSkill.ps1 -Fix
+```
+
 ## First-run setup
 
-On the first run (or when you say *"psadt setup"*), the skill walks a short wizard and writes a local
-`config.json`:
+`scripts/Initialize-PsadtSkill.ps1` (also reachable by saying *"psadt setup"* / *"psadt doctor"*) checks
+every prerequisite in one pass and reports **GREEN / YELLOW / RED** — PowerShell 7, Windows PowerShell 5.1,
+elevation, git, PSAppDeployToolkit, the content-prep tool, `Invoke-CommandAs`, Pester, the config, a pending
+skill update and the Intune upload credentials. Every line comes with a concrete fix hint, and `-Fix`
+applies the ones that need no decision (module installs, the tool download, the `language.*` defaults and
+`paths.intuneWinAppUtil`). It is idempotent — run it as often as you like.
+
+Only four values genuinely need you; the doctor lists them in `.Missing` and takes them via `-Set`:
+
+```powershell
+pwsh scripts/Initialize-PsadtSkill.ps1 -Fix -Set @{
+    'paths.packageRoot' = 'D:\Pakete'; 'paths.outputRoot' = 'D:\Intune'
+    'author.person'     = 'Pat Taubert'; 'author.company' = 'PHAT Consulting'
+}
+```
 
 | Setting | Purpose |
 |---|---|
 | `paths.packageRoot` / `outputRoot` | Where packages live and where `.intunewin` files are written |
-| `paths.intuneWinAppUtil` | Content-prep tool location (skill-managed by default) |
-| `language.script` / `dossier` | Script language (EN) vs. dossier language (DE for the Company Portal) |
+| `paths.intuneWinAppUtil` | Content-prep tool location — filled by `-Fix` |
+| `language.script` / `dossier` | Script language (EN) vs. dossier language (DE for the Company Portal) — filled by `-Fix` |
 | `author.person` / `company` | Stamped into every package's `AppScriptAuthor` |
 | `intune.*` *(optional)* | Direct-upload block (`clientId` / `tenantId` / credential ref) - written by `New-PsadtEntraApp.ps1`, validated when `intune.uploadEnabled` |
 | `intune.groups.*` *(optional)* | Opt-in group assignment (`enabled` / `create` / `membershipType` / `naming`) - see guide Appendix M |
 
-`config.json` and `tools/` are **machine-local** and are never committed.
+### Where the setup is stored
+
+`config.json`, `secret.dpapi` and `tools/` live in the **config home** — `%LOCALAPPDATA%\psadt-deploy\`,
+overridable with `$env:PSADT_DEPLOY_HOME` — **not** in the skill folder, so they survive a `git pull`, a
+re-clone and a re-install. They are machine-local and never committed. A `config.json` from a pre-0.19
+install (beside `scripts/`) keeps working read-only; the doctor flags it and `-Fix` migrates it, renaming
+the originals to `*.migrated` rather than deleting anything.
 
 ## Project structure
 
@@ -157,8 +184,9 @@ Current (what ships today):
 psadt-deploy/
 ├─ SKILL.md · README.md · CHANGELOG.md · LICENSE
 ├─ scripts/
-│  ├─ Get-PsadtConfig.ps1           config read
-│  ├─ Set-PsadtConfig.ps1           config write (+ DPAPI secret)
+│  ├─ Initialize-PsadtSkill.ps1     setup doctor (Phase 0, GREEN/YELLOW/RED, -Fix)
+│  ├─ Get-PsadtConfig.ps1           config read + config-home resolver
+│  ├─ Set-PsadtConfig.ps1           config write (+ DPAPI secret, -Remove)
 │  ├─ Get-PsadtModule.ps1           PSADT module (self-heal)
 │  ├─ Get-IntuneWinAppUtil.ps1      content-prep tool (self-heal)
 │  ├─ Get-WinGetModule.ps1          WinGet extension (opt-in)
@@ -174,11 +202,17 @@ psadt-deploy/
 │  ├─ _GraphCommon.ps1              shared Graph helpers (3 upload scripts)
 │  ├─ Invoke-IntuneWin32Upload.ps1  direct Intune upload (Phase 9)
 │  └─ Invoke-IntuneAppAssignment.ps1 opt-in Entra group assignment (Phase 10)
-├─ references/   guide (App. A-P) + Report-Template.html + app-registration.md
-├─ tests/        Pester suite for the scripts
-├─ tools/        (gitignored)  IntuneWinAppUtil.exe + WinGet module
-├─ config.json   (gitignored)  machine-local settings (intune.* block)
-└─ secret.dpapi  (gitignored)  DPAPI client secret (only without cert auth)
+├─ references/   guide (Phase 0-12 + App. A-P) + Report-Template.html + app-registration.md
+└─ tests/        Pester suite for the scripts (128 tests)
+```
+
+Machine-local state lives outside the skill folder, in the config home:
+
+```
+%LOCALAPPDATA%\psadt-deploy\        ($env:PSADT_DEPLOY_HOME overrides)
+├─ config.json    settings incl. the optional intune.* block
+├─ secret.dpapi   DPAPI client secret (only without cert auth)
+└─ tools/         IntuneWinAppUtil.exe + WinGet module
 ```
 
 ## Status
@@ -222,6 +256,23 @@ configurable per machine.
 
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
+
+### 0.19.0 - 04.09.2026
+- **Setup doctor: `scripts/Initialize-PsadtSkill.ps1`.** One idempotent script replaces the Phase 0 prose
+  wizard and reports GREEN/YELLOW/RED over 13 prerequisite checks, each with a concrete fix hint. `-Fix`
+  installs the modules, downloads the content-prep tool, fills the EN/DE + tool-path defaults and migrates an
+  old setup; `-Set @{...}` persists your values first; `-Json` / `-JsonPath` for other tooling. `.Missing`
+  lists only the four values a human has to supply (`paths.packageRoot`, `paths.outputRoot`, `author.person`,
+  `author.company`) — never a key the doctor could fill itself.
+- **Config, secret and tools moved to a per-user config home** (`%LOCALAPPDATA%\psadt-deploy\`, override
+  `$env:PSADT_DEPLOY_HOME`) instead of the skill folder, so a `git pull`, re-clone or re-install no longer
+  takes the whole setup with it — and scripts started from an output folder still find their config.
+  `Get-PsadtConfig.ps1` is the single resolver and now returns `.Home` / `.DefaultHome` / `.LegacyInUse`. An
+  old config beside `scripts/` keeps working read-only until `-Fix` migrates it (originals renamed
+  `*.migrated`, nothing deleted).
+- **`Set-PsadtConfig.ps1 -Remove`** deletes dotted keys, so switching credential type can clean up the
+  stale one. **Fixed:** `New-PsadtEntraApp.ps1` reported `<skill>\config.json` even when the config lived
+  elsewhere. Suite 120 → 128 tests.
 
 ### 0.18.1 - 03.09.2026
 - **Upload: `-MaxRunTimeMinutes`.** `Invoke-IntuneWin32Upload.ps1` can now set

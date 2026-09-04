@@ -2,7 +2,7 @@
 
 Mandatory end-to-end guide for Intune Win32 packages with PSADT 4.x. Work through it in this order. Do not skip any phases.
 
-- **Phase 0**: Setup (config bootstrap - see SKILL.md / `Get-PsadtConfig`)
+- **Phase 0**: Setup (the doctor: `Initialize-PsadtSkill.ps1`)
 - **Phases 1-2**: Intake + Research (BEFORE the first click)
 - **Phase 3**: Scaffold via `New-ADTTemplate`
 - **Phase 4**: Script customizing (the three hooks)
@@ -15,6 +15,96 @@ Mandatory end-to-end guide for Intune Win32 packages with PSADT 4.x. Work throug
 - **Phase 11**: Test sequence
 - **Phase 12**: Rollout
 - **Appendices**: A Error reference / B Anti-patterns / C Test stub pattern / D Resources / E Final deploy checklist / F Package report (dossier + technical) / G Lessons learned / H Direct Intune upload (Graph) / I WinGet packaging / J App logo / K Script-only / remediation packages / L Installer technologies + silent switches / M Group assignment
+
+---
+
+## Phase 0: Setup (Doctor)
+
+One script answers "is this machine ready?" - run it before anything else, and again whenever something
+behaves oddly:
+
+```powershell
+pwsh scripts/Initialize-PsadtSkill.ps1          # read-only report
+pwsh scripts/Initialize-PsadtSkill.ps1 -Fix     # + provision / migrate what needs no decision
+```
+
+It is idempotent: a second run with `-Fix` changes nothing.
+
+### 0.1 Where the setup lives (config home)
+
+`config.json`, `secret.dpapi` and `tools/` do **not** live in the skill folder. They live in the **config
+home**, resolved in this order:
+
+1. an explicitly passed `-SkillRoot` (tests and special cases only)
+2. `$env:PSADT_DEPLOY_HOME`
+3. `%LOCALAPPDATA%\psadt-deploy` (the default)
+
+**Why:** the pre-0.19 layout kept everything inside the skill folder, so a `git pull`, a re-clone or a
+re-install silently took the whole setup with it - and any script started from an output folder could not
+find the config at all. A config beside `scripts/` from an older install still works, read-only: the doctor
+reports it as `LegacyConfig WARN`, and `-Fix` migrates it (config and secret are copied to the home and the
+originals renamed to `*.migrated` - nothing is deleted - `tools/*` is moved, and a recorded
+`paths.intuneWinAppUtil` is rebased onto the new home).
+
+### 0.2 The verdict
+
+`Overall` is `GREEN` (all clear), `YELLOW` (only warnings - packaging works) or `RED` (a hard blocker).
+Only a `FAIL` turns it red. Each check carries `Name`, `Status`, `Detail` and a `Fix` hint:
+
+| Check | FAIL means | Fix |
+|---|---|---|
+| `PowerShell7` | host is 5.1 | re-run with `pwsh` |
+| `PsadtModule` | PSAppDeployToolkit missing - no scaffold possible | `-Fix` (PSGallery) |
+| `IntuneWinAppUtil` | content-prep tool missing - no `.intunewin` | `-Fix` (download) |
+| `Config` | no config, malformed JSON, or required keys missing | `-Set` for human keys, `-Fix` for the rest |
+
+Warn-only checks: `WindowsPowerShell51` and `Elevation` (both needed by the Phase 6 SYSTEM test, not by
+packaging), `Git` (without it self-update falls back to the branch-zip route), `InvokeCommandAs` (self-heals
+on first use), `Pester` (test suite only), `LegacyConfig`, `SkillLocation`, `SkillUpdate`, `IntuneAccess`.
+
+### 0.3 The four keys only a human can supply
+
+`.Missing` lists exactly the values the doctor cannot invent:
+
+| Key | Purpose |
+|---|---|
+| `paths.packageRoot` | where packages are built |
+| `paths.outputRoot` | where `.intunewin` + dossier are written |
+| `author.person` | stamped into `AppScriptAuthor` |
+| `author.company` | stamped into `AppScriptAuthor` |
+
+Ask for these (and only these) via `AskUserQuestion`, then persist and re-check in one call:
+
+```powershell
+pwsh scripts/Initialize-PsadtSkill.ps1 -Fix -Set @{
+    'paths.packageRoot' = 'D:\Pakete'
+    'paths.outputRoot'  = 'D:\Intune'
+    'author.person'     = 'Pat Taubert'
+    'author.company'    = 'PHAT Consulting'
+}
+```
+
+`language.script` (EN) / `language.dossier` (DE) and `paths.intuneWinAppUtil` never appear in `.Missing` -
+`-Fix` fills them. Machine-readable output for other tooling: `-Json` (to stdout) or `-JsonPath <file>`.
+`-SkipUpdateCheck` suppresses the only network call in the read-only path.
+
+### 0.4 Optional add-ons (not part of the verdict)
+
+- **WinGet packaging path**: `pwsh scripts/Get-WinGetModule.ps1` downloads the
+  `PSAppDeployToolkit.WinGet` extension into the config home's `tools/` (and into the package). Only needed
+  when the app is packaged from WinGet - see Appendix I.
+- **Direct Intune upload** (Phase 9, opt-in): run `pwsh scripts/New-PsadtEntraApp.ps1` once. Interactive WAM
+  sign-in with device-code fallback; creates the `PSADT Intune Upload` Entra app, admin-consents
+  `DeviceManagementApps.ReadWrite.All` and stores the credential (DPAPI secret, or `-UseCertificate
+  -CertThumbprint`). Needs Global Admin / Privileged Role Admin. Two opt-in flags widen the consent:
+  - `-IncludeGroupManagement` adds the least-privilege group roles `Group.Create` + `GroupMember.Read.All`
+    for opt-in group assignment (Phase 10 / Appendix M).
+  - `-IncludeConfigurationManagement` adds `DeviceManagementConfiguration.ReadWrite.All` so the app can
+    create config / Endpoint-Security policies app-only (`New-IntuneFirewallPolicy.ps1`,
+    `New-IntuneTrustedCertPolicy.ps1`).
+
+  Manual portal route: `references/app-registration.md`. Once configured, the doctor's `IntuneAccess` check
+  reports the tenant/client and whether the credential is actually present.
 
 ---
 

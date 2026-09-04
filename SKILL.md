@@ -1,6 +1,6 @@
 ---
 name: psadt-deploy
-description: Use when the user wants to build, package, test, troubleshoot, or deploy a PSADT v4.x Intune Win32 app. Triggers - "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "Invoke-AppDeployToolkit.ps1 debug", "IntuneWinAppUtil", "update skill" / "psadt update", or when working in a folder with Invoke-AppDeployToolkit.ps1/.exe or a PSAppDeployToolkit module.
+description: Use when the user wants to build, package, test, troubleshoot, or deploy a PSADT v4.x Intune Win32 app. Triggers - "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "Invoke-AppDeployToolkit.ps1 debug", "IntuneWinAppUtil", "update skill" / "psadt update", "psadt setup" / "psadt doctor" / "psadt einrichten", or when working in a folder with Invoke-AppDeployToolkit.ps1/.exe or a PSAppDeployToolkit module.
 ---
 
 # PSADT v4.x Deployment Skill
@@ -25,7 +25,8 @@ help. Keep THIS file as the control plane; load guide sections on demand instead
    Then take option 1 if it is safe and reversible; otherwise hand the exact command back to the user.
 
 Do not assume Adobe/Oracle (or any vendor) as a default - the app always comes from the user; guide examples
-are illustration only.
+are illustration only. Never pass `-SkillRoot` to a script and never build a path from the skill folder -
+every script resolves the config home itself (see Conventions).
 
 ## Sub-agent architecture (roles + handoffs)
 
@@ -75,6 +76,10 @@ Context follow-ups (coexistence, processes-to-close, architecture) come situatio
     end-user text; do NOT spell out ae/oe/ue). The umlauts come from the description metadata; the template
     stays ASCII via HTML entities and the file is written UTF-8. The Company-Portal app description block =
     **Markdown** (that field is Markdown-only, not HTML).
+- **Config home.** `config.json`, `secret.dpapi` and `tools/` live in `%LOCALAPPDATA%\psadt-deploy\`
+  (override: `$env:PSADT_DEPLOY_HOME`), NEVER in the skill folder - they must survive a re-clone, an update
+  and a re-install. `Get-PsadtConfig.ps1` is the only resolver; take paths from its `.Home` / `.Path`. A
+  pre-0.19 config beside `scripts/` still works read-only (`.LegacyInUse`) - offer `-Fix` to migrate it.
 - **Output location.** `.intunewin` ALWAYS to `<paths.outputRoot>\<App[-Version]>\` (from `Get-PsadtConfig`,
   no hard-coded default), one sub-folder per app. Detection script + `Intune-Dossier.html` live in that same
   folder (everything together). Never a `_IntuneOutput` folder beside the package; never `-o` inside `-c`.
@@ -137,7 +142,8 @@ Context follow-ups (coexistence, processes-to-close, architecture) come situatio
 
 ## Self-update
 
-On user request ("update skill" / "psadt update" / "/update-skill") or once at Phase 0 (quiet, non-blocking):
+On user request ("update skill" / "psadt update" / "/update-skill"); at Phase 0 the doctor already reports it
+as its `SkillUpdate` check (quiet, non-blocking):
 `pwsh scripts/Update-PsadtSkill.ps1` (read-only, commit-based: `HEAD` vs `origin/<branch>`, or the GitHub
 commits-API sha vs the recorded `tooling.skillCommit`; the CHANGELOG version is context only). If
 `UpdateAvailable`, show `LocalVersion -> RemoteVersion` + `Behind` + `WhatsNew`, then ask via
@@ -147,19 +153,11 @@ Offline → say so and continue; an update check must never block packaging.
 
 ## Workflow
 
-**Phase 0 - Setup.** `pwsh scripts/Get-PsadtConfig.ps1`; if `Exists` and nothing `Missing`, go to intake.
-Else run the wizard (ask only missing values via `AskUserQuestion`): paths (`packageRoot` / `outputRoot` /
-`intuneWinAppUtil`, offer current values as defaults), languages (`script`=EN, `dossier`=DE), author
-(`person` / `company`). Persist with `Set-PsadtConfig.ps1 -Updates @{...}`. Provision (never block):
-`Get-PsadtModule.ps1`, `Get-IntuneWinAppUtil.ps1`, and for WinGet only `Get-WinGetModule.ps1`. Optional
-direct-upload bootstrap: `New-PsadtEntraApp.ps1` once (WAM sign-in, device-code fallback; creates the
-`PSADT Intune Upload` Entra app + admin-consents `DeviceManagementApps.ReadWrite.All` + stores the credential;
-needs Global Admin / Privileged Role Admin). Add `-IncludeGroupManagement` to also consent the least-privilege
-group roles (`Group.Create` + `GroupMember.Read.All`) when the user wants opt-in group assignment (Phase 10 /
-guide Appendix M) - off by default. Add `-IncludeConfigurationManagement` to consent
-`DeviceManagementConfiguration.ReadWrite.All` so the app can create config / Endpoint-Security policies app-only
-(`New-IntuneFirewallPolicy.ps1`, `New-IntuneTrustedCertPolicy.ps1`) - off by default. Manual portal route: `references/app-registration.md`.
-Re-triggerable via "psadt setup".
+**Phase 0 - Setup (doctor).** `pwsh scripts/Initialize-PsadtSkill.ps1 -Fix` (idempotent; `-Fix` migrates a
+legacy config home, installs the modules/tool and fills the EN/DE + tool-path defaults). GREEN/YELLOW -> intake.
+RED -> ask ONLY for `.Missing` via `AskUserQuestion` (current values as defaults), persist with `-Set @{...}`,
+re-run. Then act on the remaining WARN lines - each carries its own `.Fix`. WinGet also needs
+`Get-WinGetModule.ps1`; optional upload bootstrap `New-PsadtEntraApp.ps1` - both in guide Phase 0.
 
 **Phase 1 - Intake.** A PSADT v4 package always serves all three deployment types - plan them now, not at the
 end. Resolve scope via decision gates 1 + 2 only; pre-fill every option from research. Catalogue: guide Phase 1.2.
@@ -292,7 +290,7 @@ IntuneManagementExtension.log.
 | upload `403` on probe/create | app consent missing/ineffective | re-run `New-PsadtEntraApp.ps1`; guide H |
 | detection rule rejected (`property may not be set ... used for app detection`) | requirement-only props on a detection rule | keep only `ruleType,enforceSignatureCheck,runAs32Bit,scriptContent`; guide H.2 |
 | upload `BadRequest: Unknown MinimumSupportedWindowsRelease` | `-MinWindowsRelease` value the backend rejects (e.g. `21H2`/`22H2`) | use a backend-accepted ID `1607..2004`; set a higher min in the portal; guide H.11 |
-| assignment `Group assignment is not enabled` | `intune.groups` absent/`enabled=false` in the resolved config | configure `intune.groups` (App. M) / point `-SkillRoot` at the install holding the config |
+| assignment `Group assignment is not enabled` | `intune.groups` absent/`enabled=false` in the resolved config | configure `intune.groups` (App. M); run `Initialize-PsadtSkill.ps1` to see WHICH config was resolved |
 | assignment denied on group lookup/create (`Authorization`) | upload app lacks `GroupMember.Read.All` / `Group.Create` | `New-PsadtEntraApp.ps1 -IncludeGroupManagement` (Global Admin); guide M.1 |
 
 Full symptom/HRESULT catalogue: guide Appendix A.

@@ -24,3 +24,6 @@ testResults*.xml
 
 # Local planning / specs (superpowers) - NEVER commit, stays local
 docs/superpowers/
+
+# Migrated legacy config/secret left behind by Initialize-PsadtSkill.ps1 -Fix (kept, never deleted)
+*.migrated
