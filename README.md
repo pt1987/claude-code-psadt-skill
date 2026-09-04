@@ -39,7 +39,7 @@ That installs the skill into `~/.claude/skills/psadt-deploy` and runs the setup 
 everything it can and names the handful of values only you can supply (see
 [First-run setup](#first-run-setup)). Then open Claude Code in any folder and say what you want:
 
-> *"Baue mir ein Intune-Paket für 7-Zip 24.09"* — or *"package Notepad++ for Intune"*
+> *"Create the win32 intune packacge for 7-Zip 24.09"* — or *"package Notepad++ for Intune"*
 
 The skill asks at most **four decision gates** (scope · deployment semantics · SYSTEM-test consent ·
 upload confirmation). Everything else it researches and states as an assumption instead of asking.
