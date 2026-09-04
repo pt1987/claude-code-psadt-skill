@@ -114,12 +114,6 @@ $WamScopes = @(
 . (Join-Path $PSScriptRoot '_GraphInteractive.ps1')
 $script:step = 0
 
-function ConvertFrom-JwtPayload([string]$jwt) {
-    $payload = $jwt.Split('.')[1].Replace('-', '+').Replace('_', '/')
-    switch ($payload.Length % 4) { 2 { $payload += '==' } 3 { $payload += '=' } }
-    return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json
-}
-
 # --- Device-code sign-in -----------------------------------------------------------------------------
 function Get-DeviceCodeToken([string]$Tenant, [string]$Scope) {
     $authority = "https://login.microsoftonline.com/$Tenant/oauth2/v2.0"

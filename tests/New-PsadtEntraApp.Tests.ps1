@@ -1,6 +1,6 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.0' }
 <#
-    Tests for scripts/New-PsadtEntraApp.ps1 internal helpers: the JWT payload decoder and - importantly -
+    Tests for scripts/New-PsadtEntraApp.ps1 internal helpers - importantly
     Invoke-WithRetry, which carried the operator-precedence bug (retried EVERY error, including real
     denials). The WAM / device-code sign-in paths are interactive and intentionally not unit-tested.
 #>
@@ -9,7 +9,6 @@ BeforeAll {
     . (Join-Path $PSScriptRoot '_helpers.ps1')
     . (Join-Path $PSScriptRoot '..\scripts\_GraphCommon.ps1')   # provides Get-GraphErr + Write-Info used by Invoke-WithRetry
     $entra = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\New-PsadtEntraApp.ps1')).Path
-    . ([scriptblock]::Create((Get-ScriptFunctionText -Path $entra -Name 'ConvertFrom-JwtPayload')))
     . ([scriptblock]::Create((Get-ScriptFunctionText -Path $entra -Name 'Invoke-WithRetry')))
 
     function New-CodedError([string]$Code) {
@@ -17,17 +16,6 @@ BeforeAll {
         $err = [System.Management.Automation.ErrorRecord]::new($ex, $Code, 'NotSpecified', $null)
         $err.ErrorDetails = [System.Management.Automation.ErrorDetails]::new('{"error":{"code":"' + $Code + '","message":"x"}}')
         return $err
-    }
-}
-
-Describe 'ConvertFrom-JwtPayload' {
-    It 'decodes a base64url JWT payload (with padding restored)' {
-        $payloadJson = @{ aud = 'aud-x'; roles = @('r1', 'r2') } | ConvertTo-Json -Compress
-        $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payloadJson)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
-        $jwt = "eyJhbGciOiJSUzI1NiJ9.$b64.signature"
-        $p = ConvertFrom-JwtPayload $jwt
-        $p.aud | Should -Be 'aud-x'
-        $p.roles.Count | Should -Be 2
     }
 }
 

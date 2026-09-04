@@ -122,3 +122,70 @@ function Invoke-Graph {
         }
     }
 }
+
+# --- Token introspection ---------------------------------------------------------------------------
+# Graph access tokens are officially OPAQUE: Microsoft does not guarantee they stay decodable JWTs. So
+# everything below is best-effort by design - it turns "403 three phases later" into a precise message up
+# front, but a decode failure NEVER blocks the caller. It costs no extra permission: an app-only token
+# already carries its granted app roles in the 'roles' claim.
+
+function ConvertFrom-JwtPayload([string]$jwt) {
+    $payload = $jwt.Split('.')[1].Replace('-', '+').Replace('_', '/')
+    switch ($payload.Length % 4) { 2 { $payload += '==' } 3 { $payload += '=' } }
+    return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json
+}
+
+function Get-GraphTokenRoles([string]$Token) {
+    # The granted application roles, or an empty list when the claim is absent / the token is opaque.
+    try {
+        $claims = ConvertFrom-JwtPayload $Token
+        if ($null -eq $claims.roles) { return @() }
+        return @($claims.roles)
+    } catch { return @() }
+}
+
+function Assert-GraphRole {
+    # $true  = the app-only token demonstrably carries $Role.
+    # $false = could not be established (opaque token, or a delegated token whose Intune RBAC is not in
+    #          the token at all) - the caller proceeds and lets Graph decide.
+    # throw  = the token was readable and does NOT carry the role. Fail here, before the first write.
+    param(
+        [Parameter(Mandatory)][string]$Token,
+        [Parameter(Mandatory)][string]$Role,
+        [string]$Hint
+    )
+    $claims = $null
+    try { $claims = ConvertFrom-JwtPayload $Token } catch { $claims = $null }
+    if ($null -eq $claims) { return $false }
+
+    # @($claims.roles) on an ABSENT claim yields @($null) - a one-element array - so the emptiness test
+    # has to be explicit or every roleless token looks like it carries one role.
+    $roles = if ($null -eq $claims.roles) { @() } else { @($claims.roles) }
+    $scp   = [string]$claims.scp
+    $idtyp = [string]$claims.idtyp
+
+    # Delegated token: carries scopes ('scp'), never the user's Intune RBAC. Advisory only.
+    if ($roles.Count -eq 0 -and $idtyp -ne 'app' -and -not [string]::IsNullOrWhiteSpace($scp)) {
+        if (($scp -split ' ') -notcontains $Role) {
+            Write-Warn2 "Delegated sign-in carries no '$Role' scope - continuing; the tenant's Intune RBAC decides."
+        }
+        return $false
+    }
+
+    if ($roles -contains $Role) { return $true }
+    $msg = "The configured Entra app has no Graph application role '$Role'"
+    $msg += if ($roles.Count) { " (it has: $($roles -join ', '))." } else { " (no application roles are consented at all)." }
+    if ($Hint) { $msg += " $Hint" }
+    throw $msg
+}
+
+function Get-GraphAuthErrorHint([string]$Message) {
+    # Turns the AADSTS codes that actually strand a user into one actionable sentence; $null otherwise.
+    if ([string]::IsNullOrWhiteSpace($Message)) { return $null }
+    if ($Message -match 'AADSTS7000222') { return 'The client secret has EXPIRED - re-run New-PsadtEntraApp.ps1 to create a new one.' }
+    if ($Message -match 'AADSTS7000215') { return 'The client secret is INVALID (rotated or mistyped) - re-run New-PsadtEntraApp.ps1.' }
+    if ($Message -match 'AADSTS700016')  { return 'The app registration was not found in this tenant - check intune.clientId and intune.tenantId.' }
+    if ($Message -match 'AADSTS90002')   { return 'That tenant does not exist - check intune.tenantId.' }
+    if ($Message -match 'AADSTS53003')   { return 'Blocked by a Conditional Access policy - the app or this sign-in needs an exclusion.' }
+    return $null
+}
