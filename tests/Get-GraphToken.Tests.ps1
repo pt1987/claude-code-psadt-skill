@@ -10,6 +10,18 @@
 BeforeAll {
     . (Join-Path $PSScriptRoot '_helpers.ps1')
     $script:TokenScript = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\Get-GraphToken.ps1')).Path
+
+    function New-FakeJwt([hashtable]$Claims) {
+        $json = $Claims | ConvertTo-Json -Compress
+        $b64  = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+        return "eyJhbGciOiJSUzI1NiJ9.$b64.signature"
+    }
+    function New-SecretConfig([string]$Root) {
+        @{ version = 1; intune = @{ tenantId = 'tenant-123'; clientId = 'client-456'; secretRef = 'secret.dpapi'; uploadEnabled = $true } } |
+            ConvertTo-Json | Set-Content -Path (Join-Path $Root 'config.json') -Encoding UTF8
+        ConvertFrom-SecureString (ConvertTo-SecureString 'super-secret-value' -AsPlainText -Force) |
+            Set-Content -Path (Join-Path $Root 'secret.dpapi') -Encoding ASCII -NoNewline
+    }
 }
 
 Describe 'Get-GraphToken (DPAPI secret path)' {
@@ -46,6 +58,58 @@ Describe 'Get-GraphToken (DPAPI secret path)' {
             @{ version = 1; intune = @{ uploadEnabled = $true } } | ConvertTo-Json |
                 Set-Content -Path (Join-Path $tmp 'config.json') -Encoding UTF8
             { & $script:TokenScript -SkillRoot $tmp -ErrorAction Stop } | Should -Throw -ExpectedMessage '*missing*'
+        }
+        finally { Remove-TempSkillRoot $tmp }
+    }
+}
+
+Describe 'Get-GraphToken (access state, 0.20.0)' {
+    It 'reports the granted app roles and the auth method used' {
+        $tmp = New-TempSkillRoot
+        try {
+            New-SecretConfig $tmp
+            $jwt = New-FakeJwt @{ idtyp = 'app'; roles = @('DeviceManagementApps.ReadWrite.All', 'Group.Create') }
+            Mock Invoke-RestMethod { [pscustomobject]@{ access_token = $jwt; expires_in = 3600 } } -ParameterFilter { $Uri -like '*oauth2/v2.0/token' }
+
+            $r = & $script:TokenScript -SkillRoot $tmp
+            $r.AuthMethod | Should -Be 'ClientSecret'
+            $r.Roles      | Should -Contain 'DeviceManagementApps.ReadWrite.All'
+            $r.Roles      | Should -Contain 'Group.Create'
+        }
+        finally { Remove-TempSkillRoot $tmp }
+    }
+
+    It 'reports no roles (not an error) when the token is opaque' {
+        $tmp = New-TempSkillRoot
+        try {
+            New-SecretConfig $tmp
+            Mock Invoke-RestMethod { [pscustomobject]@{ access_token = 'opaque-token'; expires_in = 3600 } } -ParameterFilter { $Uri -like '*oauth2/v2.0/token' }
+
+            $r = & $script:TokenScript -SkillRoot $tmp
+            $r.Token       | Should -Be 'opaque-token'
+            @($r.Roles).Count | Should -Be 0
+        }
+        finally { Remove-TempSkillRoot $tmp }
+    }
+
+    It 'turns an expired-secret AADSTS code into an actionable message' {
+        $tmp = New-TempSkillRoot
+        try {
+            New-SecretConfig $tmp
+            Mock Invoke-RestMethod { throw 'AADSTS7000222: The provided client secret keys for app are expired.' } -ParameterFilter { $Uri -like '*oauth2/v2.0/token' }
+
+            { & $script:TokenScript -SkillRoot $tmp -ErrorAction Stop } | Should -Throw -ExpectedMessage '*EXPIRED*New-PsadtEntraApp*'
+        }
+        finally { Remove-TempSkillRoot $tmp }
+    }
+
+    It 'rethrows an unmapped token failure unchanged' {
+        $tmp = New-TempSkillRoot
+        try {
+            New-SecretConfig $tmp
+            Mock Invoke-RestMethod { throw 'socket closed' } -ParameterFilter { $Uri -like '*oauth2/v2.0/token' }
+
+            { & $script:TokenScript -SkillRoot $tmp -ErrorAction Stop } | Should -Throw -ExpectedMessage '*socket closed*'
         }
         finally { Remove-TempSkillRoot $tmp }
     }
