@@ -136,6 +136,12 @@ $adtSession = @{
     AppArch = 'x64'
     AppLang = 'EN'
     AppRevision = '01'
+
+    # One log per RUN. PSADT appends to a fixed default name (Toolkit.LogAppend = $true in 4.1.8), so
+    # without this every run of every version piles into one file and a failed install is unreadable.
+    # $DeploymentType has no default in this launcher, hence the inline guard. Sanitizing already happened
+    # when this file was generated; Get-Date runs on the client.
+    LogName = ('__LOGSTEM__' + '_' + $(if ($DeploymentType) { $DeploymentType } else { 'Install' }) + '_' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
     AppSuccessExitCodes = @(0, 1707)
     AppRebootExitCodes = @(1641, 3010)
     AppProcessesToClose = @()
@@ -360,7 +366,11 @@ if (-not $Changelog) { $Changelog = "- 0.1 ($today, $Author): Initial version - 
 $out = $tpl.
     Replace('__APPVENDOR__', (Get-SqEscaped $AppVendor)).
     Replace('__APPNAME__', (Get-SqEscaped $AppName)).
+# The per-run log name shares the artifact stem, and the sanitizing rule lives in exactly ONE place
+# (Get-PsadtPackageManifest -Identity) so a second copy can never drift and rename an app.
+$logStem = (& (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -Identity @{ vendor = $AppVendor; name = $AppName; version = $AppVersion; arch = 'x64' }).Stem
     Replace('__APPVERSION__', (Get-SqEscaped $AppVersion)).
+    Replace('__LOGSTEM__', $logStem).
     Replace('__AUTHOR__', (Get-SqEscaped $Author)).
     Replace('__DATE__', $today).
     Replace('__CHANGELOG__', $Changelog).
@@ -688,6 +698,22 @@ $detect = $detect.
     Replace('__APPVERSION__', $AppVersion).
     Replace('__FEATLITERAL__', $featLiteral)
 [System.IO.File]::WriteAllText("$pkg\Detect-$Name.ps1", $detect, [System.Text.UTF8Encoding]::new($true))
+
+
+# The manifest is written by the generator, not left to the operator: the identity that named the log and
+# will name the .intunewin has to be recorded where every later phase reads it.
+& (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath $pkg -Updates @{
+    'app.vendor'             = $AppVendor
+    'app.name'               = $AppName
+    'app.version'            = $AppVersion
+    'app.arch'               = 'x64'
+    'app.lang'               = 'EN'
+    'app.revision'           = 1
+    'package.name'           = $logStem
+    'package.type'           = 'windows-feature'
+    'package.installerTech'  = 'dism'
+    'package.sourceStrategy' = 'none'
+} | Out-Null
 
 Write-Output "PACKAGE_OK: $pkg"
 Write-Output "Next: Phase 5 pre-flight (scripts/Invoke-PsadtPreflight.ps1 -PackagePath '$pkg') -> Phase 7 package -> Phase 8 dossier."

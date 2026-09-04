@@ -71,3 +71,54 @@ Describe 'Invoke-PsadtSystemTest' {
         $r.DetectionState | Should -Be 'not-installed'
     }
 }
+
+Describe 'Get-FreshSessionLog (which log belongs to THIS run)' {
+    BeforeAll {
+        $sysTest = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\Invoke-PsadtSystemTest.ps1')).Path
+        . ([scriptblock]::Create((Get-ScriptFunctionText -Path $sysTest -Name 'Get-FreshSessionLog')))
+    }
+    BeforeEach {
+        $script:dir = Join-Path ([IO.Path]::GetTempPath()) ("logs_" + [guid]::NewGuid().ToString('N'))
+        New-Item $script:dir -ItemType Directory -Force | Out-Null
+        $script:since = (Get-Date).AddSeconds(-5)
+    }
+    AfterEach { Remove-Item $script:dir -Recurse -Force -ErrorAction SilentlyContinue }
+
+    It 'finds the per-run name written by a 0.21.0 launcher' {
+        $f = Join-Path $script:dir 'Mobotix_MxManagementCenter_2.9.1_x64_Install_20260904-141500.log'
+        Set-Content $f 'x'
+        (Get-FreshSessionLog -LogDirectory $script:dir -DeploymentType 'Install' -Since $script:since).FullName | Should -Be $f
+    }
+
+    It 'still finds the legacy appended name from a pre-0.21 package' {
+        $f = Join-Path $script:dir 'MxMC_PSAppDeployToolkit_Install.log'
+        Set-Content $f 'x'
+        (Get-FreshSessionLog -LogDirectory $script:dir -DeploymentType 'Install' -Since $script:since).FullName | Should -Be $f
+    }
+
+    It 'ignores a log that was not written during this run' {
+        # The whole point: a stale legacy log used to win the "newest" contest and the verdict was then
+        # read from last week's file.
+        $old = Join-Path $script:dir 'Old_PSAppDeployToolkit_Install.log'
+        Set-Content $old 'stale'
+        (Get-Item $old).LastWriteTime = (Get-Date).AddDays(-7)
+        Get-FreshSessionLog -LogDirectory $script:dir -DeploymentType 'Install' -Since $script:since | Should -BeNullOrEmpty
+    }
+
+    It 'prefers the newest of several fresh logs' {
+        $a = Join-Path $script:dir 'App_x64_Install_20260904-100000.log'
+        $b = Join-Path $script:dir 'App_x64_Install_20260904-110000.log'
+        Set-Content $a 'older'; Set-Content $b 'newer'
+        (Get-Item $a).LastWriteTime = (Get-Date).AddSeconds(-3)
+        (Get-FreshSessionLog -LogDirectory $script:dir -DeploymentType 'Install' -Since $script:since).FullName | Should -Be $b
+    }
+
+    It 'does not confuse deployment types' {
+        Set-Content (Join-Path $script:dir 'App_x64_Uninstall_20260904-120000.log') 'x'
+        Get-FreshSessionLog -LogDirectory $script:dir -DeploymentType 'Install' -Since $script:since | Should -BeNullOrEmpty
+    }
+
+    It 'returns nothing when the log directory does not exist' {
+        Get-FreshSessionLog -LogDirectory (Join-Path $script:dir 'nope') -DeploymentType 'Install' -Since $script:since | Should -BeNullOrEmpty
+    }
+}

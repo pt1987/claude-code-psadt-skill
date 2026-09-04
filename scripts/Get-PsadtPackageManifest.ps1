@@ -28,6 +28,11 @@
 .PARAMETER PackagePath
     The package folder (the one containing Invoke-AppDeployToolkit.ps1).
 
+.PARAMETER Identity
+    Derive a stem WITHOUT a package on disk: @{ vendor=..; name=..; version=..; arch=.. }. The generators
+    need the stem while they are still writing the launcher, and the sanitizing rule must exist exactly
+    once - a second copy would drift and rename an app behind everyone's back.
+
 .OUTPUTS
     PSCustomObject: Exists(bool), Manifest(object|null), Missing(string[]), Path(string), Stem(string|null),
     Error(string, only when the file is malformed)
@@ -36,9 +41,29 @@
     $m = & Get-PsadtPackageManifest.ps1 -PackagePath D:\Pakete\MxMC
     if ($m.Missing) { ... Set-PsadtPackageManifest.ps1 ... }
 #>
-[CmdletBinding()]
-param([Parameter(Mandatory)][string]$PackagePath)
+[CmdletBinding(DefaultParameterSetName = 'Package')]
+param(
+    [Parameter(Mandatory, ParameterSetName = 'Package')][string]$PackagePath,
+    [Parameter(Mandatory, ParameterSetName = 'Identity')][hashtable]$Identity
+)
 $ErrorActionPreference = 'Stop'
+
+function ConvertTo-NameToken([string]$value) {
+    # File-name safety is not cosmetic here: the stem becomes a folder name, a file name and the
+    # win32LobApp fileName, and IntuneWinAppUtil is unforgiving about the last one.
+    if ([string]::IsNullOrWhiteSpace($value)) { return '' }
+    $t = $value.Trim() -replace '\s+', '_'
+    $t = $t -replace '[^A-Za-z0-9._-]', '_'
+    $t = $t -replace '_{2,}', '_'
+    return $t.Trim('_', '.')
+}
+
+if ($PSCmdlet.ParameterSetName -eq 'Identity') {
+    $parts = @('vendor', 'name', 'version', 'arch') |
+        ForEach-Object { ConvertTo-NameToken ([string]$Identity[$_]) } |
+        Where-Object { $_ }
+    return [pscustomobject]@{ Stem = ($parts -join '_') }
+}
 
 if (-not (Test-Path -LiteralPath $PackagePath)) { throw "PackagePath not found: $PackagePath" }
 $launcher = Join-Path $PackagePath 'Invoke-AppDeployToolkit.ps1'
@@ -56,15 +81,6 @@ function Get-ByPath($obj, [string]$path) {
         $cur = $cur.$seg
     }
     return $cur
-}
-function ConvertTo-NameToken([string]$value) {
-    # File-name safety is not cosmetic here: the stem becomes a folder name, a file name and the
-    # win32LobApp fileName, and IntuneWinAppUtil is unforgiving about the last one.
-    if ([string]::IsNullOrWhiteSpace($value)) { return '' }
-    $t = $value.Trim() -replace '\s+', '_'
-    $t = $t -replace '[^A-Za-z0-9._-]', '_'
-    $t = $t -replace '_{2,}', '_'
-    return $t.Trim('_', '.')
 }
 function New-Result([bool]$exists, $manifest, $missing, [string]$stem, [string]$err) {
     $o = [ordered]@{

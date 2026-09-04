@@ -100,6 +100,12 @@ $adtSession = @{
     AppArch = '__APPARCH__'
     AppLang = 'EN'
     AppRevision = '01'
+
+    # One log per RUN. PSADT appends to a fixed default name (Toolkit.LogAppend = $true in 4.1.8), so
+    # without this every run of every version piles into one file and a failed install is unreadable.
+    # $DeploymentType has no default in this launcher, hence the inline guard. Sanitizing already happened
+    # when this file was generated; Get-Date runs on the client.
+    LogName = ('__LOGSTEM__' + '_' + $(if ($DeploymentType) { $DeploymentType } else { 'Install' }) + '_' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
     AppSuccessExitCodes = @(0, 1707)
     AppRebootExitCodes = @(1641, 3010)
     AppProcessesToClose = __PROCESSES__
@@ -282,12 +288,16 @@ $addArgsLine = if ($AdditionalArgs) { " -AdditionalArgumentList '$(Get-SqEscaped
 
 # Values that land in single-quoted $adtSession literals are single-quote-escaped; __APPNAME_FILE__ is the
 # raw name for the double-quoted desktop-shortcut path (apostrophes are valid inside a double-quoted string).
+# The per-run log name shares the artifact stem, and the sanitizing rule lives in exactly ONE place
+# (Get-PsadtPackageManifest -Identity) so a second copy can never drift and rename an app.
+$logStem = (& (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -Identity @{ vendor = $AppVendor; name = $AppName; version = $AppVersion; arch = $AppArch }).Stem
 $out = $tpl.
     Replace('__APPVENDOR__', (Get-SqEscaped $AppVendor)).
     Replace('__APPNAME_FILE__', $AppName).
     Replace('__APPNAME__', (Get-SqEscaped $AppName)).
     Replace('__APPVERSION__', (Get-SqEscaped $AppVersion)).
     Replace('__APPARCH__', (Get-SqEscaped $AppArch)).
+    Replace('__LOGSTEM__', $logStem).
     Replace('__PROCESSES__', $procLiteral).
     Replace('__AUTHOR__', (Get-SqEscaped $Author)).
     Replace('__DATE__', $today).
@@ -324,5 +334,21 @@ exit 0
 '@
 $detect = $detect.Replace('__NAME__', $Name).Replace('__APPNAME__', $AppName).Replace('__APPVERSION__', $AppVersion).Replace('__PRODUCTCODE__', $ProductCode)
 [System.IO.File]::WriteAllText("$pkg\Detect-$Name.ps1", $detect, [System.Text.UTF8Encoding]::new($true))
+
+
+# The manifest is written by the generator, not left to the operator: the identity that named the log and
+# will name the .intunewin has to be recorded where every later phase reads it.
+& (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath $pkg -Updates @{
+    'app.vendor'             = $AppVendor
+    'app.name'               = $AppName
+    'app.version'            = $AppVersion
+    'app.arch'               = $AppArch
+    'app.lang'               = 'EN'
+    'app.revision'           = 1
+    'package.name'           = $logStem
+    'package.type'           = 'installer'
+    'package.installerTech'  = 'msi'
+    'package.sourceStrategy' = 'bundle'
+} | Out-Null
 
 Write-Output "PACKAGE_OK: $pkg"

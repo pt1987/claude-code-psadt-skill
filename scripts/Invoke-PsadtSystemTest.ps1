@@ -56,6 +56,28 @@ if ($PSVersionTable.PSEdition -eq 'Core' -and $env:PSADT_SYSTEMTEST_NOREEXEC -ne
     } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
 }
 
+function Get-FreshSessionLog {
+    # Which log belongs to THIS run? Since 0.21.0 the generated launchers set a per-run LogName
+    # (<Vendor>_<App>_<Version>_<Arch>_<Type>_<timestamp>.log), while packages scaffolded before that - and
+    # anything built from the raw PSADT template - still write <...>PSAppDeployToolkit_<Type>.log and APPEND
+    # to it. So both shapes are accepted, and the deciding filter is time: a file that was not written
+    # during this run cannot be this run's log, no matter how well its name matches. Without that, a stale
+    # legacy log from last week wins the "newest" contest and the verdict is read from the wrong file.
+    param(
+        [Parameter(Mandatory)][string]$LogDirectory,
+        [Parameter(Mandatory)][string]$DeploymentType,
+        [Parameter(Mandatory)][datetime]$Since
+    )
+    if (-not (Test-Path $LogDirectory)) { return $null }
+    $perRun = "*_$($DeploymentType)_*.log"                       # 0.21.0+
+    $legacy = "*PSAppDeployToolkit_$($DeploymentType).log"       # pre-0.21 and raw template
+    $candidates = @(
+        Get-ChildItem -Path $LogDirectory -Filter $perRun -File -ErrorAction SilentlyContinue
+        Get-ChildItem -Path $LogDirectory -Filter $legacy -File -ErrorAction SilentlyContinue
+    ) | Sort-Object FullName -Unique | Where-Object { $_.LastWriteTime -ge $Since }
+    return ($candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1)
+}
+
 # 2. Ensure the Invoke-CommandAs module is present (self-heal from PSGallery)
 if (-not (Get-Module -ListAvailable -Name Invoke-CommandAs)) {
     Install-Module -Name Invoke-CommandAs -Scope CurrentUser -Force -AllowClobber
@@ -76,14 +98,13 @@ $sb = {
     }
     [pscustomobject]@{ DeployExitCode = $deployExit; DeployOutput = $deployOut; DetectExitCode = $detExit; DetectOutput = $detOut }
 }
+# A second of slack: the log's LastWriteTime is written by the SYSTEM process, whose clock resolution and
+# our own are not the same thing, and a log created in the same tick must not be excluded.
+$runStart = (Get-Date).AddSeconds(-1)
 $run = Invoke-CommandAs -AsSystem -ScriptBlock $sb -ArgumentList $exe, $DeploymentType, $DetectionScript
 
 # 4. Locate + read the fresh PSADT session log
-$log = $null
-if (Test-Path $LogDirectory) {
-    $log = Get-ChildItem -Path $LogDirectory -Filter "*PSAppDeployToolkit_$DeploymentType.log" -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-}
+$log = Get-FreshSessionLog -LogDirectory $LogDirectory -DeploymentType $DeploymentType -Since $runStart
 $logPath = if ($log) { $log.FullName } else { $null }
 $logTail = if ($logPath) { (Get-Content $logPath -Tail 40) -join "`n" } else { '' }
 $errorLines = @()
