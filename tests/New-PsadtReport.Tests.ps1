@@ -120,3 +120,89 @@ Describe 'New-PsadtReport' {
         $html | Should -Match 'RootCATrustedCertificates'
     }
 }
+
+Describe 'New-PsadtReport -ManifestPath (0.21.0)' {
+    BeforeEach {
+        $script:pkgDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item $script:pkgDir -ItemType Directory -Force | Out-Null
+        $script:mfPath = Join-Path $script:pkgDir 'psadt-package.json'
+        $script:outHtml = Join-Path $script:pkgDir 'Intune-Dossier.html'
+        $script:writeMf = {
+            param([hashtable]$M)
+            $M | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $script:mfPath -Encoding UTF8
+        }
+        $script:fullIdentity = @{
+            schema  = 1
+            app     = @{ vendor = 'Mobotix'; name = 'MxManagementCenter'; version = '2.9.1'; arch = 'x64' }
+            package = @{ type = 'installer' }
+        }
+    }
+
+    It 'takes the identity from the manifest' {
+        & $script:writeMf $script:fullIdentity
+        & $script:gen -ManifestPath $script:mfPath -OutputPath $script:outHtml
+        $html = Get-Content $script:outHtml -Raw
+        $html | Should -Match 'MxManagementCenter'
+        $html | Should -Match '2\.9\.1'
+        $html | Should -Match 'Mobotix'
+    }
+
+    It 'still renders a package that was never packed or tested' {
+        # "Report ALWAYS" has to hold before Phase 7 - the unknown parts render neutral, not as a failure.
+        & $script:writeMf $script:fullIdentity
+        { & $script:gen -ManifestPath $script:mfPath -OutputPath $script:outHtml } | Should -Not -Throw
+        (Test-Path $script:outHtml) | Should -BeTrue
+    }
+
+    It 'refuses an incomplete identity instead of shipping a placeholder' {
+        & $script:writeMf @{ schema = 1; app = @{ name = 'OnlyAName' }; package = @{ type = 'installer' } }
+        { & $script:gen -ManifestPath $script:mfPath -OutputPath $script:outHtml -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*identity is incomplete*'
+    }
+
+    It 'lets -Metadata override the manifest' {
+        & $script:writeMf $script:fullIdentity
+        & $script:gen -ManifestPath $script:mfPath -Metadata @{ AppVersion = '3.0.0-rc1' } -OutputPath $script:outHtml
+        (Get-Content $script:outHtml -Raw) | Should -Match '3\.0\.0-rc1'
+    }
+
+    It 'picks up the artifact names recorded by the packaging step' {
+        $m = $script:fullIdentity.Clone()
+        $m.artifacts = @{
+            outputFolder = 'D:\Intune\Mobotix_MxManagementCenter_2.9.1_x64'
+            intunewin    = 'D:\Intune\Mobotix_MxManagementCenter_2.9.1_x64\Mobotix_MxManagementCenter_2.9.1_x64.intunewin'
+            detection    = 'D:\Intune\Mobotix_MxManagementCenter_2.9.1_x64\Detect-MxMC.ps1'
+        }
+        & $script:writeMf $m
+        & $script:gen -ManifestPath $script:mfPath -OutputPath $script:outHtml
+        $html = Get-Content $script:outHtml -Raw
+        $html | Should -Match 'Mobotix_MxManagementCenter_2\.9\.1_x64\.intunewin'
+        $html | Should -Match 'Detect-MxMC\.ps1'
+    }
+
+    It 'enforces the SYSTEM-test gate only when the package is meant to be uploaded' {
+        $m = $script:fullIdentity.Clone()
+        $m.decisions = @{ upload = $true }
+        & $script:writeMf $m
+        { & $script:gen -ManifestPath $script:mfPath -OutputPath $script:outHtml -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*SYSTEM-test result*'
+
+        # Same manifest, upload not planned -> the dossier is produced without a SYSTEM test.
+        $m.decisions = @{ upload = $false }
+        & $script:writeMf $m
+        { & $script:gen -ManifestPath $script:mfPath -OutputPath $script:outHtml } | Should -Not -Throw
+    }
+
+    It 'accepts the upload gate once SYSTEM-test results are supplied' {
+        $m = $script:fullIdentity.Clone()
+        $m.decisions = @{ upload = $true }
+        & $script:writeMf $m
+        $st = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'OK' })
+        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st } -OutputPath $script:outHtml } | Should -Not -Throw
+    }
+
+    It 'throws for a manifest path that does not exist' {
+        { & $script:gen -ManifestPath (Join-Path $TestDrive 'nope.json') -OutputPath $script:outHtml -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*ManifestPath not found*'
+    }
+}

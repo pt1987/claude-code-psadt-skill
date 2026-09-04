@@ -51,6 +51,10 @@ param(
     [Parameter(ParameterSetName = 'Json', Mandatory)]
     [string]$MetadataPath,
 
+    # A package manifest (psadt-package.json) to take the identity and the artifacts from. -Metadata still
+    # wins for every key it sets, so a one-off override needs no manifest edit.
+    [string]$ManifestPath,
+
     [string]$OutputPath,
 
     [string]$TemplatePath,
@@ -69,6 +73,41 @@ if ($PSCmdlet.ParameterSetName -eq 'Json') {
     # convert PSCustomObject -> hashtable
     $Metadata = @{}
     foreach ($p in $json.PSObject.Properties) { $Metadata[$p.Name] = $p.Value }
+}
+
+# ----------------------------------------------------------------------------- manifest (0.21.0)
+if ($ManifestPath) {
+    if (-not (Test-Path -LiteralPath $ManifestPath)) { throw "ManifestPath not found: $ManifestPath" }
+    try { $mf = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { throw "psadt-package.json is malformed: $($_.Exception.Message)" }
+
+    # Only fill what -Metadata did not set: an explicit argument always wins.
+    function Set-FromManifest([string]$Key, $Value) {
+        if ($null -eq $Value -or '' -eq $Value) { return }
+        if (-not $Metadata.ContainsKey($Key) -or $null -eq $Metadata[$Key]) { $Metadata[$Key] = $Value }
+    }
+    Set-FromManifest 'AppName'      $mf.app.name
+    Set-FromManifest 'AppVersion'   $mf.app.version
+    Set-FromManifest 'Publisher'    $mf.app.vendor
+    Set-FromManifest 'Location'     $mf.artifacts.outputFolder
+    if ($mf.artifacts.intunewin) { Set-FromManifest 'IntuneWin' ([IO.Path]::GetFileName([string]$mf.artifacts.intunewin)) }
+    if ($mf.artifacts.detection) { Set-FromManifest 'DetectScript' ([IO.Path]::GetFileName([string]$mf.artifacts.detection)) }
+    Set-FromManifest 'SetupFile'    $mf.results.package.setupFile
+
+    # The identity floor. Everything else - IntuneWin, Preflight, SystemTest - renders neutrally, because
+    # "report ALWAYS" has to hold for a package that is not packed or tested yet. But a dossier that says
+    # "App 0.0.0" is not an honest deliverable, it is a placeholder with a letterhead.
+    $identityGaps = @('AppName', 'AppVersion', 'Publisher') |
+        Where-Object { [string]::IsNullOrWhiteSpace([string]$Metadata[$_]) }
+    if ($identityGaps.Count) {
+        throw "The manifest identity is incomplete ($($identityGaps -join ', ')) - fill it with Set-PsadtPackageManifest.ps1, or pass the values via -Metadata. A dossier without a real app identity is a placeholder, not a deliverable."
+    }
+
+    # The SYSTEM test is BINDING only for a package that is going to be uploaded. That decision lives in
+    # the manifest, so the gate can be enforced here instead of relying on the operator remembering it.
+    if ($mf.decisions.upload -eq $true -and -not $Metadata.ContainsKey('SystemTest')) {
+        throw "decisions.upload is true but no SYSTEM-test result was supplied. Run Invoke-PsadtSystemTest.ps1 (Install + Uninstall) first - Phase 6 is the binding gate for upload - or set decisions.upload to false."
+    }
 }
 
 if (-not $TemplatePath) {

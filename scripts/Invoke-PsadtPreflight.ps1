@@ -203,6 +203,21 @@ if ($launcherText -match '(?m)^\s*LogName\s*=') {
 
 # --- Verdict --------------------------------------------------------------------------------------
 $overall = if (@($checks | Where-Object { $_.Status -eq 'FAIL' }).Count -gt 0) { 'RED' } else { 'GREEN' }
+
+# Record the verdict in the manifest (the ONLY thing this script writes). The dossier and Appendix E read
+# it from there instead of the operator retyping "pre-flight was green" three phases later.
+if ($mf.Exists -and -not $mf.Error) {
+    try {
+        & (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath $PackagePath -Updates @{
+            'results.preflight' = @{
+                verdict = $overall
+                fails   = @($checks | Where-Object { $_.Status -eq 'FAIL' }).Count
+                warns   = @($checks | Where-Object { $_.Status -eq 'WARN' }).Count
+                at      = (Get-Date).ToUniversalTime().ToString('o')
+            }
+        } | Out-Null
+    } catch { Write-Warning "Could not record the pre-flight verdict in the manifest: $($_.Exception.Message)" }
+}
 foreach ($c in $checks) { Write-Verbose ("[{0}] {1} ({2}): {3}" -f $c.Status, $c.Name, $c.File, $c.Detail) }
 
 [pscustomobject]@{

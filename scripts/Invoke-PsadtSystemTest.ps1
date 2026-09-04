@@ -56,6 +56,31 @@ if ($PSVersionTable.PSEdition -eq 'Core' -and $env:PSADT_SYSTEMTEST_NOREEXEC -ne
     } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
 }
 
+function Write-SystemTestResult {
+    # Appends one run to results.systemTest[] and its log to artifacts.logs[]. Best effort by design: a
+    # package with no manifest (a hand-scaffolded one, say) must still be testable, so a failure here is a
+    # warning, never a failed SYSTEM test.
+    param([Parameter(Mandatory)][string]$PackagePath, [Parameter(Mandatory)]$Result)
+    try {
+        $mf = & (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -PackagePath $PackagePath
+        if (-not $mf.Exists -or $mf.Error) { return }
+        $append = @{
+            'results.systemTest' = @{
+                type      = $Result.DeploymentType
+                exitCode  = $Result.ExitCode
+                success   = $Result.Success
+                detection = $Result.DetectionState
+                log       = $Result.LogPath
+                at        = (Get-Date).ToUniversalTime().ToString('o')
+            }
+        }
+        if ($Result.LogPath) { $append['artifacts.logs'] = $Result.LogPath }
+        & (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath $PackagePath -Append $append | Out-Null
+    } catch {
+        Write-Warning "Could not record the SYSTEM-test result in the manifest: $($_.Exception.Message)"
+    }
+}
+
 function Get-FreshSessionLog {
     # Which log belongs to THIS run? Since 0.21.0 the generated launchers set a per-run LogName
     # (<Vendor>_<App>_<Version>_<Arch>_<Type>_<timestamp>.log), while packages scaffolded before that - and
@@ -140,5 +165,9 @@ $result = [pscustomobject]@{
 if ($ResultJsonPath) {
     [System.IO.File]::WriteAllText($ResultJsonPath, ($result | ConvertTo-Json -Depth 6), [System.Text.UTF8Encoding]::new($false))
 } else {
+    # Record the run in the manifest - deliberately ONLY here, i.e. only in the process that returns the
+    # result to a caller. The 5.1 re-exec child runs the same file, and writing in both would append every
+    # run twice. Appended, never replaced: the Install and the Uninstall run are two pieces of evidence.
+    Write-SystemTestResult -PackagePath $PackagePath -Result $result
     $result
 }
