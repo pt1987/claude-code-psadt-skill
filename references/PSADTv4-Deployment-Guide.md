@@ -103,8 +103,20 @@ pwsh scripts/Initialize-PsadtSkill.ps1 -Fix -Set @{
     create config / Endpoint-Security policies app-only (`New-IntuneFirewallPolicy.ps1`,
     `New-IntuneTrustedCertPolicy.ps1`).
 
-  Manual portal route: `references/app-registration.md`. Once configured, the doctor's `IntuneAccess` check
-  reports the tenant/client and whether the credential is actually present.
+  Permission matrix + manual portal route: `references/app-registration.md`. The doctor's `IntuneAccess`
+  check reports the local side (identity + credential present and decryptable). For the tenant's answer -
+  which roles are actually consented, and how long the credential still lives - run the read-only verdict:
+
+  ```powershell
+  pwsh scripts/Test-PsadtIntuneAccess.ps1
+  ```
+
+  It reports `TokenOk` as `VERIFIED` / `REFUSED` / `UNKNOWN` plus a capability per feature
+  (`Upload` / `Groups` / `Configuration`), each of which can be `unknown` rather than `no` - Graph tokens
+  are opaque by contract, so "we could not tell" is a distinct answer from "not permitted". Verified roles
+  are cached in `intune.roles` with a `intune.lastVerified` timestamp; an offline run never overwrites them.
+  **Gate on `Capabilities.<X>` before Phase 9 / Phase 10 / a cert or firewall policy** instead of finding out
+  from a 403 mid-upload.
 
 ---
 
@@ -1688,13 +1700,11 @@ Read-only dry run by default; `-Execute` writes. It is **idempotent** and **neve
 app's assignment.
 
 ### M.1 Permissions (least-privilege)
-The upload app (`PSADT Intune Upload`) needs two extra Graph **application** roles beyond the upload role:
-
-| Action | Role |
-|---|---|
-| upload + assign the app | `DeviceManagementApps.ReadWrite.All` (already required for upload) |
-| find a group by name | `GroupMember.Read.All` |
-| create a group the app then OWNS | `Group.Create` (NOT the tenant-wide `Group.ReadWrite.All`) |
+Group assignment needs **both** `Group.Create` (a group the app then owns - NOT the tenant-wide
+`Group.ReadWrite.All`) and `GroupMember.Read.All` (find a group by name), on top of the upload role. The
+full matrix - every role, its capability and how to grant it - lives in `references/app-registration.md`
+section 0; it is not repeated here. `Invoke-IntuneAppAssignment.ps1` asserts both roles before it creates
+anything, and `Test-PsadtIntuneAccess.ps1` reports which half is missing.
 
 Grant them once (opt-in), needs Global Admin / Privileged Role Admin to consent:
 
@@ -1855,9 +1865,12 @@ and let the user redirect). Whatever the choice, still hand over the prepared OM
 ### N.4 Graph permission + manual fallback
 
 Creating a configuration profile needs the Graph application role **`DeviceManagementConfiguration.ReadWrite.All`**
-- the upload app (`PSADT Intune Upload`) only has `DeviceManagementApps.ReadWrite.All`, so `-Execute` may get
-**403**. The script catches that and prints the manual portal steps instead of failing. Either grant the role
-(Global Admin) and re-run, or create it by hand:
+(full matrix: `references/app-registration.md` section 0). The upload app (`PSADT Intune Upload`) does not
+carry it unless it was consented with `-IncludeConfigurationManagement`. Since 0.20.0 the script says so
+**before** it writes - it reads the granted roles out of the app-only token and names the missing permission
+instead of letting `-Execute` come back with a **403**. A delegated `-Interactive` sign-in carries no roles
+claim (the user's Intune RBAC is not in the token), so there the tenant still has the last word and the
+403-fallback below applies. Either grant the role (Global Admin) and re-run, or create it by hand:
 
 1. **Devices > Configuration > Create > New policy**; Platform **Windows 10 and later**, Profile type
    **Templates > Custom**.

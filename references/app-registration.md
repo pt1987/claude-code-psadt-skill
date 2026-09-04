@@ -1,7 +1,43 @@
-# Entra app registration — manual portal fallback
+# Entra app registration — permission matrix + manual portal fallback
 
 The direct Intune upload (SKILL.md Phase 9) authenticates as an **app-only** Entra application with the
 Microsoft Graph **application** permission `DeviceManagementApps.ReadWrite.All`.
+
+## 0. The permission matrix (single source of truth)
+
+Every permission this skill can use, and nothing else. Guide Appendix M.1 and N.4 point here rather than
+repeating it. Only the first row is required; the rest are opt-in and off by default.
+
+**Application roles** — what the app-only credential carries in its token (`roles` claim). These are what
+`scripts/Test-PsadtIntuneAccess.ps1` reports as capabilities.
+
+| Role | Capability | Needed for | How to grant |
+|---|---|---|---|
+| `DeviceManagementApps.ReadWrite.All` | `Upload` | Phase 9 direct upload, app assignment | required — `New-PsadtEntraApp.ps1` |
+| `Group.Create` | `Groups` (half) | create an assignment group the app then **owns** (NOT tenant-wide `Group.ReadWrite.All`) | `New-PsadtEntraApp.ps1 -IncludeGroupManagement` |
+| `GroupMember.Read.All` | `Groups` (half) | find an existing group by name | `New-PsadtEntraApp.ps1 -IncludeGroupManagement` |
+| `DeviceManagementConfiguration.ReadWrite.All` | `Configuration` | firewall-rule policy, TrustedPublisher / driver-trust cert profile | `New-PsadtEntraApp.ps1 -IncludeConfigurationManagement` |
+
+The `Groups` capability needs **both** group roles: an app that can create a group but not read its members
+produces a half-finished assignment. `Test-PsadtIntuneAccess.ps1` reports which half is missing.
+
+**Delegated scopes** — used only by the one-time bootstrap sign-in (you, as an admin, in
+`New-PsadtEntraApp.ps1`). They are never stored and never used for packaging or upload.
+
+| Scope | Needed for |
+|---|---|
+| `Application.ReadWrite.All` | create / update the app registration |
+| `AppRoleAssignment.ReadWrite.All` | grant + admin-consent the application roles above |
+
+Granting the application roles requires **Global Administrator** or **Privileged Role Administrator**. A
+non-admin sign-in can create the app but not consent it: `New-PsadtEntraApp.ps1` then leaves
+`intune.uploadEnabled` at `false` and says which roles are still pending.
+
+Check what is actually in place at any time — read-only, no writes to the tenant:
+
+```powershell
+pwsh scripts/Test-PsadtIntuneAccess.ps1
+```
 
 **Preferred path:** run `pwsh scripts/New-PsadtEntraApp.ps1` once. It signs you in interactively via **WAM**
 (the Windows Web Account Manager broker; device-code fallback), creates the app, grants + admin-consents the

@@ -108,18 +108,24 @@ Context follow-ups (coexistence, processes-to-close, architecture) come situatio
   Appendix J. (The logo is uploaded separately to Intune's App-information tab; it is NOT in the `.intunewin`.)
 - **Shortcuts.** Start Menu only (`$envCommonStartMenuPrograms`). No desktop icons; remove any the installer
   creates, and clean up the Start Menu entry on uninstall.
+- **Intune access is state-driven, never trial-and-error.** Before Phase 9 / 10 / any cert-or-firewall policy
+  read the state instead of provoking a 403: `Get-PsadtConfig.IntuneState` + `pwsh
+  scripts/Test-PsadtIntuneAccess.ps1` → `Capabilities.Upload|Groups|Configuration`, three-valued (`$null` =
+  **unknown**, NOT `$false`). Missing → offer the exact fix from `.Hints`, never silently retry. Auth is the
+  DPAPI secret OR a cert (`-UseCertificate -CertThumbprint`; `intune.certThumbprint` beats `secretRef`) - and
+  DPAPI dies with the Windows profile, so a re-installed OS invalidates a stored secret. Roles + matrix:
+  `references/app-registration.md`.
 - **Certificates into a machine store** (driver-trust / `TrustedPublisher`, Root/CA, `TrustedPeople`). Whenever a
   cert must land in a store - the #1 case is an installer that stages a **3rd-party driver**, whose Windows
   "install device software?" prompt blocks a SYSTEM-silent install - treat it as a first-class deliverable:
-  extract the signer cert (from the MSI/EXE/.cat), make **single-line base64** (NO line breaks/PEM -> CSP error
-  `0x87d1fde8`), build the OMA-URI
-  `./Device/Vendor/MSFT/RootCATrustedCertificates/<Store>/<SHA1>/EncodedCertificate`. **TrustedPublisher /
-  TrustedPeople need the `RootCATrustedCertificates` CSP via a Custom OMA-URI profile** - the built-in
-  "Trusted certificate" template only does Root/Intermediate (never claim Intune "can't" do TrustedPublisher).
-  Own the cert in **exactly ONE place** - the **Intune policy** (recommended/transparent:
-  `scripts/New-IntuneTrustedCertPolicy.ps1`, dry-run/`-Execute`, prints the manual portal steps when the app
-  lacks `DeviceManagementConfiguration.ReadWrite.All`) **OR** a package import in the install hook - never both
-  (they fight on uninstall/sync). Assign the policy to the SAME scope as the app. Guide Appendix N.
+  extract the signer cert, make **single-line base64** (line breaks/PEM -> CSP error `0x87d1fde8`), build the
+  OMA-URI `./Device/Vendor/MSFT/RootCATrustedCertificates/<Store>/<SHA1>/EncodedCertificate`. **TrustedPublisher /
+  TrustedPeople need that CSP via a Custom OMA-URI profile** - the built-in "Trusted certificate" template
+  only does Root/Intermediate (never claim Intune "can't" do TrustedPublisher).
+  Own the cert in **exactly ONE place** - the **Intune policy** (`scripts/New-IntuneTrustedCertPolicy.ps1`,
+  dry-run/`-Execute`; it names a missing role before writing and prints the manual portal steps) **OR** a
+  package import in the install hook - never both (they fight on uninstall/sync). Assign the policy to the
+  SAME scope as the app. Guide Appendix N.
 - **Self-contained deliverables (BINDING).** Any helper script placed in an app's **Output folder** (the
   firewall-policy creator, a cert-policy creator, etc.) is COPIED to and run on **test clients that do NOT have
   the skill installed**. It therefore MUST be fully self-contained: **no** dot-sourcing of skill files
@@ -143,13 +149,12 @@ Context follow-ups (coexistence, processes-to-close, architecture) come situatio
 ## Self-update
 
 On user request ("update skill" / "psadt update" / "/update-skill"); at Phase 0 the doctor already reports it
-as its `SkillUpdate` check (quiet, non-blocking):
-`pwsh scripts/Update-PsadtSkill.ps1` (read-only, commit-based: `HEAD` vs `origin/<branch>`, or the GitHub
-commits-API sha vs the recorded `tooling.skillCommit`; the CHANGELOG version is context only). If
-`UpdateAvailable`, show `LocalVersion -> RemoteVersion` + `Behind` + `WhatsNew`, then ask via
-`AskUserQuestion`. Only on confirm: `pwsh scripts/Update-PsadtSkill.ps1 -Apply` (git pull --ff-only for a
-clone, else branch-zip overwrite of tracked files only - never config/secret/tools/docs). Never auto-apply.
-Offline → say so and continue; an update check must never block packaging.
+as its `SkillUpdate` check (quiet, non-blocking). `pwsh scripts/Update-PsadtSkill.ps1` is read-only and
+commit-based (`HEAD` vs `origin/<branch>`, or the commits-API sha vs the recorded `tooling.skillCommit`; the
+CHANGELOG version is context only). If `UpdateAvailable`, show `LocalVersion -> RemoteVersion` + `Behind` +
+`WhatsNew`, then ask via `AskUserQuestion`. Only on confirm: `-Apply` (git pull --ff-only for a clone, else
+branch-zip overwrite of tracked files only - never config/secret/tools/docs). Never auto-apply. Offline →
+say so and continue; an update check must never block packaging.
 
 ## Workflow
 
@@ -233,17 +238,16 @@ guide F.2). Logo fetch + verify + MSI-icon fallback: guide Appendix J. WinGet do
 (WinGet >= 1.7.10582 requirement, registry/file detection note): guide Appendix I.6.
 
 **Phase 9 - Direct Graph upload (opt-in).** Gate 4. ALWAYS dry-run first (read-only) → show summary +
-`On -Execute` action → confirm → `-Execute`. `Invoke-IntuneWin32Upload.ps1` (via `Get-GraphToken.ps1`): MSI →
+`On -Execute` action → confirm → `-Execute`. `Invoke-IntuneWin32Upload.ps1` (via `Get-GraphToken.ps1`; asserts the upload role first): MSI →
 `-MsiProductCode '{GUID}'`; EXE/non-MSI → `-DetectionScriptPath` (a detection rule accepts only
 `ruleType, enforceSignatureCheck, runAs32Bit, scriptContent`; the detect script writes stdout + `exit 0` when
 installed, nothing when not). Fill every objective field; impose no category/notes/featured (group assignment
 is the separate opt-in Phase 10); never DELETE (`-OnExisting CreateNewCoexist`, `-UpdateAppId` only for explicit
 in-place, optional `-SupersedesAppId` - the script wires SUPERSEDENCE only, NOT app dependencies
-(`-DependsOnAppId` relationships are portal-wired). Uses `/beta` (v1.0 drops `displayVersion`; `/beta` is
-unversioned so win32LobApp request shapes can shift - the upload-shape unit tests guard this). `-MinWindowsRelease` is a
-`ValidateSet` of backend-accepted release IDs (`1607..2004`); labels like `21H2`/`22H2` are server-rejected -
-set a higher minimum in the portal (guide H.11). The script refuses the PSADT default logo (SHA256) unless
-`-AllowDefaultLogo`. Graph gotchas: guide Appendix H.
+(`-DependsOnAppId` relationships are portal-wired). Uses `/beta` (v1.0 drops `displayVersion`; the
+upload-shape unit tests guard the shifting request shape). `-MinWindowsRelease` only accepts backend IDs
+`1607..2004` - `21H2`/`22H2` are server-rejected, set a higher minimum in the portal (guide H.11). The script
+refuses the PSADT default logo (SHA256) unless `-AllowDefaultLogo`. Graph gotchas: guide Appendix H.
 
 **Phase 10 - Group assignment (opt-in).** Only when the user chose it at Gate 2 AND `intune.groups.enabled`.
 ALWAYS dry-run first (read-only) → show the planned group names + actions → confirm → `-Execute`.
@@ -251,8 +255,8 @@ ALWAYS dry-run first (read-only) → show the planned group names + actions → 
 creates/reuses Entra security groups by the config naming scheme (`intune.groups.naming`, version-INDEPENDENT by
 default so a new version reuses the same groups; `%version%` is an opt-in that breaks that) and assigns the app
 (intents required/available/uninstall). Idempotent; never deletes a group or another app's assignment;
-ambiguous/duplicate names are skipped, not guessed. Needs `Group.Create` + `GroupMember.Read.All` on the upload
-app (`New-PsadtEntraApp.ps1 -IncludeGroupManagement`). Feed the returned `Groups` into the dossier Assignments
+ambiguous/duplicate names are skipped, not guessed. Needs `Capabilities.Groups` (BOTH group roles - the
+script asserts them before creating anything). Feed the returned `Groups` into the dossier Assignments
 table. Full schema + naming rules + permission model: guide Appendix M.
 
 **Phase 11 - Test sequence (DEV VM, all three types).** Install (ps1 → exe → SYSTEM via
@@ -287,7 +291,8 @@ IntuneManagementExtension.log.
 | upload `must have at least one detection rule` (rule WAS sent) | needs the unified `rules`, `@odata.type` first | `[ordered]@{}`; guide H |
 | upload `commitFileFailed` after blocks "OK" | `Invoke-RestMethod -Body <byte[]>` corrupts the blob | HttpClient/ByteArrayContent; guide H |
 | `displayVersion` empty after upload | v1.0 backend drops it | write on `/beta`; guide H |
-| upload `403` on probe/create | app consent missing/ineffective | re-run `New-PsadtEntraApp.ps1`; guide H |
+| upload `403` on probe/create | app consent missing/ineffective | `Test-PsadtIntuneAccess.ps1` for the exact gap, then `New-PsadtEntraApp.ps1` |
+| token `AADSTS7000222` / secret "cannot be decrypted" | secret expired / DPAPI bound to a re-installed profile | `New-PsadtEntraApp.ps1` stores a fresh secret |
 | detection rule rejected (`property may not be set ... used for app detection`) | requirement-only props on a detection rule | keep only `ruleType,enforceSignatureCheck,runAs32Bit,scriptContent`; guide H.2 |
 | upload `BadRequest: Unknown MinimumSupportedWindowsRelease` | `-MinWindowsRelease` value the backend rejects (e.g. `21H2`/`22H2`) | use a backend-accepted ID `1607..2004`; set a higher min in the portal; guide H.11 |
 | assignment `Group assignment is not enabled` | `intune.groups` absent/`enabled=false` in the resolved config | configure `intune.groups` (App. M); run `Initialize-PsadtSkill.ps1` to see WHICH config was resolved |
@@ -320,7 +325,9 @@ Full symptom/HRESULT catalogue: guide Appendix A.
 
 ## Reference lookup
 
-`references/PSADTv4-Deployment-Guide.md` - Phase 1.2 intake catalogue · 1.1/1.3 research · Phase 3 scaffold ·
+`references/app-registration.md` - THE Graph permission matrix (app roles + capabilities + bootstrap scopes).
+`references/PSADTv4-Deployment-Guide.md` - **Phase 0 setup doctor + config home + Intune access** ·
+Phase 1.2 intake catalogue · 1.1/1.3 research · Phase 3 scaffold ·
 4 customize · 5 pre-flight · 7 package · 8-9 Intune config fields · 11 test · 12 rollout · App. A errors ·
 B anti-patterns · C test stubs · D URLs · E deploy checklist · F dossier template (all fields) · G lessons
 learned · H direct Graph upload · **I WinGet packaging** · **J app-logo acquisition + verification** ·

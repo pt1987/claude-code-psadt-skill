@@ -2,6 +2,67 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.20.0 — 2026-09-04 — Intune access as state, not as a 403
+
+### Added
+- **`scripts/Test-PsadtIntuneAccess.ps1` — the read-only access verdict.** Answers before Phase 9 what used
+  to be answered by a 403 during it: is the configured app usable, what is it allowed to do, and for how
+  long. Reports `TokenOk`, the granted `Roles`, a capability per feature
+  (`Upload` / `Groups` / `Configuration`), `CredExpires` / `DaysToExpiry` and actionable `Hints`. Verified
+  roles and a `lastVerified` timestamp are cached in the config; `-NoPersist` suppresses that, `-Json` /
+  `-JsonPath` are for other tooling.
+  - **`TokenOk` and every capability are three-valued on purpose.** `$true` verified, `$false` refused,
+    `$null` "could not ask" — and for capabilities `$null` means the token could not be introspected, which
+    is **not** the same as "not permitted". Graph tokens are opaque by contract, so conflating the two is
+    how a working setup gets declared broken. A `$null` verdict never overwrites persisted state: being
+    offline is not evidence that an app lost its permissions.
+- **Token introspection in `_GraphCommon.ps1`** — `Get-GraphTokenRoles`, `Assert-GraphRole` and
+  `Get-GraphAuthErrorHint`, plus `ConvertFrom-JwtPayload` moved in from `New-PsadtEntraApp.ps1`. Costs **no
+  extra Graph permission**: an app-only token already carries its granted roles in the `roles` claim.
+- **`references/app-registration.md` section 0 is now THE permission matrix** — every app role with its
+  capability and how to grant it, plus the two delegated bootstrap scopes. Guide M.1 and N.4 point there
+  instead of repeating it.
+- **Guide: Phase 0.4 documents the access verdict**, including the rule to gate on `Capabilities.<X>` before
+  Phase 9 / 10 / a cert or firewall policy.
+
+### Changed
+- **Consumers assert the role they need before their first write.** `Invoke-IntuneWin32Upload.ps1` and
+  `Invoke-IntuneAppAssignment.ps1` check the token first (no request, names the exact missing permission);
+  the upload's read probe stays as proof that the permission is effective end to end. Assignment requires
+  **both** group roles — an app that creates a group but cannot read its members produces a half-finished
+  assignment, and the hint says which half is missing. Both policy scripts get their own embedded variant
+  so they stay self-contained (a test asserts the two copies are byte-identical).
+- **`Get-GraphToken.ps1`** additionally returns `Roles` and `AuthMethod`, and maps the AADSTS codes that
+  actually strand a user — expired secret (7000222), invalid secret (7000215), unknown app (700016),
+  unknown tenant (90002), Conditional Access (53003) — to one actionable sentence instead of
+  `invalid_client`.
+- **`New-PsadtEntraApp.ps1` is stateful and never prompts.** It finds the app by the recorded
+  `intune.clientId` (display name only as a fallback), **merges** `requiredResourceAccess` instead of
+  replacing it, persists `appObjectId` / `appDisplayName` / `credExpires` / the roles it actually holds, sets
+  `uploadEnabled` only once consent is really in place, removes the other credential pointer on a method
+  switch, and counts older client secrets instead of touching them. `-Force` is kept as a no-op.
+- **`Get-PsadtConfig.ps1`** exposes `IntuneState` (`NotConfigured` | `Configured` | `Incomplete`), derived
+  from the checks that already build `.Missing`. Group naming is deliberately excluded — a missing
+  `intune.groups.naming` is a Phase 10 concern, not a broken upload path.
+- **`New-IntuneFirewallPolicy.ps1`**: its own `Get-InteractiveGraphToken` took `-Tenant` while
+  `_GraphInteractive.ps1` takes `-TenantId`. Unified.
+
+### Fixed
+- **Re-running `New-PsadtEntraApp.ps1` could revoke permissions.** The reuse branch sent only the roles
+  requested in *that* run, so a run without `-IncludeConfigurationManagement` silently dropped the config
+  role an earlier run had requested. Now merged, and only PATCHed when something is actually absent.
+- **`New-PsadtEntraApp.ps1` blocked every non-interactive caller** with a `Read-Host` confirmation when the
+  app already existed. Reuse is the default and nothing is prompted.
+- **A credential-method switch left the other pointer behind.** `Get-GraphToken` prefers the certificate
+  path, so a leftover `intune.certThumbprint` silently beat a freshly stored secret.
+- **`uploadEnabled` was set to `$true` even when consent was still pending**, moving the failure to Phase 9.
+- **An undecryptable DPAPI secret produced "Error occurred during a cryptographic operation."** It now says
+  what actually happened (DPAPI is bound to the Windows user profile, so a re-installed OS or a copied file
+  breaks it) and what to do. Found on this project's own config after a machine re-install.
+
+### Notes
+- Test suite: 128 → **173** tests, all green.
+
 ## 0.19.0 — 2026-09-04 — Config home + setup doctor
 
 ### Added

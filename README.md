@@ -108,8 +108,9 @@ description until a task makes it relevant, then the full body loads on demand.
 - For the optional **direct Intune upload**: an Entra app registration with the Graph **application**
   permission `DeviceManagementApps.ReadWrite.All` (admin consent granted) — created for you in one run by
   `scripts/New-PsadtEntraApp.ps1` (interactive WAM sign-in as Global Admin / Privileged Role Admin; device
-  code fallback). Certificate or client-secret auth (cert via `-UseCertificate -CertThumbprint`). Manual
-  portal route: `references/app-registration.md`.
+  code fallback). Certificate or client-secret auth (cert via `-UseCertificate -CertThumbprint`). Check what
+  is actually in place with `scripts/Test-PsadtIntuneAccess.ps1`. Full permission matrix + manual portal
+  route: `references/app-registration.md`.
 - For the optional **WinGet packaging** path: nothing extra — `scripts/Get-WinGetModule.ps1` auto-downloads
   the `PSAppDeployToolkit.WinGet` extension into the config home's `tools/` (and into the package) the first
   time you choose WinGet.
@@ -185,6 +186,7 @@ psadt-deploy/
 ├─ SKILL.md · README.md · CHANGELOG.md · LICENSE
 ├─ scripts/
 │  ├─ Initialize-PsadtSkill.ps1     setup doctor (Phase 0, GREEN/YELLOW/RED, -Fix)
+│  ├─ Test-PsadtIntuneAccess.ps1    Intune access verdict (roles, capabilities, expiry)
 │  ├─ Get-PsadtConfig.ps1           config read + config-home resolver
 │  ├─ Set-PsadtConfig.ps1           config write (+ DPAPI secret, -Remove)
 │  ├─ Get-PsadtModule.ps1           PSADT module (self-heal)
@@ -256,6 +258,23 @@ configurable per machine.
 
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
+
+### 0.20.0 - 04.09.2026
+- **Intune access is state, not a 403.** New `scripts/Test-PsadtIntuneAccess.ps1` answers *before* Phase 9
+  whether the configured app can actually upload, assign groups or create policies — and for how long the
+  credential lives. `TokenOk` and every capability are three-valued: verified / refused / **unknown**,
+  because Graph tokens are opaque by contract and "we could not tell" is not "not permitted". An offline run
+  never overwrites what was verified earlier.
+- **The scripts assert the role they need before their first write** instead of discovering it from a 403
+  mid-upload. Group assignment requires *both* group roles and names the missing half.
+- **`New-PsadtEntraApp.ps1` is re-runnable.** It finds the app by the recorded `clientId`, **merges**
+  requested permissions instead of replacing them (a run without `-IncludeConfigurationManagement` used to
+  silently revoke that role), never prompts, persists what it learned, and only sets `uploadEnabled` once
+  consent is really in place. Older client secrets are counted, never deleted.
+- **Auth failures say what to do:** expired/invalid client secret, unknown app or tenant, Conditional Access
+  block — and an undecryptable DPAPI secret now explains that DPAPI is bound to the Windows user profile.
+- `references/app-registration.md` is now the single permission matrix (app roles → capabilities → how to
+  grant), referenced from the guide instead of duplicated. Suite 128 → 173 tests.
 
 ### 0.19.0 - 04.09.2026
 - **Setup doctor: `scripts/Initialize-PsadtSkill.ps1`.** One idempotent script replaces the Phase 0 prose
