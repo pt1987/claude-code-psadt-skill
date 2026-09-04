@@ -115,7 +115,12 @@ if (-not [string]::IsNullOrWhiteSpace([string]$cfg.intune.certThumbprint)) {
     $secretPath = Join-Path $probe.Home $secretRef
     if (-not (Test-Path $secretPath)) { throw "Encrypted secret not found: $secretPath (run New-PsadtEntraApp.ps1)." }
 
-    $secure = ConvertTo-SecureString (Get-Content $secretPath -Raw)
+    try { $secure = ConvertTo-SecureString (Get-Content $secretPath -Raw) }
+    catch {
+        # DPAPI is bound to the Windows user profile: a re-installed OS or a secret copied from another
+        # user/machine leaves a blob that will never decrypt again. Say so instead of "cryptographic error".
+        throw "The stored client secret in $secretPath cannot be decrypted - DPAPI is bound to this Windows user profile, so a re-installed OS or a copied file breaks it. Re-run New-PsadtEntraApp.ps1 to store a fresh secret. [$($_.Exception.Message)]"
+    }
     $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     $authMethod = 'ClientSecret'
     try {
