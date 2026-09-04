@@ -240,8 +240,15 @@ if (-not $intune -or -not $intune.uploadEnabled) {
     if (-not [string]::IsNullOrWhiteSpace([string]$intune.certThumbprint)) {
         if (-not (Test-Path "Cert:\CurrentUser\My\$($intune.certThumbprint)")) { $gaps += 'intune.certThumbprint (not in Cert:\CurrentUser\My)' }
     } else {
-        $ref = if ($intune.secretRef) { $intune.secretRef } else { 'secret.dpapi' }
-        if (-not (Test-Path (Join-Path $probe.Home $ref))) { $gaps += "intune.secret ($ref)" }
+        $ref     = if ($intune.secretRef) { $intune.secretRef } else { 'secret.dpapi' }
+        $refPath = Join-Path $probe.Home $ref
+        if (-not (Test-Path $refPath)) { $gaps += "intune.secret ($ref)" }
+        else {
+            # A present file is not a usable secret: DPAPI is bound to the user profile, so a re-installed
+            # Windows (or a copy from another user) leaves a blob that cannot be decrypted any more.
+            try { ConvertTo-SecureString (Get-Content $refPath -Raw) -ErrorAction Stop | Out-Null }
+            catch { $gaps += "intune.secret ($ref present but DPAPI cannot decrypt it for this user profile)" }
+        }
     }
     if ($gaps.Count) { Add-Check 'IntuneAccess' 'WARN' "upload enabled but incomplete: $($gaps -join ', ')" 'New-PsadtEntraApp.ps1 (re-runs against the existing app)' }
     else { Add-Check 'IntuneAccess' 'PASS' "tenant $($intune.tenantId), client $($intune.clientId)" $null }

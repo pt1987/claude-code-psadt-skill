@@ -156,6 +156,23 @@ Describe 'Initialize-PsadtSkill' {
         $r2.Overall | Should -Not -Be 'RED'
     }
 
+    It 'warns when the DPAPI secret is present but undecryptable' {
+        @{
+            version  = 1
+            paths    = @{ packageRoot = 'c:\p'; outputRoot = 'c:\o'; intuneWinAppUtil = 'c:\t\x.exe' }
+            language = @{ script = 'EN'; dossier = 'DE' }
+            author   = @{ person = 'Pat'; company = 'PHAT' }
+            intune   = @{ uploadEnabled = $true; tenantId = 't'; clientId = 'c'; secretRef = 'secret.dpapi' }
+        } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $script:root 'config.json')
+        # A blob DPAPI cannot decrypt - what a re-installed Windows leaves behind.
+        Set-Content (Join-Path $script:root 'secret.dpapi') 'not-a-dpapi-blob' -NoNewline
+
+        $r = & $script:doctor -SkillRoot $script:root -SkipUpdateCheck
+        $access = $r.Checks | Where-Object { $_.Name -eq 'IntuneAccess' }
+        $access.Status | Should -Be 'WARN'
+        $access.Detail | Should -BeLike '*cannot decrypt*'
+    }
+
     It 'writes the result to -JsonPath' {
         $out = Join-Path $script:cfgHome 'report/doctor.json'
         $r = & $script:doctor -SkillRoot $script:root -SkipUpdateCheck -JsonPath $out
