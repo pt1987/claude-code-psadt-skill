@@ -70,3 +70,68 @@ Describe '-MsiProductCode / -MsiUpgradeCode GUID ValidatePattern' {
             Should -Throw -ExpectedMessage '*not found*'
     }
 }
+
+Describe '-ManifestPath (0.21.0): identity comes from the package, not the command line' {
+    BeforeEach {
+        $script:pkgDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item $script:pkgDir -ItemType Directory -Force | Out-Null
+        $script:mf = Join-Path $script:pkgDir 'psadt-package.json'
+    }
+
+    It 'still accepts the explicit form without a manifest' {
+        # Reaches the .intunewin parse step, i.e. binding succeeded in the Explicit set.
+        { & $script:Upload -IntuneWinPath $script:DummyWin -DisplayName 'X' -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*Not found*'
+    }
+
+    It 'accepts a manifest INSTEAD of -DisplayName' {
+        @{ schema = 1; app = @{ vendor = 'Mobotix'; name = 'MxManagementCenter'; version = '2.9.1'; arch = 'x64' } } |
+            ConvertTo-Json -Depth 8 | Set-Content $script:mf -Encoding UTF8
+        # No -DisplayName: binding must succeed and the run must get as far as the missing artifact.
+        { & $script:Upload -IntuneWinPath $script:DummyWin -ManifestPath $script:mf -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*Not found*'
+    }
+
+    It 'accepts -DisplayName together with a manifest (explicit wins)' {
+        @{ schema = 1; app = @{ vendor = 'Mobotix'; name = 'MxManagementCenter'; version = '2.9.1' } } |
+            ConvertTo-Json -Depth 8 | Set-Content $script:mf -Encoding UTF8
+        { & $script:Upload -IntuneWinPath $script:DummyWin -ManifestPath $script:mf -DisplayName 'Override' -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*Not found*'
+    }
+
+    It 'throws for a manifest path that does not exist' {
+        { & $script:Upload -IntuneWinPath $script:DummyWin -ManifestPath (Join-Path $TestDrive 'nope.json') -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*ManifestPath not found*'
+    }
+
+    It 'refuses a malformed manifest instead of uploading something unnamed' {
+        Set-Content $script:mf '{ not json' -NoNewline
+        { & $script:Upload -IntuneWinPath $script:DummyWin -ManifestPath $script:mf -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*malformed*'
+    }
+
+    It 'refuses a manifest with no app.name when no -DisplayName was passed' {
+        @{ schema = 1; app = @{ vendor = 'Mobotix' } } | ConvertTo-Json -Depth 8 | Set-Content $script:mf -Encoding UTF8
+        { & $script:Upload -IntuneWinPath $script:DummyWin -ManifestPath $script:mf -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*no app.name*'
+    }
+
+    Context 'source contract' {
+        BeforeAll { $script:src = Get-Content -LiteralPath $script:Upload -Raw }
+        It 'takes the identity only when the parameter was not bound explicitly' {
+            $script:src | Should -Match "PSBoundParameters\.ContainsKey\('DisplayName'\)"
+            $script:src | Should -Match "PSBoundParameters\.ContainsKey\('Publisher'\)"
+            $script:src | Should -Match "PSBoundParameters\.ContainsKey\('AppVersion'\)"
+        }
+        It 'writes results.upload back after a successful run' {
+            $script:src | Should -Match "'results\.upload'"
+            $script:src | Should -Match 'Set-PsadtPackageManifest\.ps1'
+        }
+        It 'treats the manifest write as best effort - the app is already uploaded by then' {
+            $script:src | Should -Match 'Uploaded, but could not record it in the manifest'
+        }
+        It 'sends the real artifact name as fileName' {
+            $script:src | Should -Match '\$fileName = \[IO\.Path\]::GetFileName\(\$IntuneWinPath\)'
+        }
+    }
+}

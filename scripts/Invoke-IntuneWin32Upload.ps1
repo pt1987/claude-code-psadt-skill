@@ -38,15 +38,24 @@
 .PARAMETER LogoPath                 PNG (transparent, square) used as largeIcon.
 .PARAMETER Execute                  Perform the writes. Without it the script is a read-only dry run.
 .PARAMETER UpdateAppId              Update this existing app id in place instead of creating a new one.
+.PARAMETER ManifestPath             psadt-package.json to take DisplayName / Publisher / AppVersion /
+                                    Architecture from. Explicit parameters always win; results.upload is
+                                    written back after a successful -Execute.
 .PARAMETER SkillRoot                Config home override; default = the resolved config home.
 
 .OUTPUTS
     PSCustomObject summarising the run (AppId, ContentVersion, PortalUrl, Executed, Existing[]).
 #>
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Explicit')]
 param(
     [Parameter(Mandatory)][string]$IntuneWinPath,
-    [Parameter(Mandatory)][string]$DisplayName,
+    # Either name the app explicitly, or point at the package manifest and let it supply the identity.
+    # Anything passed explicitly always wins over the manifest.
+    [Parameter(Mandatory, ParameterSetName = 'Explicit')]
+    [Parameter(ParameterSetName = 'Manifest')]
+    [string]$DisplayName,
+    [Parameter(Mandatory, ParameterSetName = 'Manifest')]
+    [string]$ManifestPath,
     [string]$Description = '',
     [string]$Publisher = '',
     [string]$Developer = '',
@@ -101,6 +110,30 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# --- Identity from the package manifest (0.21.0) ---------------------------------------------------
+# So the app in Intune carries the same name/version as the artifact and the dossier, instead of whatever
+# was typed at the command line this time.
+$manifestPackagePath = $null
+if ($ManifestPath) {
+    if (-not (Test-Path -LiteralPath $ManifestPath)) { throw "ManifestPath not found: $ManifestPath" }
+    try { $mfUp = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { throw "psadt-package.json is malformed: $($_.Exception.Message)" }
+    $manifestPackagePath = Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath).Path
+
+    if (-not $PSBoundParameters.ContainsKey('DisplayName') -and $mfUp.app.name) {
+        $DisplayName = if ($mfUp.app.vendor) { "$($mfUp.app.vendor) $($mfUp.app.name)" } else { [string]$mfUp.app.name }
+    }
+    if (-not $PSBoundParameters.ContainsKey('Publisher')  -and $mfUp.app.vendor)  { $Publisher  = [string]$mfUp.app.vendor }
+    if (-not $PSBoundParameters.ContainsKey('AppVersion') -and $mfUp.app.version) { $AppVersion = [string]$mfUp.app.version }
+    if (-not $PSBoundParameters.ContainsKey('Architecture') -and $mfUp.app.arch -in @('x64', 'x86', 'arm64')) {
+        $Architecture = [string]$mfUp.app.arch
+    }
+    if ([string]::IsNullOrWhiteSpace($DisplayName)) {
+        throw "The manifest has no app.name and no -DisplayName was passed. Fill the identity with Set-PsadtPackageManifest.ps1."
+    }
+}
+
 # Use beta: the v1.0 Intune app-metadata backend (StatelessAppMetadataFEService) silently DROPS several
 # win32LobApp properties on write - most visibly displayVersion (the portal "App Version"). beta persists them.
 $GraphBase = 'https://graph.microsoft.com/beta'
@@ -465,6 +498,24 @@ if ($existing -and -not $UpdateAppId) {
     if (-not $supersededWired) {
         Write-Host "  Supersedence: set it in the portal (new app > Supersedence > add the old app), or re-run with -SupersedesAppId <oldId>." -ForegroundColor Gray
     }
+}
+
+# Record the upload in the manifest: which app id in which tenant now carries this artifact. Best effort -
+# the app IS uploaded at this point, so a manifest write failure must not turn that into an error.
+if ($manifestPackagePath) {
+    try {
+        & (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath $manifestPackagePath -Updates @{
+            'results.upload' = @{
+                appId          = $appId
+                contentVersion = $cvId
+                portalUrl      = $portal
+                displayName    = $DisplayName
+                fileName       = $fileName
+                tenantId       = $tok.TenantId
+                at             = (Get-Date).ToUniversalTime().ToString('o')
+            }
+        } | Out-Null
+    } catch { Write-Warning "Uploaded, but could not record it in the manifest: $($_.Exception.Message)" }
 }
 
 [pscustomobject]@{ Executed=$true; AppId=$appId; ContentVersion=$cvId; PortalUrl=$portal; Categories=$assignedCats; Supersedes=$supersededWired; CoexistsWith=@($existing | ForEach-Object { $_.id }); Existing=@($existing) }
