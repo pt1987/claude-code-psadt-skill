@@ -37,4 +37,51 @@ Describe 'Get-PsadtConfig' {
         $r.Missing | Should -Contain 'intune.tenantId'
         $r.Missing | Should -Contain 'intune.secret'
     }
+
+    Context 'config home resolution' {
+        BeforeEach {
+            $script:envBak = $env:PSADT_DEPLOY_HOME
+            $script:cfgHome = Join-Path ([IO.Path]::GetTempPath()) ("psadthome_" + [guid]::NewGuid().ToString('N'))
+            New-Item $script:cfgHome -ItemType Directory -Force | Out-Null
+            $env:PSADT_DEPLOY_HOME = $script:cfgHome
+            $script:get = Join-Path $script:root 'scripts/Get-PsadtConfig.ps1'
+        }
+        AfterEach {
+            $env:PSADT_DEPLOY_HOME = $script:envBak
+            Remove-Item $script:cfgHome -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        It 'resolves to $env:PSADT_DEPLOY_HOME when -SkillRoot is not given' {
+            $r = & $script:get
+            $r.Home        | Should -Be $script:cfgHome
+            $r.DefaultHome | Should -Be $script:cfgHome
+            $r.Path        | Should -Be (Join-Path $script:cfgHome 'config.json')
+            $r.LegacyInUse | Should -BeFalse
+            $r.Exists      | Should -BeFalse
+        }
+
+        It 'an explicit -SkillRoot wins over the environment' {
+            $r = & $script:get -SkillRoot $script:root
+            $r.Home | Should -Be $script:root
+            $r.Path | Should -Be (Join-Path $script:root 'config.json')
+        }
+
+        It 'falls back read-only to a legacy config beside scripts/ when the home has none' {
+            @{ version=1; author=@{ person='Legacy' } } | ConvertTo-Json | Set-Content (Join-Path $script:root 'config.json')
+            $r = & $script:get
+            $r.LegacyInUse          | Should -BeTrue
+            $r.Path                 | Should -Be (Join-Path $script:root 'config.json')
+            $r.Home                 | Should -Be $script:root
+            $r.DefaultHome          | Should -Be $script:cfgHome
+            $r.Config.author.person | Should -Be 'Legacy'
+        }
+
+        It 'prefers the home config once it exists even if a legacy file remains' {
+            @{ version=1; author=@{ person='Legacy' } } | ConvertTo-Json | Set-Content (Join-Path $script:root 'config.json')
+            @{ version=1; author=@{ person='Home' } }   | ConvertTo-Json | Set-Content (Join-Path $script:cfgHome 'config.json')
+            $r = & $script:get
+            $r.LegacyInUse          | Should -BeFalse
+            $r.Config.author.person | Should -Be 'Home'
+        }
+    }
 }

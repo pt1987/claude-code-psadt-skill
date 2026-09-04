@@ -3,25 +3,51 @@
     Reads the PSADT skill config (config.json) and reports any missing required fields.
 
 .DESCRIPTION
-    Read-only. Loads config.json from -SkillRoot and validates the required keys (paths.*, language.*,
-    author.*). When intune.uploadEnabled is set, the credential reference is also checked; when
-    intune.groups.enabled is set, the group naming scheme (intune.groups.naming) is validated. Returns a
-    structured object - it never throws on a missing field, it lists them in .Missing for the caller to act on.
+    Read-only. Resolves the config home, loads config.json from it and validates the required keys
+    (paths.*, language.*, author.*). When intune.uploadEnabled is set, the credential reference is also
+    checked; when intune.groups.enabled is set, the group naming scheme (intune.groups.naming) is
+    validated. Returns a structured object - it never throws on a missing field, it lists them in
+    .Missing for the caller to act on.
+
+    Resolution order for the config home:
+      1. an explicitly passed, non-empty -SkillRoot (wins unconditionally; used by the tests)
+      2. $env:PSADT_DEPLOY_HOME
+      3. %LOCALAPPDATA%\psadt-deploy
+    If no -SkillRoot was given and the resolved home holds no config.json, a legacy config.json next to
+    scripts\ (the pre-0.19 location inside the skill folder) is used read-only and .LegacyInUse is $true.
 
 .PARAMETER SkillRoot
-    The skill root folder that contains config.json. Defaults to the parent of this script's directory.
+    Config home override. Default empty = resolve as described above.
 
 .OUTPUTS
-    PSCustomObject: Exists(bool), Config(object|null), Missing(string[]), Path(string)
+    PSCustomObject: Exists(bool), Config(object|null), Missing(string[]), Path(string), Home(string),
+    DefaultHome(string), LegacyInUse(bool)
 
 .EXAMPLE
     $c = & Get-PsadtConfig.ps1
-    if (-not $c.Exists -or $c.Missing) { ... run the setup wizard ... }
+    if (-not $c.Exists -or $c.Missing) { ... run Initialize-PsadtSkill.ps1 ... }
 #>
 [CmdletBinding()]
-param([string]$SkillRoot = (Split-Path $PSScriptRoot -Parent))
+param([string]$SkillRoot)
 
-$configPath = Join-Path $SkillRoot 'config.json'
+$defaultHome =
+    if (-not [string]::IsNullOrWhiteSpace($SkillRoot))              { $SkillRoot }
+    elseif (-not [string]::IsNullOrWhiteSpace($env:PSADT_DEPLOY_HOME)) { $env:PSADT_DEPLOY_HOME }
+    else { Join-Path $env:LOCALAPPDATA 'psadt-deploy' }
+
+$configHome = $defaultHome
+$configPath = Join-Path $configHome 'config.json'
+$legacyInUse = $false
+if ([string]::IsNullOrWhiteSpace($SkillRoot) -and -not (Test-Path -LiteralPath $configPath)) {
+    $legacyHome = Split-Path $PSScriptRoot -Parent
+    $legacyPath = Join-Path $legacyHome 'config.json'
+    if (Test-Path -LiteralPath $legacyPath) {
+        $configHome  = $legacyHome
+        $configPath  = $legacyPath
+        $legacyInUse = $true
+    }
+}
+
 $required = @(
     'paths.packageRoot','paths.outputRoot','paths.intuneWinAppUtil',
     'language.script','language.dossier','author.person','author.company'
@@ -34,13 +60,19 @@ function Get-ByPath($obj, [string]$path) {
     }
     return $cur
 }
-
-if (-not (Test-Path $configPath)) {
-    return [pscustomobject]@{ Exists = $false; Config = $null; Missing = $required; Path = $configPath }
+function New-Result([bool]$exists, $config, $missing, [string]$err) {
+    $o = [ordered]@{
+        Exists = $exists; Config = $config; Missing = $missing; Path = $configPath
+        Home = $configHome; DefaultHome = $defaultHome; LegacyInUse = $legacyInUse
+    }
+    if ($err) { $o['Error'] = $err }
+    [pscustomobject]$o
 }
 
+if (-not (Test-Path -LiteralPath $configPath)) { return (New-Result $false $null $required $null) }
+
 try { $cfg = Get-Content $configPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop }
-catch { return [pscustomobject]@{ Exists = $true; Config = $null; Missing = $required; Path = $configPath; Error = "config.json is malformed: $($_.Exception.Message)" } }
+catch { return (New-Result $true $null $required "config.json is malformed: $($_.Exception.Message)") }
 $missing = [System.Collections.Generic.List[string]]::new()
 foreach ($key in $required) {
     if ([string]::IsNullOrWhiteSpace([string](Get-ByPath $cfg $key))) { $missing.Add($key) }
@@ -55,7 +87,7 @@ if ($cfg.intune -and $cfg.intune.uploadEnabled) {
         }
     } else {
         $ref = if ($cfg.intune.secretRef) { $cfg.intune.secretRef } else { 'secret.dpapi' }
-        if (-not (Test-Path (Join-Path $SkillRoot $ref))) { $missing.Add('intune.secret') }
+        if (-not (Test-Path (Join-Path $configHome $ref))) { $missing.Add('intune.secret') }
     }
 }
 if ($cfg.intune -and $cfg.intune.groups -and $cfg.intune.groups.enabled) {
@@ -65,4 +97,4 @@ if ($cfg.intune -and $cfg.intune.groups -and $cfg.intune.groups.enabled) {
         $missing.Add('intune.groups.naming (need at least one of required/available/uninstall)')
     }
 }
-[pscustomobject]@{ Exists = $true; Config = $cfg; Missing = $missing.ToArray(); Path = $configPath }
+New-Result $true $cfg $missing.ToArray() $null
