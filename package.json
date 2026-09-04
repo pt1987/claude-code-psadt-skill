@@ -1,0 +1,37 @@
+{
+  "name": "psadt-deploy-skill",
+  "version": "0.23.0",
+  "description": "Installer for the psadt-deploy Claude Code skill: build, test and deploy PSADT v4.x Intune Win32 packages.",
+  "keywords": [
+    "psadt",
+    "psappdeploytoolkit",
+    "intune",
+    "win32",
+    "claude-code",
+    "claude-skill",
+    "packaging"
+  ],
+  "homepage": "https://github.com/pt1987/claude-code-psadt-skill#readme",
+  "bugs": {
+    "url": "https://github.com/pt1987/claude-code-psadt-skill/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pt1987/claude-code-psadt-skill.git"
+  },
+  "license": "MIT",
+  "author": "Patrick Taubert, PHAT Consulting GmbH",
+  "type": "module",
+  "bin": {
+    "psadt-deploy-skill": "bin/install.mjs"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "win32"
+  ]
+}

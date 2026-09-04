@@ -13,8 +13,7 @@
     With -Apply (and only after the agent has asked the user) it updates the tracked skill files:
       - git clone   -> `git pull --ff-only`
       - otherwise   -> downloads the branch zip and overwrites SKILL.md, README.md, CHANGELOG.md, LICENSE,
-                       references/, scripts/, tests/ and records the applied commit in config.json.
-    Machine-local state is NEVER touched: config.json (except the recorded commit), secret.dpapi, tools/, docs/.
+                       package.json, references/, scripts/, tests/, bin/ and records the applied commit in the config.
 
 .PARAMETER SkillRoot  Skill root (folder with SKILL.md/CHANGELOG.md). Defaults to the parent of this script.
 .PARAMETER Repo       GitHub owner/repo. Default 'pt1987/claude-code-psadt-skill'.
@@ -36,7 +35,7 @@ $ErrorActionPreference = 'Stop'
 
 # Tracked content an update may overwrite. Everything else (config.json, secret.dpapi, tools/, docs/, .git)
 # is machine-local / gitignored and is deliberately preserved.
-$TrackedItems = @('SKILL.md', 'README.md', 'CHANGELOG.md', 'LICENSE', 'references', 'scripts', 'tests')
+$TrackedItems = @('SKILL.md', 'README.md', 'CHANGELOG.md', 'LICENSE', 'package.json', 'references', 'scripts', 'tests', 'bin')
 $ApiHeaders = @{ 'User-Agent' = 'psadt-deploy-skill'; 'Accept' = 'application/vnd.github+json' }
 
 function Get-TopChangelogVersion([string]$text) {

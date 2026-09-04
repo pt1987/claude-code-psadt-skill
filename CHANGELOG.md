@@ -2,6 +2,44 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.23.0 — 2026-09-04 — `npx psadt-deploy-skill`
+
+### Added
+- **One-line install.** `npx psadt-deploy-skill` clones or updates the skill into
+  `~/.claude/skills/psadt-deploy` and runs the setup doctor. Flags: `--dir <path>`, `--project` (into
+  `./.claude/skills`), `--ref <branch|tag>`, `--no-setup`, `--help`. Cloning to exactly the right path by
+  hand was the first thing a new user could get wrong.
+- **`bin/install.mjs` — zero dependencies.** Node 18's global `fetch` and the `tar.exe` that ships in
+  `C:\Windows\System32` are enough; an installer with a dependency tree is an installer that can break for
+  reasons unrelated to the skill. Three acquisition routes in order: an existing clone is updated with
+  `git pull --ff-only`, otherwise `git clone --depth 1`, otherwise the branch tarball with
+  `--strip-components=1` — the last one because plenty of managed machines have no git at all.
+- **`tests/Package.Tests.ps1`** — drift guards: `package.json` parses, ships only `bin/`, declares no
+  dependencies, points `bin` at a file that exists, and its **version equals the top CHANGELOG entry**. A
+  published installer claiming one version while the skill is at another is a support case nobody can
+  reproduce. Plus: the installer imports only `node:` builtins and never reads the config itself.
+
+### Changed
+- **`Update-PsadtSkill.ps1` tracks `package.json` and `bin/`.** Without that the archive update route
+  silently drops them, and the next update on a git-less machine would leave a skill whose installer is
+  from an older version.
+- **README: the npx one-liner is the documented install**, with `git clone` as the alternative.
+  `npx skills add pt1987/claude-code-psadt-skill` keeps working unchanged, because SKILL.md sits in the
+  repository root.
+
+### Notes
+- **The installer never writes the skill config.** Resolving the config home is `Get-PsadtConfig`'s job
+  (explicit `-SkillRoot` > `$env:PSADT_DEPLOY_HOME` > `%LOCALAPPDATA%\psadt-deploy`), and a second
+  implementation in JavaScript would drift from it. It spawns `Set-PsadtConfig.ps1` to record the commit
+  and `Initialize-PsadtSkill.ps1 -Fix` to provision, and lets those decide. `-JsonPath` rather than
+  `-Json` because the doctor's stdout is inherited so the user sees its table live.
+- Both PowerShell hosts are launched with `-ExecutionPolicy Bypass`: Windows PowerShell 5.1 defaults to
+  `Restricted`, and a GPO can pin `pwsh` to `AllSigned` — either way an unsigned script would not run.
+- **Publishing to npm is a manual step for the maintainer** (`npm publish --access public`, needs an npm
+  login). The package is deliberately tiny and the skill is fetched at install time, so a new skill
+  version needs no republish — only a change to the installer does.
+- Test suite: 307 → **326** tests, all green.
+
 ## 0.22.0 — 2026-09-04 — Third-party drivers
 
 ### Added

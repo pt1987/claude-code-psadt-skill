@@ -98,6 +98,7 @@ description until a task makes it relevant, then the full body loads on demand.
 ## Requirements
 
 - Windows with PowerShell 5.1+ / PowerShell 7+
+- For the `npx` installer only: **Node 18+** (the skill itself never needs Node)
 - [PSAppDeployToolkit](https://psappdeploytoolkit.com/) v4.x *(the skill installs/updates this
   automatically from the PowerShell Gallery if missing)*
 - [Microsoft Win32 Content Prep Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool)
@@ -121,26 +122,32 @@ description until a task makes it relevant, then the full body loads on demand.
 
 ## Installation
 
-Clone into your Claude Code skills directory (the repo root *is* the skill folder):
+One line — installs into `~/.claude/skills/psadt-deploy` and runs the setup doctor:
 
-```bash
-git clone https://github.com/pt1987/claude-code-psadt-skill.git ~/.claude/skills/psadt-deploy
+```powershell
+npx psadt-deploy-skill
 ```
 
-On Windows (PowerShell):
+Flags: `--dir <path>` · `--project` (into `./.claude/skills`) · `--ref <branch|tag>` · `--no-setup`.
+Needs Node 18+ and Windows. Re-running it updates an existing installation, and so does saying
+*"update skill"* to Claude Code.
+
+> **Access note:** while this repository is private, `npx psadt-deploy-skill` only works for machines that
+> can reach it — the installer clones over your existing git credentials. Without git (or without access)
+> it says so instead of failing obscurely. The npm package itself carries only the installer; the skill is
+> fetched from GitHub at install time.
+
+**Alternative — clone it yourself** (the repo root *is* the skill folder):
 
 ```powershell
 git clone https://github.com/pt1987/claude-code-psadt-skill.git "$env:USERPROFILE\.claude\skills\psadt-deploy"
+pwsh "$env:USERPROFILE\.claude\skills\psadt-deploy\scripts\Initialize-PsadtSkill.ps1" -Fix
 ```
+
+`npx skills add pt1987/claude-code-psadt-skill` also works, since `SKILL.md` sits in the repository root.
 
 The skill activates automatically when you ask Claude Code to build an Intune package, or when you work
 in a folder containing `Invoke-AppDeployToolkit.ps1`.
-
-Then run the setup doctor once:
-
-```powershell
-pwsh ~/.claude/skills/psadt-deploy/scripts/Initialize-PsadtSkill.ps1 -Fix
-```
 
 ## First-run setup
 
@@ -184,6 +191,7 @@ Current (what ships today):
 ```
 psadt-deploy/
 ├─ SKILL.md · README.md · CHANGELOG.md · LICENSE
+├─ package.json · bin/install.mjs   the npx installer (Node 18+, zero dependencies)
 ├─ scripts/
 │  ├─ Initialize-PsadtSkill.ps1     setup doctor (Phase 0, GREEN/YELLOW/RED, -Fix)
 │  ├─ Test-PsadtIntuneAccess.ps1    Intune access verdict (roles, capabilities, expiry)
@@ -263,6 +271,19 @@ configurable per machine.
 
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
+
+### 0.23.0 - 04.09.2026
+- **`npx psadt-deploy-skill`.** One line installs or updates the skill into `~/.claude/skills/psadt-deploy`
+  and runs the setup doctor. Flags `--dir`, `--project`, `--ref`, `--no-setup`. Cloning to exactly the
+  right path by hand was the first thing a new user could get wrong.
+- **Zero dependencies** (Node 18's `fetch` + the `tar.exe` Windows ships). Three acquisition routes:
+  update an existing clone, else `git clone --depth 1`, else the branch tarball — because plenty of managed
+  machines have no git. The npm package ships only `bin/`; the skill comes from GitHub at install time, so
+  a new skill version needs no republish.
+- **The installer never writes the config itself** — it spawns `Set-PsadtConfig.ps1` and
+  `Initialize-PsadtSkill.ps1 -Fix`, because a second config-home implementation in JavaScript would drift
+  from `Get-PsadtConfig`. `Update-PsadtSkill.ps1` now tracks `package.json` and `bin/` so the archive
+  update route stops dropping them. Suite 307 → 326 tests.
 
 ### 0.22.0 - 04.09.2026
 - **Third-party drivers.** New `scripts/Get-DriverSignatureInfo.ps1` classifies a driver folder before
