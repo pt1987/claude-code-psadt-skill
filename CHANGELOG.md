@@ -5,10 +5,12 @@ All notable changes to this skill. Newest first. This project follows a loose [S
 ## 0.23.0 — 2026-09-04 — `npx psadt-deploy-skill`
 
 ### Added
-- **One-line install.** `npx psadt-deploy-skill` clones or updates the skill into
-  `~/.claude/skills/psadt-deploy` and runs the setup doctor. Flags: `--dir <path>`, `--project` (into
+- **One-step installer.** `bin/install.mjs` (packaged as `psadt-deploy-skill`) clones or updates the skill
+  into `~/.claude/skills/psadt-deploy` and runs the setup doctor. Flags: `--dir <path>`, `--project` (into
   `./.claude/skills`), `--ref <branch|tag>`, `--no-setup`, `--help`. Cloning to exactly the right path by
-  hand was the first thing a new user could get wrong.
+  hand was the first thing a new user could get wrong. **Not on npm yet** — `npx psadt-deploy-skill`
+  returns 404 until someone runs `npm publish --access public`; until then use `node bin/install.mjs` from
+  a checkout, or `npm pack` + `npx ./psadt-deploy-skill-<version>.tgz`.
 - **`bin/install.mjs` — zero dependencies.** Node 18's global `fetch` and the `tar.exe` that ships in
   `C:\Windows\System32` are enough; an installer with a dependency tree is an installer that can break for
   reasons unrelated to the skill. Three acquisition routes in order: an existing clone is updated with
