@@ -156,3 +156,93 @@ try { Set-StrictMode -Version 3 } catch { }
         $r.Overall | Should -Be 'GREEN'      # a WARN never flips the verdict
     }
 }
+
+Describe 'Pre-flight check 10: DriverTrust (0.22.0)' {
+    BeforeAll {
+        $script:driverLauncher = @'
+[CmdletBinding()]
+param([string]$DeploymentType)
+$adtSession = @{
+    AppName = 'App'
+    LogName = ('Contoso_App_1.0_x64' + '_' + $(if ($DeploymentType) { $DeploymentType } else { 'Install' }) + '_' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
+}
+function Install-ADTDeployment { }
+function Uninstall-ADTDeployment { }
+function Repair-ADTDeployment { }
+'@
+    }
+    BeforeEach {
+        # A package whose Files\ holds a driver set. The .cat is what the classifier inspects.
+        $script:pkg = New-Pkg -Launcher $script:driverLauncher
+        $script:drv = Join-Path $script:pkg 'Files\Drivers'
+        New-Item $script:drv -ItemType Directory -Force | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $script:drv 'mxdriver.inf'), @"
+[Version]
+Class=Printer
+Provider=%MfgName%
+DriverVer=07/14/2026,3.1.4.0
+CatalogFile=mxdriver.cat
+
+[Strings]
+MfgName="Mobotix AG"
+"@, $script:utf8NoBom)
+        $script:setOwner = {
+            param([string]$Owner, [bool]$AssumeOff = $false)
+            $mfPath = Join-Path $script:pkg 'psadt-package.json'
+            $m = Get-Content $mfPath -Raw | ConvertFrom-Json
+            $m | Add-Member -NotePropertyName driverTrust -NotePropertyValue ([pscustomobject]@{ owner = $Owner; assumeSecureBootOff = $AssumeOff }) -Force
+            $m | ConvertTo-Json -Depth 10 | Set-Content $mfPath -Encoding UTF8
+        }
+    }
+
+    It 'is skipped entirely for a package without drivers - no DriverTrust row at all' {
+        $plain = New-Pkg -Launcher $script:driverLauncher
+        $r = & $script:pf -PackagePath $plain
+        @($r.Checks | Where-Object { $_.Name -eq 'DriverTrust' }).Count | Should -Be 0
+    }
+
+    It 'is RED for an unsigned driver (no catalog on disk)' {
+        # No .cat file -> Unsigned, whatever the INF claims.
+        $r = & $script:pf -PackagePath $script:pkg
+        $d = $r.Checks | Where-Object { $_.Name -eq 'DriverTrust' }
+        $d.Status | Should -Be 'FAIL'
+        $d.Detail | Should -BeLike '*unsigned*'
+        $r.Overall | Should -Be 'RED'
+    }
+
+    It 'is RED for a vendor-signed driver whose certificate has no owner' {
+        Set-Content (Join-Path $script:drv 'mxdriver.cat') 'catalog' -NoNewline
+        Mock -CommandName Get-AuthenticodeSignature -MockWith {
+            [pscustomobject]@{ Status = 'Valid'; SignerCertificate = [pscustomobject]@{ Subject = 'CN=Mobotix AG'; Thumbprint = 'AA' } }
+        }
+        $r = & $script:pf -PackagePath $script:pkg
+        $d = $r.Checks | Where-Object { $_.Name -eq 'DriverTrust' }
+        $d.Status | Should -Be 'FAIL'
+        $d.Detail | Should -BeLike '*driverTrust.owner*'
+        $r.Overall | Should -Be 'RED'
+    }
+
+    It 'WARNs for a vendor-signed KERNEL driver once the owner is set' {
+        Set-Content (Join-Path $script:drv 'mxdriver.cat') 'catalog' -NoNewline
+        Set-Content (Join-Path $script:drv 'mxdriver.sys') 'kernel' -NoNewline
+        & $script:setOwner 'policy'
+        Mock -CommandName Get-AuthenticodeSignature -MockWith {
+            [pscustomobject]@{ Status = 'Valid'; SignerCertificate = [pscustomobject]@{ Subject = 'CN=Mobotix AG'; Thumbprint = 'AA' } }
+        }
+        $r = & $script:pf -PackagePath $script:pkg
+        $d = $r.Checks | Where-Object { $_.Name -eq 'DriverTrust' }
+        $d.Status | Should -Be 'WARN'
+        $d.Detail | Should -BeLike '*Code Integrity*'
+        $r.Overall | Should -Be 'GREEN'      # a WARN never flips the verdict
+    }
+
+    It 'PASSes a Microsoft-signed driver with no certificate work at all' {
+        Set-Content (Join-Path $script:drv 'mxdriver.cat') 'catalog' -NoNewline
+        Mock -CommandName Get-AuthenticodeSignature -MockWith {
+            [pscustomobject]@{ Status = 'Valid'; SignerCertificate = [pscustomobject]@{ Subject = 'CN=Microsoft Windows Hardware Compatibility Publisher, O=Microsoft Corporation'; Thumbprint = 'BB' } }
+        }
+        $r = & $script:pf -PackagePath $script:pkg
+        ($r.Checks | Where-Object { $_.Name -eq 'DriverTrust' }).Status | Should -Be 'PASS'
+        $r.Overall | Should -Be 'GREEN'
+    }
+}

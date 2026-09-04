@@ -25,6 +25,12 @@
                       that cannot say what it is cannot be packed, reported on or uploaded consistently.
       9. LogName    - the launcher sets a per-run LogName. WARN only: a pre-0.21 scaffold works, it just
                       appends every run of every version into one PSADT log.
+     10. DriverTrust- ONLY when the package ships an .inf under Files\ (any package type - a vendor
+                      installer staging a driver is the case nobody declares). FAIL on an unsigned driver,
+                      and on a vendor-signed one whose signer certificate has no owner in the manifest
+                      (driverTrust.owner) - the PnP prompt would block the silent install. WARN for a
+                      vendor-signed KERNEL driver: TrustedPublisher does not satisfy Code Integrity.
+                      Guide Appendix Q.
 
     GREEN = no FAIL checks. WARN does not flip the verdict. Works under Windows PowerShell 5.1 and PowerShell 7.
 
@@ -199,6 +205,39 @@ if ($launcherText -match '(?m)^\s*LogName\s*=') {
     Add-Check 'LogName' 'PASS' 'launcher sets a per-run log name' 'Invoke-AppDeployToolkit.ps1'
 } else {
     Add-Check 'LogName' 'WARN' 'launcher sets no LogName - every run appends to the same PSADT log (pre-0.21 scaffold); re-generate or add LogName to $adtSession' 'Invoke-AppDeployToolkit.ps1'
+}
+
+# --- 10: driver trust (only when the package actually ships drivers) ------------------------------
+# Deliberately independent of package.type: a vendor installer that stages a driver under Files\ is the
+# common case, and it is exactly the case nobody declares as a "driver package".
+$infFiles = @(Get-ChildItem -LiteralPath $filesDir -Filter '*.inf' -File -Recurse -ErrorAction SilentlyContinue)
+if ($infFiles.Count) {
+    try {
+        $assumeOff = $false
+        if ($mf.Exists -and -not $mf.Error -and $mf.Manifest.driverTrust) {
+            $assumeOff = [bool]$mf.Manifest.driverTrust.assumeSecureBootOff
+        }
+        $trust = & (Join-Path $PSScriptRoot 'Get-DriverSignatureInfo.ps1') -Path $filesDir -AssumeSecureBootOff:$assumeOff
+        $owner = if ($mf.Exists -and -not $mf.Error) { [string]$mf.Manifest.driverTrust.owner } else { '' }
+
+        $unsigned = @($trust.Drivers | Where-Object { $_.Classification -eq 'Unsigned' })
+        $vendor   = @($trust.Drivers | Where-Object { $_.Classification -eq 'VendorSigned' })
+        $kernel   = @($vendor | Where-Object { $_.KernelMode })
+
+        if ($unsigned.Count) {
+            Add-Check 'DriverTrust' 'FAIL' "$($unsigned.Count) unsigned driver(s) ($(($unsigned | ForEach-Object { $_.Inf }) -join ', ')) - this cannot install silently on a managed machine. See guide Appendix Q." 'Files'
+        } elseif ($vendor.Count -and [string]::IsNullOrWhiteSpace($owner)) {
+            Add-Check 'DriverTrust' 'FAIL' "$($vendor.Count) vendor-signed driver(s) but driverTrust.owner is not set in the manifest - the signer certificate has no owner, so the PnP prompt will block the silent install. Set it to 'policy' or 'package'." 'psadt-package.json'
+        } elseif ($kernel.Count -and -not $assumeOff) {
+            Add-Check 'DriverTrust' 'WARN' "$($kernel.Count) KERNEL-mode driver(s) with a vendor signature - TrustedPublisher removes the PnP prompt but does NOT satisfy Code Integrity, so with Secure Boot on the driver installs and then does not load (guide Appendix Q)." 'Files'
+        } else {
+            $detail = "$($trust.Drivers.Count) driver(s), $($trust.Overall)"
+            if ($owner) { $detail += ", certificate owner '$owner'" }
+            Add-Check 'DriverTrust' 'PASS' $detail 'Files'
+        }
+    } catch {
+        Add-Check 'DriverTrust' 'WARN' "Driver classification failed: $($_.Exception.Message)" 'Files'
+    }
 }
 
 # --- Verdict --------------------------------------------------------------------------------------
