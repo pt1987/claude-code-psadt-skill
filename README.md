@@ -32,11 +32,11 @@ task makes it relevant, then the full body loads on demand.
 ## Quick start
 
 ```powershell
-git clone https://github.com/pt1987/claude-code-psadt-skill.git "$env:USERPROFILE\.claude\skills\psadt-deploy"
-pwsh "$env:USERPROFILE\.claude\skills\psadt-deploy\scripts\Initialize-PsadtSkill.ps1" -Fix
+npx psadt-deploy-skill
 ```
 
-The doctor provisions everything it can and names the handful of values only you can supply (see
+That installs the skill into `~/.claude/skills/psadt-deploy` and runs the setup doctor, which provisions
+everything it can and names the handful of values only you can supply (see
 [First-run setup](#first-run-setup)). Then open Claude Code in any folder and say what you want:
 
 > *"Baue mir ein Intune-Paket für 7-Zip 24.09"* — or *"package Notepad++ for Intune"*
@@ -84,8 +84,8 @@ control plane.
   `%LOCALAPPDATA%\psadt-deploy\` (override: `$env:PSADT_DEPLOY_HOME`), so a `git pull`, a re-clone or a
   re-install can no longer take your setup with it. A pre-0.19 config keeps working and is migrated on
   request, never deleted.
-- **One-step installer** — `bin/install.mjs` (Node 18+, zero dependencies) does clone-or-update plus the
-  doctor run. Published to npm as `psadt-deploy-skill`? [Not yet](#the-npx-installer) — clone works today.
+- **One-line install** — `npx psadt-deploy-skill` (Node 18+, zero dependencies) does clone-or-update plus
+  the doctor run in one step.
 
 ### Build and verify
 
@@ -195,7 +195,20 @@ The app's **native installer is always the default**. Everything else is opt-in 
 
 ## Installation
 
-The repo root *is* the skill folder, so cloning it into your Claude Code skills directory is all it takes:
+```powershell
+npx psadt-deploy-skill
+```
+
+Installs into `~/.claude/skills/psadt-deploy` and runs the setup doctor. Flags: `--dir <path>` ·
+`--project` (into `./.claude/skills`) · `--ref <branch|tag>` · `--no-setup`. Node 18+ and Windows; the
+installer itself has zero dependencies and the package carries only `bin/` — the skill is fetched from
+GitHub at install time.
+
+Re-running it updates an existing installation, and so does saying *"update skill"* to Claude Code
+(`git pull --ff-only` for a clone, otherwise a branch-zip overwrite of tracked files only — machine-local
+state is never touched).
+
+**Or clone it yourself** — the repo root *is* the skill folder:
 
 ```powershell
 git clone https://github.com/pt1987/claude-code-psadt-skill.git "$env:USERPROFILE\.claude\skills\psadt-deploy"
@@ -204,22 +217,7 @@ pwsh "$env:USERPROFILE\.claude\skills\psadt-deploy\scripts\Initialize-PsadtSkill
 
 `npx skills add pt1987/claude-code-psadt-skill` works too, since `SKILL.md` sits in the repository root.
 
-Updating: say *"update skill"* to Claude Code, or run
-`pwsh scripts/Update-PsadtSkill.ps1 -Apply` (`git pull --ff-only` for a clone, otherwise a branch-zip
-overwrite of tracked files only — machine-local state is never touched).
-
-### The `npx` installer
-
-`bin/install.mjs` does the clone-or-update plus the doctor run in one step (Node 18+, zero dependencies,
-flags `--dir <path>` · `--project` · `--ref <branch|tag>` · `--no-setup`). Two caveats, both real:
-
-- **Not published to npm yet.** `npx psadt-deploy-skill` returns a 404 until someone runs
-  `npm publish --access public`. Until then, use it from a checkout — `node bin/install.mjs` — or from a
-  packed tarball: `npm pack` and then `npx ./psadt-deploy-skill-<version>.tgz`.
-- **This repository is private.** The installer clones over your existing git credentials, so it only works
-  on machines that can reach the repo — and publishing a public npm package that clones a private repo
-  would hand everyone else a one-liner that fails. Without git, or without access, the installer says so
-  instead of failing obscurely.
+> Needs read access to this repository: the installer clones over your existing git credentials.
 
 The skill activates automatically when you ask Claude Code to build an Intune package, or when you work in
 a folder containing `Invoke-AppDeployToolkit.ps1`.
@@ -327,14 +325,10 @@ psadt-package.json                       identity · gate decisions · research 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
 verified against a live tenant. The helper scripts are covered by 326 Pester tests.
 
-Known open points, honestly:
-
-- **npm publish is still pending.** `package.json` and the installer are ready and verified with
-  `npm pack` + a local run, but publishing is a manual maintainer step — and while this repository is
-  private, a public `npx psadt-deploy-skill` would fail for anyone without access.
-- **The driver `pnputil` exit-code semantics are documented, not verified here.** `0` / `259` / `3010` and
-  the two `0xE...` failures come from Microsoft's documentation; confirming them against
-  `setupapi.dev.log` on a DEV VM with a real vendor-signed and a real Microsoft-signed driver is still open.
+One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
+`0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
+against `setupapi.dev.log` on a DEV VM with a real vendor-signed and a real Microsoft-signed driver is
+still open.
 
 ## Roadmap
 
@@ -375,11 +369,9 @@ Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)
 from either).
 
 ### 0.23.0 - 04.09.2026
-- **One-step installer** (`bin/install.mjs`, packaged as `psadt-deploy-skill`). Clones or updates the skill
-  into `~/.claude/skills/psadt-deploy` and runs the setup doctor, with flags `--dir`, `--project`, `--ref`,
-  `--no-setup`. Cloning to exactly the right path by hand was the first thing a new user could get wrong.
-  **`npm publish` has not happened yet**, so `npx psadt-deploy-skill` still 404s — run it from a checkout
-  (`node bin/install.mjs`) or from `npm pack` output until then.
+- **`npx psadt-deploy-skill`.** One line installs or updates the skill into `~/.claude/skills/psadt-deploy`
+  and runs the setup doctor. Flags `--dir`, `--project`, `--ref`, `--no-setup`. Cloning to exactly the right
+  path by hand was the first thing a new user could get wrong.
 - **Zero dependencies** (Node 18's `fetch` + the `tar.exe` Windows ships). Three acquisition routes:
   update an existing clone, else `git clone --depth 1`, else the branch tarball — because plenty of managed
   machines have no git. The npm package ships only `bin/`; the skill comes from GitHub at install time, so

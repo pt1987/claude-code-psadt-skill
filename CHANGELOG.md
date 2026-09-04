@@ -5,12 +5,10 @@ All notable changes to this skill. Newest first. This project follows a loose [S
 ## 0.23.0 — 2026-09-04 — `npx psadt-deploy-skill`
 
 ### Added
-- **One-step installer.** `bin/install.mjs` (packaged as `psadt-deploy-skill`) clones or updates the skill
-  into `~/.claude/skills/psadt-deploy` and runs the setup doctor. Flags: `--dir <path>`, `--project` (into
+- **One-line install.** `npx psadt-deploy-skill` clones or updates the skill into
+  `~/.claude/skills/psadt-deploy` and runs the setup doctor. Flags: `--dir <path>`, `--project` (into
   `./.claude/skills`), `--ref <branch|tag>`, `--no-setup`, `--help`. Cloning to exactly the right path by
-  hand was the first thing a new user could get wrong. **Not on npm yet** — `npx psadt-deploy-skill`
-  returns 404 until someone runs `npm publish --access public`; until then use `node bin/install.mjs` from
-  a checkout, or `npm pack` + `npx ./psadt-deploy-skill-<version>.tgz`.
+  hand was the first thing a new user could get wrong.
 - **`bin/install.mjs` — zero dependencies.** Node 18's global `fetch` and the `tar.exe` that ships in
   `C:\Windows\System32` are enough; an installer with a dependency tree is an installer that can break for
   reasons unrelated to the skill. Three acquisition routes in order: an existing clone is updated with
@@ -37,9 +35,10 @@ All notable changes to this skill. Newest first. This project follows a loose [S
   `-Json` because the doctor's stdout is inherited so the user sees its table live.
 - Both PowerShell hosts are launched with `-ExecutionPolicy Bypass`: Windows PowerShell 5.1 defaults to
   `Restricted`, and a GPO can pin `pwsh` to `AllSigned` — either way an unsigned script would not run.
-- **Publishing to npm is a manual step for the maintainer** (`npm publish --access public`, needs an npm
-  login). The package is deliberately tiny and the skill is fetched at install time, so a new skill
-  version needs no republish — only a change to the installer does.
+- The package is deliberately tiny and the skill is fetched from GitHub at install time, so a new skill
+  version needs **no npm republish** — only a change to the installer does.
+- Installing needs read access to the repository: the installer clones over the machine's existing git
+  credentials.
 - Test suite: 307 → **326** tests, all green.
 
 ## 0.22.0 — 2026-09-04 — Third-party drivers
