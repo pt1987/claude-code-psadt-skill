@@ -187,6 +187,9 @@ psadt-deploy/
 ├─ scripts/
 │  ├─ Initialize-PsadtSkill.ps1     setup doctor (Phase 0, GREEN/YELLOW/RED, -Fix)
 │  ├─ Test-PsadtIntuneAccess.ps1    Intune access verdict (roles, capabilities, expiry)
+│  ├─ Get-PsadtPackageManifest.ps1  per-package manifest read (+ artifact stem)
+│  ├─ Set-PsadtPackageManifest.ps1  per-package manifest write (merge / append)
+│  ├─ Invoke-PsadtPackage.ps1       build the .intunewin (Phase 7, named + verified)
 │  ├─ Get-PsadtConfig.ps1           config read + config-home resolver
 │  ├─ Set-PsadtConfig.ps1           config write (+ DPAPI secret, -Remove)
 │  ├─ Get-PsadtModule.ps1           PSADT module (self-heal)
@@ -258,6 +261,23 @@ configurable per machine.
 
 Notable changes to the skill, newest first. Append-only — entries are never removed. Also mirrored in
 **[CHANGELOG.md](CHANGELOG.md)**.
+
+### 0.21.0 - 04.09.2026
+- **Every package gets a manifest** (`psadt-package.json`): identity, gate decisions, research findings,
+  every phase result and the produced artifacts, in one file per app. The generators write it, every phase
+  script reads and updates it — so an app's version, name and test evidence stop living in someone's head.
+- **The `.intunewin` is named after the app.** New: `<outputRoot>\<Vendor>_<App>_<Version>_<Arch>\<same
+  stem>.intunewin`, produced by the new `scripts/Invoke-PsadtPackage.ps1`. Until now every package came out
+  as `Invoke-AppDeployToolkit.intunewin` — that name reached Intune, and concurrent uploads collided in one
+  shared temp folder. The new script also verifies the archive before calling it a deliverable and refuses
+  an output folder inside the package (which made the tool pack its own previous output).
+- **One PSADT log per run** instead of one ever-growing file:
+  `<Vendor>_<App>_<Version>_<Arch>_<Install|Uninstall|Repair>_<timestamp>.log`. PSADT appends to a fixed
+  name by default, so by the third attempt a failed install was unreadable.
+- **Pre-flight gained two checks:** a missing or incomplete manifest is RED, a pre-0.21 launcher without a
+  per-run log name is a WARN. Report and upload both take their identity from the manifest.
+- Guide: the missing `Phase 6 / 9 / 10` sections now exist, and Appendix E is numbered by phase.
+  Suite 173 → 251 tests.
 
 ### 0.20.0 - 04.09.2026
 - **Intune access is state, not a 403.** New `scripts/Test-PsadtIntuneAccess.ps1` answers *before* Phase 9

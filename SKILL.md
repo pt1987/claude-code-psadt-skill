@@ -80,11 +80,22 @@ Context follow-ups (coexistence, processes-to-close, architecture) come situatio
   (override: `$env:PSADT_DEPLOY_HOME`), NEVER in the skill folder - they must survive a re-clone, an update
   and a re-install. `Get-PsadtConfig.ps1` is the only resolver; take paths from its `.Home` / `.Path`. A
   pre-0.19 config beside `scripts/` still works read-only (`.LegacyInUse`) - offer `-Fix` to migrate it.
-- **Output location.** `.intunewin` ALWAYS to `<paths.outputRoot>\<App[-Version]>\` (from `Get-PsadtConfig`,
-  no hard-coded default), one sub-folder per app. Detection script + `Intune-Dossier.html` live in that same
-  folder (everything together). Never a `_IntuneOutput` folder beside the package; never `-o` inside `-c`.
-- **Logging.** PSADT writes its session log to `C:\Windows\Logs\Software\` by default (the IME-readable
-  location) - leave it there, don't redirect. Keep each Phase-6 SYSTEM-test log for audit.
+- **Manifest = single source of truth per app.** `<pkg>\psadt-package.json` (schema 1) holds identity, gate
+  decisions, research findings, every phase `results.*` and the `artifacts.*`. Generators write it; a
+  hand-scaffolded package gets it IMMEDIATELY via `Set-PsadtPackageManifest.ps1`. Never re-derive or retype
+  what it already says, and never let a `$meta` argument disagree with it. Pre-flight FAILs without it.
+- **Output location.** `.intunewin` ALWAYS to `<paths.outputRoot>\<Stem>\<Stem>.intunewin` where `Stem` =
+  `<Vendor>_<App>_<Version>_<Arch>` from the manifest (spaces -> `_`, only `[A-Za-z0-9._-]`). Produced ONLY
+  by `Invoke-PsadtPackage.ps1` - never a hand-typed tool call, never the generic
+  `Invoke-AppDeployToolkit.intunewin`. Detection script + `Intune-Dossier.html` live in that same folder.
+  Never a `_IntuneOutput` folder beside the package; never `-o` inside `-c`. Existing folders with the old
+  `<App[-Version]>` scheme stay as they are - nothing is renamed retroactively.
+- **Logging: ONE log per run.** Location stays `C:\Windows\Logs\Software\` (IME-readable) - never redirect.
+  But the launcher MUST set `LogName` in `$adtSession` to
+  `<Vendor>_<App>_<Version>_<Arch>_<DeploymentType>_<yyyyMMdd-HHmmss>.log`: PSADT's default is a fixed name
+  with `LogAppend`, so otherwise every run of every version piles into one unreadable file. Generators do
+  this; a hand-scaffolded launcher must too (pre-flight WARNs). Keep each Phase-6 log for audit
+  (`artifacts.logs[]`).
 - **Author / version / changelog.** `AppScriptAuthor` in `$adtSession` = `author.person, author.company`
   (config, no hard-coded author). First script version ALWAYS `0.1` (not 1.0.0); substantive changes bump it,
   cosmetic edits need not. Mandatory changelog in the `.NOTES` header, one line per version:
@@ -182,12 +193,15 @@ verify the actually-used cmdlets with `Get-Command -Module PSAppDeployToolkit` (
 scaffold. Queries + version-sync check: guide Phase 1.1 + 1.3, Appendix D. WinGet package discovery (search
 by name first; `Find-ADTWinGetPackage`): guide Appendix I.1.
 
-**Phase 3 - Scaffold.** `New-ADTTemplate -Destination <root> -Name <App>` (4.1.x takes only
-`-Destination/-Name/-Version/-Force/-Show/-PassThru` - NO app metadata; metadata goes into `$adtSession`
-afterwards). Fill `$adtSession` (AppVendor/Name/Version/Arch/Lang/Revision, success + reboot exit codes,
-`AppScriptVersion='0.1'`, `AppScriptAuthor` from config) and the `.NOTES` changelog. Verify the module
-version == `DeployAppScriptVersion`. WinGet: provision the extension module into the package, `Files\` stays
-empty, `AppVersion='Latest'` (or pinned) (guide Appendix I.2). Field details: guide Phase 3.
+**Phase 3 - Scaffold.** **A generator is the default route** - it writes the launcher, the detection script,
+the per-run `LogName` AND the manifest in one go: MSI → `New-MsiPackage.ps1`, browser extension →
+`New-BrowserExtensionPackage.ps1`, Windows features → `New-WindowsFeaturePackage.ps1`. Only when none fits:
+`New-ADTTemplate -Destination <root> -Name <App>` (4.1.x takes only `-Destination/-Name/-Version/-Force/
+-Show/-PassThru` - NO app metadata), then fill `$adtSession` (AppVendor/Name/Version/Arch/Lang/Revision,
+success + reboot exit codes, `AppScriptVersion='0.1'`, `AppScriptAuthor` from config, **`LogName` per run**)
+plus the `.NOTES` changelog, and write the manifest immediately (`Set-PsadtPackageManifest.ps1`). Verify the
+module version == `DeployAppScriptVersion`. WinGet: provision the extension module into the package,
+`Files\` stays empty, `AppVersion='Latest'` (or pinned) (guide Appendix I.2). Field details: guide Phase 3.
 
 **Phase 4 - Customize all three hooks.** User drops the installer in `<pkg>\Files\`; fill
 `Install/Uninstall/Repair-ADTDeployment` from the research. Per-installer patterns
@@ -211,43 +225,42 @@ fine - else Company-Portal uninstall returns 0x80070001). Encoding fix (em-dash/
 and per-check explanations: guide Phase 5 (5.1-5.6) + Appendix C. WinGet adds a module-present check and MUST use
 the acid-test stub (a live acid test would install): guide Appendix I.4.
 
-**Phase 6 - SYSTEM test loop (opt-in; BINDING gate for upload).** `Invoke-PsadtSystemTest.ps1` runs one
-action as SYSTEM (via `Invoke-CommandAs`, self-healed from PSGallery; needs an elevated session) and returns
-`{ DeploymentType, ExitCode, Success, DetectionState, LogPath, LogTail, ErrorLines, Elevated }`. It fixes
-nothing - YOU drive the loop and fix between runs. **Prerequisites (all required):** Windows PowerShell 5.1
-(`PSScheduledJob`, which `Invoke-CommandAs -AsSystem` relies on, is 5.1-only - pwsh 7 cannot run it), an
-ELEVATED session, the `Invoke-CommandAs` module, and ideally a VM/snapshot; on some hosts PSADT itself fails
-to import under WinPS 5.1 (60008), so run the gate on a DEV VM. Gate 3 consent + VM/snapshot first; hard cap
-of 5 iterations (you own the count - there is no config key for it). Loop: Install → verify detection →
-Uninstall → verify clean (services, tasks, app reg key, install dir, firewall; neighbour products of the same
-vendor still present) → Reinstall. Converged → leave the machine uninstalled (the default end-state), keep each
-PSADT log for audit. Cap reached → blockade protocol, hand back. If you cannot run it (no elevation), STOP before any upload.
-Diagnosis mapping: Troubleshooting table + guide Appendix A / G.
+**Phase 6 - SYSTEM test loop.** **BINDING before any upload; skippable ONLY when no upload is planned** -
+and that decision is recorded as `decisions.upload` in the manifest, which is what the dossier enforces
+(the report throws on a missing SYSTEM test when `decisions.upload = true`). Each run appends to
+`results.systemTest[]` + `artifacts.logs[]`. `Invoke-PsadtSystemTest.ps1` runs ONE action as SYSTEM and
+returns `{ DeploymentType, ExitCode, Success, DetectionState, LogPath, LogTail, ErrorLines, Elevated }`; it
+fixes nothing - YOU drive the loop, hard cap 5 iterations (you own the count). Needs an ELEVATED session +
+WinPS 5.1 and belongs on a DEV VM (Gate 3 consent + snapshot first). Loop: Install → verify detection →
+Uninstall → verify clean (services, tasks, reg key, install dir, firewall; neighbour products of the same
+vendor stay) → Reinstall. Converged → leave the machine uninstalled. Cap reached or no elevation → blockade
+protocol, STOP before any upload. Prerequisites + diagnosis: guide Phase 6 / Appendix A / G.
 
-**Phase 7 - Package.** Paths from config (`paths.intuneWinAppUtil`, provisioned by `Get-IntuneWinAppUtil.ps1`):
-`& $tool -c <pkg> -s 'Invoke-AppDeployToolkit.exe' -o <outputRoot>\<App[-Version]> -q`. `-o` lies outside `-c`
-(different trees - never nest, or the old `.intunewin` lands recursively in the package). Copy the detection
-script + `Intune-Dossier.html` alongside. Verify the `.intunewin` (`SetupFile` = Invoke-AppDeployToolkit.exe,
-size). Code + extractability check: guide Phase 7.
+**Phase 7 - Package.** `pwsh scripts/Invoke-PsadtPackage.ps1 -PackagePath <pkg>` - one command, never a
+hand-typed `IntuneWinAppUtil` line. It derives the name from the manifest, packs via a private temp `-o`,
+verifies the archive (Detection.xml / SetupFile / size / SHA256), renames to
+`<outputRoot>\<Stem>\<Stem>.intunewin`, copies detection script + logo alongside and records
+`artifacts.*` + `results.package`. It refuses an output folder inside the package and warns about (never
+deletes) foreign `.intunewin` files. Extractability check: guide Phase 7.
 
-**Phase 8 - HTML report (ALWAYS) + real logo.** Fill `$meta` (key list: guide Appendix F.0), then
-`New-PsadtReport.ps1 -Metadata $meta -LogoPath <logo> -OutputPath <Output\<App>\Intune-Dossier.html>`.
+**Phase 8 - HTML report (ALWAYS) + real logo.** `New-PsadtReport.ps1 -ManifestPath <pkg>\psadt-package.json
+-LogoPath <logo> -OutputPath <artifacts.outputFolder>\Intune-Dossier.html`; `-Metadata` still overrides any
+key (list: guide Appendix F.0).
 Mandatory return codes: `0, 1707 Success; 3010 soft / 1641 hard reboot; 1618 retry; 60001, 60008 Failed` +
 researched installer codes. App description = Markdown, dossier language, real umlauts (structure/template:
 guide F.2). Logo fetch + verify + MSI-icon fallback: guide Appendix J. WinGet dossier additions
 (WinGet >= 1.7.10582 requirement, registry/file detection note): guide Appendix I.6.
 
 **Phase 9 - Direct Graph upload (opt-in).** Gate 4. ALWAYS dry-run first (read-only) → show summary +
-`On -Execute` action → confirm → `-Execute`. `Invoke-IntuneWin32Upload.ps1` (via `Get-GraphToken.ps1`; asserts the upload role first): MSI →
+`On -Execute` action → confirm → `-Execute`. `Invoke-IntuneWin32Upload.ps1 -ManifestPath <pkg>\psadt-package.json`
+(identity from the manifest, `results.upload` written back; via `Get-GraphToken.ps1`; asserts the upload role first): MSI →
 `-MsiProductCode '{GUID}'`; EXE/non-MSI → `-DetectionScriptPath` (a detection rule accepts only
 `ruleType, enforceSignatureCheck, runAs32Bit, scriptContent`; the detect script writes stdout + `exit 0` when
 installed, nothing when not). Fill every objective field; impose no category/notes/featured (group assignment
-is the separate opt-in Phase 10); never DELETE (`-OnExisting CreateNewCoexist`, `-UpdateAppId` only for explicit
-in-place, optional `-SupersedesAppId` - the script wires SUPERSEDENCE only, NOT app dependencies
-(`-DependsOnAppId` relationships are portal-wired). Uses `/beta` (v1.0 drops `displayVersion`; the
-upload-shape unit tests guard the shifting request shape). `-MinWindowsRelease` only accepts backend IDs
-`1607..2004` - `21H2`/`22H2` are server-rejected, set a higher minimum in the portal (guide H.11). The script
-refuses the PSADT default logo (SHA256) unless `-AllowDefaultLogo`. Graph gotchas: guide Appendix H.
+is the separate opt-in Phase 10); never DELETE (`-OnExisting CreateNewCoexist`, `-UpdateAppId` only for
+explicit in-place, optional `-SupersedesAppId` = supersedence only, NOT dependencies). `-MinWindowsRelease`
+takes backend IDs `1607..2004` only. The script refuses the PSADT default logo unless `-AllowDefaultLogo`.
+Uses `/beta`. Details + Graph gotchas: guide Phase 9 / Appendix H.
 
 **Phase 10 - Group assignment (opt-in).** Only when the user chose it at Gate 2 AND `intune.groups.enabled`.
 ALWAYS dry-run first (read-only) → show the planned group names + actions → confirm → `-Execute`.

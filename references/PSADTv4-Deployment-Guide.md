@@ -4,11 +4,11 @@ Mandatory end-to-end guide for Intune Win32 packages with PSADT 4.x. Work throug
 
 - **Phase 0**: Setup (the doctor: `Initialize-PsadtSkill.ps1`)
 - **Phases 1-2**: Intake + Research (BEFORE the first click)
-- **Phase 3**: Scaffold via `New-ADTTemplate`
+- **Phase 3**: Scaffold - a generator, or `New-ADTTemplate` when none fits
 - **Phase 4**: Script customizing (the three hooks)
 - **Phase 5**: Pre-flight checks (encoding, parse, launcher simulation)
-- **Phase 6**: SYSTEM test (opt-in; binding gate for upload - Appendix A / G)
-- **Phase 7**: Build the .intunewin
+- **Phase 6**: SYSTEM test (BINDING before upload; skippable only without a planned upload)
+- **Phase 7**: Build the .intunewin (`Invoke-PsadtPackage.ps1`)
 - **Phase 8**: Intune app configuration (+ dossier, Appendix F)
 - **Phase 9**: Direct Graph upload (opt-in; Appendix H)
 - **Phase 10**: Group assignment (opt-in; Appendix M)
@@ -525,6 +525,28 @@ Anything that is not an `AssignmentStatementAst` / `PipelineAst` (for Set-Strict
 
 ---
 
+## Phase 6: SYSTEM test (the binding gate for upload)
+
+Short by design - the mechanics live in `scripts/Invoke-PsadtSystemTest.ps1` (comment-based help) and the
+lessons in Appendix G.
+
+**It is BINDING before any upload, and skippable only when no upload is planned.** That is not a matter of
+discipline any more: the decision is `decisions.upload` in the package manifest, and
+`New-PsadtReport.ps1 -ManifestPath` throws on a missing SYSTEM test when it is `true`.
+
+```powershell
+pwsh scripts/Invoke-PsadtSystemTest.ps1 -PackagePath '<pkg>' -DeploymentType Install -DetectionScript '<pkg>\Detect-<App>.ps1'
+pwsh scripts/Invoke-PsadtSystemTest.ps1 -PackagePath '<pkg>' -DeploymentType Uninstall -DetectionScript '<pkg>\Detect-<App>.ps1'
+```
+
+Install AND Uninstall must both pass. Each run appends to `results.systemTest[]` and its log to
+`artifacts.logs[]`, so the evidence is in the package rather than in someone's terminal scrollback.
+Requires an elevated session (a SYSTEM scheduled task) and Windows PowerShell 5.1 (PSScheduledJob); the
+script re-execs itself into 5.1 when started from pwsh. Cannot run it? STOP before `-Execute` and hand the
+exact command back - never upload untested.
+
+---
+
 ## Phase 7: Build the .intunewin
 
 ### 7.1 Get IntuneWinAppUtil
@@ -546,10 +568,31 @@ if (-not (Test-Path $tool)) {
 
 ### 7.2 Package
 
+Since 0.21.0 this is ONE command, and it is the only supported route:
+
 ```powershell
-$src = '<package folder from phase 1>'              # e.g. '<paths.packageRoot>\<AppName>'
+pwsh scripts/Invoke-PsadtPackage.ps1 -PackagePath '<package folder>'
+```
+
+It reads the identity from `psadt-package.json`, packs with `-o` pointing at a private temp folder,
+verifies the archive, and lands the result as
+`<paths.outputRoot>\<Vendor>_<App>_<Version>_<Arch>\<same stem>.intunewin` with the detection script and
+the logo beside it, recording `artifacts.*` + `results.package` in the manifest.
+
+**Why the name matters.** IntuneWinAppUtil names its output after `-s`, which is always
+`Invoke-AppDeployToolkit.exe` - so before 0.21.0 every app produced
+`Invoke-AppDeployToolkit.intunewin`. That name reached Intune as `win32LobApp.fileName`, and every
+concurrent upload collided in the same `%TEMP%\iwup-Invoke-AppDeployToolkit` working folder. Renaming is
+safe: the upload reads `setupFilePath` from the archive's INNER `Detection.xml`; the outer file name only
+feeds `fileName` and that temp folder.
+
+The raw tool call below is documented for understanding and for the rare manual case - not as the
+workflow:
+
+```powershell
+$src = '<package folder>'
 $setupFile = 'Invoke-AppDeployToolkit.exe'         # ALWAYS the .exe, NOT the .ps1
-$out = '<output folder OUTSIDE $src>'               # from config: '<paths.outputRoot>\<AppName>' - NOT inside src!
+$out = '<output folder OUTSIDE $src>'               # NOT inside src!
 New-Item $out -ItemType Directory -Force | Out-Null
 
 & $tool -c $src -s $setupFile -o $out -q
@@ -563,9 +606,13 @@ Parameters:
 - `-a <catalogFolder>` - optional, catalog files for WDAC-signed environments
 - `-e` - encryption output info (interesting for tooling, not for Intune)
 
-Result plausibility:
+Result plausibility (after `Invoke-PsadtPackage.ps1` take the path from the manifest -
+`artifacts.intunewin` - instead of guessing with a wildcard; several `.intunewin` files can legitimately
+sit in one folder):
 ```powershell
-$iw = Get-ChildItem "$out\*.intunewin" | Select-Object -First 1
+$iw = Get-Item ((Get-Content "$src\psadt-package.json" -Raw | ConvertFrom-Json).artifacts.intunewin)
+# manual fallback only, when there is no manifest yet:
+# $iw = Get-ChildItem "$out\*.intunewin" | Select-Object -First 1
 "Size: $([Math]::Round($iw.Length / 1MB, 1)) MB"
 "Approx Files/-Size: $([Math]::Round(((Get-ChildItem "$src\Files" -Recurse -File | Measure-Object -Property Length -Sum).Sum) / 1MB, 1)) MB"
 ```
@@ -656,6 +703,29 @@ Three options, ordered by robustness:
 
 ---
 
+## Phase 9: Direct Graph upload (opt-in)
+
+Mechanics and the hard-won Graph lessons: Appendix H. Permissions: `references/app-registration.md`.
+
+```powershell
+# ALWAYS dry-run first (read-only), show the summary, confirm, only then -Execute:
+pwsh scripts/Invoke-IntuneWin32Upload.ps1 -IntuneWinPath '<artifacts.intunewin>' -ManifestPath '<pkg>\psadt-package.json'
+```
+
+`-ManifestPath` supplies DisplayName / Publisher / AppVersion / Architecture, so the app in Intune carries
+the same identity as the artifact and the dossier; anything passed explicitly still wins. After a
+successful `-Execute` the app id, content version, portal URL and tenant land in `results.upload`. Check
+`Capabilities.Upload` first (`Test-PsadtIntuneAccess.ps1`) instead of discovering a missing role from a 403
+mid-upload.
+
+## Phase 10: Group assignment (opt-in)
+
+Config, naming rules and the permission model: Appendix M. Only runs when the user chose it at Gate 2 AND
+`intune.groups.enabled` is set. Needs BOTH group roles (`Capabilities.Groups`), which
+`Invoke-IntuneAppAssignment.ps1` asserts before it creates anything. Dry-run first, like every write.
+
+---
+
 ## Phase 11: Test sequence
 
 In this order on a DEV VM (not prod).
@@ -683,7 +753,9 @@ Runs through = no dependency on a user session. This test must be green BEFORE u
 
 ### 11.4 Test-group deploy
 A dedicated Intune test group with 1 VM. Observe the deployment:
-- `C:\Windows\Logs\Software\*PSAppDeployToolkit_Install.log` must exist + contain `Close-ADTSession` with Exit 0
+- `C:\Windows\Logs\Software\<Vendor>_<App>_<Version>_<Arch>_Install_<yyyyMMdd-HHmmss>.log` (0.21.0+; a
+  pre-0.21 package still writes `*PSAppDeployToolkit_Install.log` and APPENDS to it) must exist and contain
+  `Close-ADTSession` with Exit 0
 - `AppWorkload.log` shows `Status: Installed`
 - the detection script returns `exit 0 + stdout non-empty`
 
@@ -769,7 +841,7 @@ Start-Service IntuneManagementExtension
 
 | Log | Purpose |
 |---|---|
-| `C:\Windows\Logs\Software\<AppName>*PSAppDeployToolkit_Install.log` | PSADT session (after a successful init) |
+| `C:\Windows\Logs\Software\<Vendor>_<App>_<Version>_<Arch>_Install_<timestamp>.log` | PSADT session, ONE file per run (0.21.0+). Pre-0.21: `<AppName>*PSAppDeployToolkit_Install.log`, appended across runs |
 | `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AppWorkload.log` | **The truth** about exit codes + install commands |
 | `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log` | IME service state |
 | `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AgentExecutor.log` | Detection-script runs |
@@ -917,55 +989,79 @@ Get-Content "$env:TEMP\stub-reached.log" -ErrorAction SilentlyContinue
 
 ## Appendix E: Final deploy checklist
 
+The item numbers follow the PHASE they belong to - the old 0.x/1.x scheme was a third numbering next to
+the phases and the sections, and it drifted. The machine-readable form of this checklist is the manifest's
+`results` block (`results.preflight`, `results.systemTest[]`, `results.package`, `results.upload`): if a
+line here is green, the corresponding entry exists in `psadt-package.json`.
+
 ```
+Phase 0 - Setup
+[ ] 0.1  Initialize-PsadtSkill.ps1 GREEN or YELLOW (RED blocks everything else)
+[ ] 0.2  Config home complete - no key left in .Missing
+
 Phase 1-2 - Research + Intake
-[ ] 0.1  PSADT version local == Latest (or update)
-[ ] 0.2  Intake form complete (App, Installer, Environment, Sec)
-[ ] 0.3  Silent install switches + uninstall switches documented
+[ ] 1.1  PSADT version local == latest (or updated)
+[ ] 1.2  Intake complete (app, installer, environment, security)
+[ ] 1.3  Silent install AND uninstall switches documented -> research.switches
 
 Phase 3 - Scaffold
-[ ] 1.1  New-ADTTemplate -Destination ... -Name ... executed
-[ ] 1.2  Folder layout complete
-[ ] 1.3  Module version pinned in scaffold
+[ ] 3.1  Generator used (MSI / browser extension / Windows feature), or New-ADTTemplate when none fits
+[ ] 3.2  Folder layout complete
+[ ] 3.3  Module version pinned in the scaffold
+[ ] 3.4  psadt-package.json written, identity complete
+[ ] 3.5  Launcher sets LogName (one log per run)
 
 Phase 4 - Script customizing
-[ ] 2.1  Installer in Files\
-[ ] 2.2  $adtSession with all metadata
-[ ] 2.3  Install/Uninstall/Repair hooks filled in
-[ ] 2.4  Custom helpers in PSAppDeployToolkit.Extensions, not in the main script
+[ ] 4.1  Installer in Files\
+[ ] 4.2  $adtSession carries all metadata
+[ ] 4.3  Install/Uninstall/Repair hooks filled in
+[ ] 4.4  Custom helpers in PSAppDeployToolkit.Extensions, not in the launcher
 
-Phase 5 - Pre-Flight
-[ ] 3.1  Encoding: HasBOM=True OR NonAscii=0
-[ ] 3.2  ParseFile PARSE_OK
-[ ] 3.3  Launcher simulation green
-[ ] 3.4  Param block in sync with v4 template
-[ ] 3.5  No v3 cmdlet remnants
-[ ] 3.6  No top-level statements that can throw
+Phase 5 - Pre-flight
+[ ] 5.1  Encoding: BOM present OR non-ASCII count 0
+[ ] 5.2  ParseFile PARSE_OK
+[ ] 5.3  Launcher simulation green
+[ ] 5.4  Param block in sync with the v4 template
+[ ] 5.5  No v3 cmdlet remnants
+[ ] 5.6  No top-level statements that can throw
+[ ] 5.7  Manifest check PASS (check 8)
+[ ] 5.8  Invoke-PsadtPreflight.ps1 GREEN -> results.preflight
+
+Phase 6 - SYSTEM test (BINDING before upload)
+[ ] 6.1  Install passes as SYSTEM, detection = installed
+[ ] 6.2  Uninstall passes as SYSTEM, detection = not-installed
+[ ] 6.3  Both runs in results.systemTest[], logs in artifacts.logs[]
 
 Phase 7 - Build
-[ ] 4.1  IntuneWinAppUtil latest
-[ ] 4.2  -c / -s / -o correct, -o NOT inside -c
-[ ] 4.3  Inspection: Detection.xml has SetupFile=Invoke-AppDeployToolkit.exe
+[ ] 7.1  IntuneWinAppUtil current
+[ ] 7.2  Invoke-PsadtPackage.ps1 used (never a hand-typed tool call)
+[ ] 7.3  Artifact named <Vendor>_<App>_<Version>_<Arch>.intunewin -> artifacts.intunewin
+[ ] 7.4  Detection.xml carries SetupFile=Invoke-AppDeployToolkit.exe -> results.package
 
-Phase 8 - Intune config
-[ ] 5.1  App Info + Logo
-[ ] 5.2  Install/Uninstall command + Install Behavior=System
-[ ] 5.3  Return codes complete (incl. 60001+60008=Failed)
-[ ] 5.4  Requirements (OS, Arch, Disk, Memory)
-[ ] 5.5  Detection method UNAMBIGUOUS
-[ ] 5.6  Install time realistic
-[ ] 5.7  Assignments + Filter + Delivery Opt
+Phase 8 - Intune config + dossier
+[ ] 8.1  App info + real logo (never the PSADT default)
+[ ] 8.2  Install/Uninstall command + install behaviour = System
+[ ] 8.3  Return codes complete (incl. 60001 + 60008 = Failed)
+[ ] 8.4  Requirements (OS, arch, disk, memory)
+[ ] 8.5  Detection method UNAMBIGUOUS
+[ ] 8.6  Install time realistic (-MaxRunTimeMinutes for long installs)
+[ ] 8.7  Intune-Dossier.html generated from the manifest -> results.report
+
+Phase 9-10 - Upload + assignment (opt-in)
+[ ] 9.1  Capabilities.Upload verified BEFORE the upload (Test-PsadtIntuneAccess.ps1)
+[ ] 9.2  Dry run reviewed, then -Execute -> results.upload
+[ ] 10.1 Group assignment only if chosen at Gate 2 and intune.groups.enabled
 
 Phase 11 - Test
-[ ] 6.1  Direct invoke on DEV
-[ ] 6.2  Launcher invoke on DEV
-[ ] 6.3  Psexec -s on DEV
-[ ] 6.4  Test-group deploy -> PSADT log + Close-ADTSession Exit 0
+[ ] 11.1 Direct invoke on DEV
+[ ] 11.2 Launcher invoke on DEV
+[ ] 11.3 psexec -s on DEV
+[ ] 11.4 Test-group deploy -> PSADT log + Close-ADTSession Exit 0
 
 Phase 12 - Rollout
-[ ] 7.1  Pilot (24-48h)
-[ ] 7.2  Production staged
-[ ] 7.3  GitHub release watch subscribed
+[ ] 12.1 Pilot (24-48h)
+[ ] 12.2 Production, staged
+[ ] 12.3 Vendor release watch subscribed
 ```
 
 Only when ALL lines are green: production rollout.
@@ -976,7 +1072,8 @@ Only when ALL lines are green: production rollout.
 
 **The report is generated for EVERY package — uploaded or not — by `scripts/New-PsadtReport.ps1` from the fixed
 template `references/Report-Template.html`. Do NOT hand-assemble the HTML.** Output is always
-`Intune-Dossier.html` in `Output\<App>\`. It is one self-contained, **bilingual (DE/EN toggle)** document:
+`Intune-Dossier.html` in the artifact folder (`artifacts.outputFolder` =
+`<paths.outputRoot>\<Vendor>_<App>_<Version>_<Arch>\`). It is one self-contained, **bilingual (DE/EN toggle)** document:
 part 1 is the Intune dossier (the tables F.1–F.9 below), part 2 is the technical package report (deployment
 hooks, PSADT cmdlets used, pre-flight results, the Phase 6 SYSTEM-test result, logo + `.intunewin`
 verification). The logo is embedded as a base64 data URI; the description **preview is rendered client-side
@@ -985,10 +1082,22 @@ description field supports only Markdown (not HTML). The values come from Phase 
 
 ### F.0 Generator usage + `-Metadata` keys
 
+Since 0.21.0 the identity comes from the package manifest, so the same app cannot end up with two
+different names in the artifact, the dossier and Intune:
+
 ```powershell
-& scripts/New-PsadtReport.ps1 -Metadata $meta -LogoPath '<Output\<App>\<App>-Logo.png>' `
-    -OutputPath '<Output\<App>\Intune-Dossier.html'
+& scripts/New-PsadtReport.ps1 -ManifestPath '<pkg>\psadt-package.json' `
+    -LogoPath '<artifacts.logo>' -OutputPath '<artifacts.outputFolder>\Intune-Dossier.html'
 ```
+
+`-Metadata` still overrides any individual key, and the manifest-free form
+(`-Metadata $meta` only) still works for ad-hoc use. With `-ManifestPath` there is one hard rule: the
+identity must be real. `AppName`, `AppVersion` and `Publisher` must resolve, or the script throws instead
+of shipping a dossier that says "App 0.0.0" - a placeholder with a letterhead is worse than no document.
+Everything else stays optional and renders NEUTRALLY ("not run" / "not packed yet"), because the report is
+produced for EVERY package, including one that has not reached Phase 7. The one exception is the SYSTEM
+test: when the manifest says `decisions.upload = true`, a missing SYSTEM-test result is an error, because
+Phase 6 is the binding gate for upload.
 
 `$meta` is a hashtable. Every key is optional (sane defaults fill the rest, so the report is always complete):
 

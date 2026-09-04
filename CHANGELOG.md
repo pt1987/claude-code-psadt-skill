@@ -2,6 +2,74 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.21.0 — 2026-09-04 — Package manifest, deterministic packaging, one log per run
+
+### Added
+- **`psadt-package.json` — one manifest per package, and the single source of truth for that app.**
+  Schema 1 records the identity, the decisions taken at the gates, the research findings, every phase's
+  `results.*` and the `artifacts.*`. Read with `scripts/Get-PsadtPackageManifest.ps1` (gaps in `.Missing`,
+  never a throw), written with `scripts/Set-PsadtPackageManifest.ps1` (dotted paths, deep merge,
+  `-Remove`, and `-Append` for the results arrays). Before this, an app's identity lived in the operator's
+  head and in `$meta` arguments — which is how two packages of the same app could disagree about their own
+  version.
+- **`scripts/Invoke-PsadtPackage.ps1` — one packaging command.** Derives the name from the manifest, packs
+  with `-o` pointing at a private temp folder, verifies the archive (`Detection.xml`, content blob,
+  recorded `SetupFile`, unencrypted size, SHA256), renames the artifact, copies the detection script and
+  the real logo next to it, and records `artifacts.*` + `results.package`.
+- **Guide: the missing phase headings.** `## Phase 6` (SYSTEM test), `## Phase 9` (upload) and
+  `## Phase 10` (assignment) exist as sections now instead of being mentioned only in passing.
+
+### Changed
+- **The `.intunewin` is finally named after the app.** New binding convention:
+  `<paths.outputRoot>\<Vendor>_<App>_<Version>_<Arch>\<same stem>.intunewin`.
+  **Why:** `-s` is always `Invoke-AppDeployToolkit.exe` and IntuneWinAppUtil names its output after it, so
+  every package produced `Invoke-AppDeployToolkit.intunewin`. That generic name reached Intune as
+  `win32LobApp.fileName`, and every concurrent upload collided in the same
+  `%TEMP%\iwup-Invoke-AppDeployToolkit` working folder. Renaming is safe because the upload reads
+  `setupFilePath` from the archive's INNER `Detection.xml` — a test pins that. Existing folders using the
+  old `<App[-Version]>` scheme are never touched or renamed.
+- **One PSADT log per run.** All three generators now emit
+  `LogName = <Vendor>_<App>_<Version>_<Arch>_<DeploymentType>_<yyyyMMdd-HHmmss>.log` in the launcher's
+  `$adtSession`. `Toolkit.LogAppend` is `$true` by default in 4.1.8 and the name was fixed, so every run of
+  every version appended to one file — by the third attempt a failed install is unreadable. Location stays
+  `C:\Windows\Logs\Software` and `LogAppend` is untouched.
+- **The generators write the manifest**, so the identity that names the log and the artifact is recorded
+  where every later phase reads it. The sanitizing rule exists exactly once
+  (`Get-PsadtPackageManifest.ps1 -Identity`) — a second copy would drift and rename an app behind
+  everyone's back.
+- **Every phase records its own result:** `results.preflight` (pre-flight), `results.systemTest[]` +
+  `artifacts.logs[]` (each SYSTEM-test run, appended — Install and Uninstall are two pieces of evidence),
+  `results.package`, `results.upload` (app id, content version, portal URL, tenant).
+- **Pre-flight: two new checks.** `Manifest` FAILs (→ RED) on a missing, malformed or incomplete manifest —
+  the artifact name is derived from that identity, so a package that cannot say what it is cannot be
+  packed, reported on or uploaded consistently; the PASS line reports the artifact stem, which is the
+  fastest way to catch a wrong version before anything is built. `LogName` WARNs for a pre-0.21 scaffold.
+- **`New-PsadtReport.ps1 -ManifestPath`** takes identity and artifact names from the manifest
+  (`-Metadata` still overrides every key). The mandatory floor is identity only — `AppName`, `AppVersion`,
+  `Publisher`; everything else keeps rendering neutrally, because "report ALWAYS" has to hold for a package
+  that is not packed or tested yet. A missing SYSTEM test throws only when `decisions.upload = true`.
+- **`Invoke-IntuneWin32Upload.ps1 -ManifestPath`** supplies DisplayName / Publisher / AppVersion /
+  Architecture, so the app in Intune carries the same identity as the artifact and the dossier. Explicit
+  parameters always win (checked via `PSBoundParameters`).
+- **`Invoke-PsadtSystemTest.ps1` picks the right log.** The old filter matched the fixed legacy name only
+  and took the newest hit, so a per-run name matched nothing — and worse, a stale legacy log from last week
+  could win. `Get-FreshSessionLog` accepts both shapes and requires `LastWriteTime >= the run's start`.
+- **Guide Appendix E is numbered by phase** (0.1, 3.4, 7.2 …) instead of carrying a third numbering scheme,
+  and says that the manifest's `results` block is the machine-readable form of the same checklist.
+- **SKILL.md**: new conventions "Manifest = single source of truth per app" and "Logging: ONE log per run";
+  Phase 3 makes the generators the default route; Phase 6 states plainly that it is binding before upload
+  and skippable only without one; Phase 7 is now a single script call.
+
+### Fixed
+- **`New-BrowserExtensionPackage.ps1` and `New-WindowsFeaturePackage.ps1` had no tests at all.** Both now
+  have the same AST/source harness as the MSI generator.
+- **A single-element array silently became a hashtable merge.** `-Append` on a results array hit
+  PowerShell's unwrapping of one-element arrays (`$x = if (...) { @($v) }` hands back the bare element), so
+  appending the second SYSTEM-test run threw on a duplicate key instead of appending.
+
+### Notes
+- Test suite: 173 → **251** tests, all green.
+
 ## 0.20.0 — 2026-09-04 — Intune access as state, not as a 403
 
 ### Added
