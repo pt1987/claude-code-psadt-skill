@@ -21,7 +21,7 @@
 
 .OUTPUTS
     PSCustomObject: Exists(bool), Config(object|null), Missing(string[]), Path(string), Home(string),
-    DefaultHome(string), LegacyInUse(bool)
+    DefaultHome(string), LegacyInUse(bool), IntuneState('NotConfigured'|'Configured'|'Incomplete')
 
 .EXAMPLE
     $c = & Get-PsadtConfig.ps1
@@ -60,10 +60,12 @@ function Get-ByPath($obj, [string]$path) {
     }
     return $cur
 }
+$intuneState = 'NotConfigured'
 function New-Result([bool]$exists, $config, $missing, [string]$err) {
     $o = [ordered]@{
         Exists = $exists; Config = $config; Missing = $missing; Path = $configPath
         Home = $configHome; DefaultHome = $defaultHome; LegacyInUse = $legacyInUse
+        IntuneState = $intuneState
     }
     if ($err) { $o['Error'] = $err }
     [pscustomobject]$o
@@ -97,4 +99,12 @@ if ($cfg.intune -and $cfg.intune.groups -and $cfg.intune.groups.enabled) {
         $missing.Add('intune.groups.naming (need at least one of required/available/uninstall)')
     }
 }
+# Intune ACCESS state, derived from the checks above so there is one truth. Group naming is a separate
+# concern (Phase 10) and must not make the upload path look broken.
+$accessGaps = @($missing | Where-Object { $_ -like 'intune.*' -and $_ -notlike 'intune.groups*' })
+$intuneState =
+    if (-not ($cfg.intune -and $cfg.intune.uploadEnabled)) { 'NotConfigured' }
+    elseif ($accessGaps.Count) { 'Incomplete' }
+    else { 'Configured' }
+
 New-Result $true $cfg $missing.ToArray() $null

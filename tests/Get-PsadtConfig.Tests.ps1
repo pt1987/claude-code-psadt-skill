@@ -84,4 +84,58 @@ Describe 'Get-PsadtConfig' {
             $r.Config.author.person | Should -Be 'Home'
         }
     }
+
+    Context 'IntuneState' {
+        BeforeEach {
+            $script:writeCfg = {
+                param($Intune)
+                $cfg = @{
+                    version  = 1
+                    paths    = @{ packageRoot = 'c:\p'; outputRoot = 'c:\o'; intuneWinAppUtil = 'c:\t\x.exe' }
+                    language = @{ script = 'EN'; dossier = 'DE' }
+                    author   = @{ person = 'Pat'; company = 'PHAT' }
+                }
+                if ($Intune) { $cfg.intune = $Intune }
+                $cfg | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $script:root 'config.json')
+            }
+            $script:credible = @{ tenantId = 't'; clientId = 'c'; secretRef = 'secret.dpapi'; uploadEnabled = $true }
+        }
+
+        It 'is NotConfigured without an intune block' {
+            & $script:writeCfg $null
+            (& $script:run).IntuneState | Should -Be 'NotConfigured'
+        }
+
+        It 'is NotConfigured while uploadEnabled is false' {
+            & $script:writeCfg @{ tenantId = 't'; clientId = 'c'; uploadEnabled = $false }
+            (& $script:run).IntuneState | Should -Be 'NotConfigured'
+        }
+
+        It 'is Configured when identity and credential are all present' {
+            & $script:writeCfg $script:credible
+            Set-Content (Join-Path $script:root 'secret.dpapi') 'blob' -NoNewline
+            (& $script:run).IntuneState | Should -Be 'Configured'
+        }
+
+        It 'is Incomplete when upload is enabled but a key is missing' {
+            & $script:writeCfg @{ clientId = 'c'; secretRef = 'secret.dpapi'; uploadEnabled = $true }
+            Set-Content (Join-Path $script:root 'secret.dpapi') 'blob' -NoNewline
+            (& $script:run).IntuneState | Should -Be 'Incomplete'
+        }
+
+        It 'is Incomplete when the credential file is gone' {
+            & $script:writeCfg $script:credible
+            (& $script:run).IntuneState | Should -Be 'Incomplete'
+        }
+
+        It 'stays Configured when only the group naming is missing - that is not an access gap' {
+            $withGroups = $script:credible.Clone()
+            $withGroups.groups = @{ enabled = $true }
+            & $script:writeCfg $withGroups
+            Set-Content (Join-Path $script:root 'secret.dpapi') 'blob' -NoNewline
+            $r = & $script:run
+            $r.Missing     | Should -Contain 'intune.groups.naming'
+            $r.IntuneState | Should -Be 'Configured'
+        }
+    }
 }
