@@ -16,8 +16,13 @@
          -IncludeGroupManagement (Group.Create + GroupMember.Read.All) and -IncludeConfigurationManagement
          (DeviceManagementConfiguration.ReadWrite.All, for firewall/config policies),
       4. creates a client secret (returned once),
-      5. writes intune.tenantId / clientId / uploadEnabled to config.json and DPAPI-stores the secret
-         via Set-PsadtConfig.ps1 - the secret is never printed and never typed by hand.
+      5. writes the tenant/client identity, the app's object id + display name, the credential expiry and
+         the roles it actually holds to the config, and DPAPI-stores the secret via Set-PsadtConfig.ps1 -
+         the secret is never printed and never typed by hand.
+
+    Re-running is the normal case, not an exception: the app is looked up by the recorded intune.clientId
+    (display name only as a fallback), requested permissions are MERGED rather than replaced, older client
+    secrets are counted but never deleted, and nothing is ever prompted for.
 
     Requirement: the signed-in user must be able to create an app AND grant admin consent - i.e.
     Global Administrator or Privileged Role Administrator. Application Administrator alone cannot perform
@@ -36,15 +41,22 @@
     Lifetime of the generated client secret, in months. Default 12.
 
 .PARAMETER Force
-    If an app named "PSADT Intune Upload" already exists, reuse it without prompting (a fresh secret is
-    still created).
+    Kept for compatibility. Reuse is now the default and never prompts, so this only suppresses the
+    "reusing an existing app" notice. The app this script reuses is the one recorded in intune.clientId
+    (display-name lookup is the fallback).
 
 .PARAMETER UseDeviceCode
     Skip WAM and sign in with the device-code flow instead. Useful on machines without the Windows broker
     (e.g. some Server Core / non-interactive hosts) or to avoid the one-time MSAL download.
 
 .OUTPUTS
-    PSCustomObject: TenantId, ClientId, AppObjectId, ConsentGranted(bool), SecretExpires(datetime), ConfigPath.
+    PSCustomObject: TenantId, ClientId, AppObjectId, AppDisplayName, ConsentGranted(bool),
+    AuthMethod('Certificate'|'ClientSecret'), CredExpires(datetime), Roles(string[]), UploadEnabled(bool),
+    ConfigPath.
+
+    Persisted to the config so later runs and Test-PsadtIntuneAccess.ps1 do not have to re-discover it:
+    intune.appObjectId, intune.appDisplayName, intune.credExpires, intune.roles - and uploadEnabled, which
+    is TRUE only once consent is actually in place.
 
 .EXAMPLE
     pwsh scripts/New-PsadtEntraApp.ps1
@@ -188,10 +200,65 @@ function Invoke-WithRetry([scriptblock]$Action, [int]$Tries = 6, [int]$DelaySec 
     }
 }
 
+function Merge-RequiredResourceAccess {
+    # UNION, never replace. Sending only the roles requested in THIS run silently revokes the requested
+    # permissions of an earlier run (e.g. a run without -IncludeConfigurationManagement would drop the
+    # config role from the app's requested permissions).
+    param($Existing, [string]$ResourceAppId, [string[]]$RoleIds)
+    $out   = @()
+    $found = $false
+    foreach ($entry in @($Existing)) {
+        if ($null -eq $entry) { continue }
+        if ([string]$entry.resourceAppId -eq $ResourceAppId) {
+            $found = $true
+            $ids = [System.Collections.Generic.List[string]]::new()
+            $acc = @()
+            foreach ($ra in @($entry.resourceAccess)) {
+                if ($null -eq $ra) { continue }
+                $id = [string]$ra.id
+                if (-not $ids.Contains($id)) { $ids.Add($id); $acc += @{ id = $id; type = [string]$ra.type } }
+            }
+            foreach ($id in $RoleIds) {
+                if (-not $ids.Contains($id)) { $ids.Add($id); $acc += @{ id = $id; type = 'Role' } }
+            }
+            $out += @{ resourceAppId = $ResourceAppId; resourceAccess = @($acc) }
+        } else {
+            $keep = @()
+            foreach ($ra in @($entry.resourceAccess)) {
+                if ($null -eq $ra) { continue }
+                $keep += @{ id = [string]$ra.id; type = [string]$ra.type }
+            }
+            $out += @{ resourceAppId = [string]$entry.resourceAppId; resourceAccess = @($keep) }
+        }
+    }
+    if (-not $found) {
+        $acc = @()
+        foreach ($id in $RoleIds) { $acc += @{ id = $id; type = 'Role' } }
+        $out += @{ resourceAppId = $ResourceAppId; resourceAccess = @($acc) }
+    }
+    return @($out)
+}
+
+function Get-StaleCredentialKeys([bool]$WithCertificate) {
+    # Get-GraphToken takes the certificate path whenever intune.certThumbprint is set, so a leftover
+    # thumbprint silently beats a freshly stored secret (and vice versa the secretRef points at a file
+    # that is no longer the credential). Switching method has to remove the other pointer.
+    if ($WithCertificate) { return @('intune.secretRef') }
+    return @('intune.certThumbprint')
+}
+
 # =====================================================================================================
 Write-Host "PSADT Intune upload - Entra app bootstrap" -ForegroundColor White
 Write-Host "Creates the app registration '$AppDisplayName' and configures direct upload." -ForegroundColor Gray
 Write-Host "You must sign in as Global Administrator or Privileged Role Administrator." -ForegroundColor Gray
+
+# 0. What do we already know? --------------------------------------------------------------------------
+# Read the config BEFORE touching the tenant: the recorded clientId is how this run finds "our" app, and
+# the resolved path is where everything will be written.
+$cfgProbe      = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot
+$knownClientId = [string]$cfgProbe.Config.intune.clientId
+$cfgPath       = $cfgProbe.Path
+if ($knownClientId) { Write-Info "Config already records clientId $knownClientId ($($cfgProbe.IntuneState))." }
 
 # 1. Sign in -------------------------------------------------------------------------------------------
 Write-Step "Sign in"
@@ -215,22 +282,35 @@ $roles = foreach ($rv in $RequiredAppRoles) {
 Write-Ok "Resolved $(@($roles).Count) app role(s)."
 
 # 3. Create (or reuse) the app registration ------------------------------------------------------------
+# Identity comes from the config first: a tenant may well hold several apps with the same display name,
+# and the one this skill is configured against is the one recorded in intune.clientId.
 Write-Step "Create app registration '$AppDisplayName'"
-$existing = (Invoke-Graph GET "$GraphBase/applications?`$filter=displayName eq '$AppDisplayName'" -Headers $H).value | Select-Object -First 1
+$existing = $null
+if (-not [string]::IsNullOrWhiteSpace($knownClientId)) {
+    $existing = (Invoke-Graph GET "$GraphBase/applications?`$filter=appId eq '$knownClientId'" -Headers $H).value | Select-Object -First 1
+    if ($existing) { Write-Info "Matched the app recorded in the config (appId $knownClientId)." }
+    else { Write-Warn2 "The configured appId $knownClientId no longer exists in this tenant - falling back to the display name." }
+}
+if (-not $existing) {
+    $existing = (Invoke-Graph GET "$GraphBase/applications?`$filter=displayName eq '$AppDisplayName'" -Headers $H).value | Select-Object -First 1
+}
 if ($existing) {
-    if (-not $Force) {
-        Write-Warn2 "An app named '$AppDisplayName' already exists (appId $($existing.appId))."
-        $ans = Read-Host "    Reuse it and just create a new secret? [y/N]"
-        if ($ans -notmatch '^(y|yes|j|ja)$') { Write-Fail "Aborted by user."; return }
-    }
     $app = $existing
-    Write-Ok "Reusing existing app (objectId $($app.id))"
-    if ($IncludeGroupManagement -or $IncludeConfigurationManagement) {
-        # Reflect the (possibly newly added) optional roles in the app's requested permissions too.
+    Write-Ok "Reusing existing app '$($app.displayName)' (objectId $($app.id), appId $($app.appId))"
+    # Only PATCH when something is actually missing, and merge instead of replacing: sending just this
+    # run's roles would revoke what an earlier run requested.
+    $graphEntry  = @($app.requiredResourceAccess | Where-Object { [string]$_.resourceAppId -eq $GraphResourceAppId }) | Select-Object -First 1
+    $recordedIds = @(@($graphEntry.resourceAccess) | ForEach-Object { [string]$_.id })
+    $absent      = @($roles | Where-Object { $recordedIds -notcontains [string]$_.id })
+    if ($absent.Count) {
+        $merged = @(Merge-RequiredResourceAccess -Existing $app.requiredResourceAccess `
+            -ResourceAppId $GraphResourceAppId -RoleIds @($roles | ForEach-Object { [string]$_.id }))
         Invoke-WithRetry { Invoke-Graph PATCH "$GraphBase/applications/$($app.id)" -Headers $H -Body @{
-            requiredResourceAccess = @(@{ resourceAppId = $GraphResourceAppId; resourceAccess = @($roles | ForEach-Object { @{ id = $_.id; type = 'Role' } }) })
+            requiredResourceAccess = $merged
         } } | Out-Null
-        Write-Ok "Updated requested permissions to include the requested optional role(s)."
+        Write-Ok "Added $($absent.Count) requested permission(s): $(($absent | ForEach-Object { $_.value }) -join ', ')"
+    } else {
+        Write-Ok "Requested permissions already recorded on the app - nothing to change."
     }
 } else {
     $appBody = @{
@@ -296,6 +376,20 @@ foreach ($r in $roles) {
     }
 }
 $consentGranted = ($pending -eq 0)
+
+# What the app ACTUALLY holds now - including roles granted by an earlier run that this one did not ask
+# for. This is the list every consumer gates on, so it has to be the tenant's answer, not our wish list.
+$grantedRoles = @()
+try {
+    $nowGrants = (Invoke-Graph GET "$GraphBase/servicePrincipals/$($sp.id)/appRoleAssignments" -Headers $H).value
+    $grantedRoles = @($nowGrants | ForEach-Object {
+        $id = $_.appRoleId
+        ($graphSp.appRoles | Where-Object { $_.id -eq $id } | Select-Object -First 1).value
+    } | Where-Object { $_ } | Sort-Object -Unique)
+} catch {
+    Write-Warn2 "Could not re-read the granted roles ($($_.Exception.Message)) - recording the requested set instead."
+    if ($consentGranted) { $grantedRoles = @($RequiredAppRoles | Sort-Object -Unique) }
+}
 if ($pending -gt 0) {
     Write-Warn2 "$pending permission(s) still need admin consent. The app and credential are created; grant later:"
     Write-Info  "Entra admin center > App registrations > '$AppDisplayName' > API permissions > Grant admin consent,"
@@ -317,27 +411,42 @@ if ($UseCertificate) {
     }
     $secret = ConvertTo-SecureString $pwdResult.secretText -AsPlainText -Force
     Write-Ok "Secret created (expires $($credExpires.ToString('yyyy-MM-dd'))). It is never displayed - stored encrypted."
+
+    # Older secrets are COUNTED, never deleted: one of them may still be in use by another machine or
+    # pipeline, and this script has no way to know. Removing them is a deliberate human decision.
+    $olderSecrets = @(@($app.passwordCredentials) | Where-Object { $_ })
+    if ($olderSecrets.Count) {
+        Write-Warn2 "$($olderSecrets.Count) older client secret(s) remain on this app - untouched. Once the new one works, remove them in the portal (Certificates & secrets)."
+    }
 }
 
 # 7. Persist to config ---------------------------------------------------------------------------------
 $setCfg = Join-Path $PSScriptRoot 'Set-PsadtConfig.ps1'
-# Resolve where the config actually lands (same rule Set-PsadtConfig.ps1 applies) so the summary is honest.
-$cfgPath = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot).Path
 $cfgUpdates = @{
-    'intune.tenantId'      = $realTenant
-    'intune.clientId'      = $app.appId
-    'intune.uploadEnabled' = $true
+    'intune.tenantId'       = $realTenant
+    'intune.clientId'       = $app.appId
+    # Enabled only when consent is actually in place. Claiming otherwise just moves the failure to Phase 9.
+    'intune.uploadEnabled'  = $consentGranted
+    'intune.appObjectId'    = $app.id
+    'intune.appDisplayName' = [string]$app.displayName
+    'intune.credExpires'    = $credExpires.ToString('o')
+    'intune.roles'          = $grantedRoles
 }
+# A method switch must not leave the other credential pointer behind (Get-GraphToken prefers the cert).
+$stale = Get-StaleCredentialKeys $UseCertificate.IsPresent
 if ($UseCertificate) {
-    Write-Step "Write config (config.json - thumbprint stored, no secret file)"
+    Write-Step "Write config (thumbprint stored, no secret file)"
     $cfgUpdates['intune.certThumbprint'] = $CertThumbprint
-    & $setCfg -SkillRoot $SkillRoot -Updates $cfgUpdates
+    & $setCfg -SkillRoot $SkillRoot -Updates $cfgUpdates -Remove $stale
 } else {
-    Write-Step "Write config (config.json + DPAPI secret.dpapi)"
+    Write-Step "Write config (+ DPAPI secret.dpapi)"
     $cfgUpdates['intune.secretRef'] = 'secret.dpapi'
-    & $setCfg -SkillRoot $SkillRoot -Secret $secret -Updates $cfgUpdates
+    & $setCfg -SkillRoot $SkillRoot -Secret $secret -Updates $cfgUpdates -Remove $stale
 }
 Write-Ok "Saved to $cfgPath"
+if (-not $consentGranted) {
+    Write-Warn2 "intune.uploadEnabled stays FALSE until the pending consent is granted - re-run this script (or Test-PsadtIntuneAccess.ps1) afterwards."
+}
 
 # --- Summary -----------------------------------------------------------------------------------------
 Write-Host "`n----------------------------------------------------------------" -ForegroundColor DarkGray
@@ -360,8 +469,11 @@ Write-Host "----------------------------------------------------------------`n" 
     TenantId       = $realTenant
     ClientId       = $app.appId
     AppObjectId    = $app.id
+    AppDisplayName = [string]$app.displayName
     ConsentGranted = $consentGranted
     AuthMethod     = if ($UseCertificate) { 'Certificate' } else { 'ClientSecret' }
     CredExpires    = $credExpires
+    Roles          = @($grantedRoles)
+    UploadEnabled  = $consentGranted
     ConfigPath     = $cfgPath
 }
