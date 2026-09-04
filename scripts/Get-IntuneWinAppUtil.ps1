@@ -1,19 +1,17 @@
 <#
-.SYNOPSIS  Ensures tools/IntuneWinAppUtil.exe is present and current vs the official MS repo.
+.SYNOPSIS  Ensures <config home>\tools\IntuneWinAppUtil.exe is present and current vs the official MS repo.
+.PARAMETER SkillRoot  Config home override; default = the home resolved by Get-PsadtConfig.ps1.
 .OUTPUTS   PSCustomObject: Action(Downloaded|AlreadyCurrent|UpdateFailed), Version, Path
 #>
 [CmdletBinding()]
-param([string]$SkillRoot = (Split-Path $PSScriptRoot -Parent))
+param([string]$SkillRoot)
 $ErrorActionPreference = 'Stop'
 $repo = 'microsoft/Microsoft-Win32-Content-Prep-Tool'
-$exe  = Join-Path $SkillRoot 'tools/IntuneWinAppUtil.exe'
-$configPath = Join-Path $SkillRoot 'config.json'
+$cfg  = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot
+$exe  = Join-Path $cfg.Home 'tools/IntuneWinAppUtil.exe'
 
-$installedVersion = $null
-if (Test-Path $configPath) {
-    try { $installedVersion = (Get-Content $configPath -Raw | ConvertFrom-Json).tooling.intuneWinAppUtilVersion }
-    catch { Write-Warning "config.json unreadable ($($_.Exception.Message)); proceeding without a recorded version." }
-}
+$installedVersion = $cfg.Config.tooling.intuneWinAppUtilVersion
+if ($cfg.Error) { Write-Warning "$($cfg.Error) - proceeding without a recorded version." }
 
 $latestTag = $null
 try { $latestTag = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest").tag_name } catch { }

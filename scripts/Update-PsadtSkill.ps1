@@ -54,9 +54,14 @@ function Get-TopChangelogSection([string]$text) {
 
 $localChangelog = Join-Path $SkillRoot 'CHANGELOG.md'
 $localVersion = if (Test-Path $localChangelog) { Get-TopChangelogVersion (Get-Content $localChangelog -Raw) } else { $null }
-$cfg = $null
-$cfgPath = Join-Path $SkillRoot 'config.json'
-if (Test-Path $cfgPath) { try { $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json } catch {} }
+# $SkillRoot is the skill TREE (SKILL.md / CHANGELOG.md / .git). The recorded commit lives in the config,
+# which may still sit in that tree (pre-0.19) or in the config home - resolve it instead of assuming.
+$cfgProbe = if (Test-Path (Join-Path $SkillRoot 'config.json')) {
+    & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot
+} else {
+    & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')
+}
+$cfg = $cfgProbe.Config
 
 $isGit  = Test-Path (Join-Path $SkillRoot '.git')
 $hasGit = [bool](Get-Command git -ErrorAction SilentlyContinue)
@@ -120,7 +125,7 @@ try {
         }
         Remove-Item $tmpZip, $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
         # Record the applied commit so the next check is an exact sha comparison (no version guessing).
-        & (Join-Path $PSScriptRoot 'Set-PsadtConfig.ps1') -SkillRoot $SkillRoot -Updates @{ 'tooling.skillCommit' = $remoteCommit; 'tooling.skillVersion' = $remoteVersion }
+        & (Join-Path $PSScriptRoot 'Set-PsadtConfig.ps1') -SkillRoot $cfgProbe.Home -Updates @{ 'tooling.skillCommit' = $remoteCommit; 'tooling.skillVersion' = $remoteVersion }
         $result.Action = "archive: synced tracked files to $($remoteCommit.Substring(0, [Math]::Min(7, $remoteCommit.Length))) (config/secret/tools preserved)"
         $result.LocalCommit = $remoteCommit
     }

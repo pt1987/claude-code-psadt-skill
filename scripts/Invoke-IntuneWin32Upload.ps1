@@ -38,7 +38,7 @@
 .PARAMETER LogoPath                 PNG (transparent, square) used as largeIcon.
 .PARAMETER Execute                  Perform the writes. Without it the script is a read-only dry run.
 .PARAMETER UpdateAppId              Update this existing app id in place instead of creating a new one.
-.PARAMETER SkillRoot                Skill root (config.json). Defaults to the parent of this script.
+.PARAMETER SkillRoot                Config home override; default = the resolved config home.
 
 .OUTPUTS
     PSCustomObject summarising the run (AppId, ContentVersion, PortalUrl, Executed, Existing[]).
@@ -97,7 +97,7 @@ param(
     [ValidateSet('CreateNewCoexist','UpdateInPlace','Abort')][string]$OnExisting = 'CreateNewCoexist',
     [string]$UpdateAppId,
     [string]$SupersedesAppId,   # optional: wire 'new supersedes old' (replace) after the new app is created
-    [string]$SkillRoot = (Split-Path $PSScriptRoot -Parent)
+    [string]$SkillRoot
 )
 
 $ErrorActionPreference = 'Stop'

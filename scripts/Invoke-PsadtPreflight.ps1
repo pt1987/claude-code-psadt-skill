@@ -27,7 +27,7 @@
     The scaffolded package folder (the one containing Invoke-AppDeployToolkit.ps1).
 
 .PARAMETER SkillRoot
-    Skill root. Defaults to the parent of this script.
+    Config home override; default = the resolved config home.
 
 .OUTPUTS
     PSCustomObject: Overall('GREEN'|'RED'), Checks(@{Name,Status,Detail,File}[]), Files(string[]), PackagePath
@@ -35,7 +35,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$PackagePath,
-    [string]$SkillRoot = (Split-Path $PSScriptRoot -Parent)
+    [string]$SkillRoot
 )
 $ErrorActionPreference = 'Stop'
 

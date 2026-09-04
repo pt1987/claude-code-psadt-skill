@@ -29,7 +29,7 @@
 .PARAMETER Intents      Subset of required/available/uninstall. Default = every intent that has a template.
 .PARAMETER Execute      Perform the writes. Without it the script is a read-only dry run.
 .PARAMETER GraphToken   Optional bearer token (testing / reuse). Default: Get-GraphToken.ps1.
-.PARAMETER SkillRoot    Skill root (config.json).
+.PARAMETER SkillRoot    Config home override; default = the resolved config home.
 
 .OUTPUTS
     PSCustomObject: Executed, AppId, Groups(@{Intent,Name,Id,Action}), Assignments(@{Intent,GroupId,Action}), DryRun
@@ -44,7 +44,7 @@ param(
     [ValidateSet('required', 'available', 'uninstall')][string[]]$Intents,
     [switch]$Execute,
     [string]$GraphToken,
-    [string]$SkillRoot = (Split-Path $PSScriptRoot -Parent)
+    [string]$SkillRoot
 )
 $ErrorActionPreference = 'Stop'
 $GraphBase = 'https://graph.microsoft.com/beta'

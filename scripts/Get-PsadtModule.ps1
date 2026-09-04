@@ -1,9 +1,10 @@
 <#
 .SYNOPSIS  Ensures the PSAppDeployToolkit module is installed; never a manual hurdle.
+.PARAMETER SkillRoot  Unused; accepted so every provisioning script takes the same parameter.
 .OUTPUTS   PSCustomObject: Action(Installed|AlreadyCurrent|UpdateAvailable|InstallFailed), Installed, Latest
 #>
 [CmdletBinding()]
-param([string]$SkillRoot = (Split-Path $PSScriptRoot -Parent))
+param([string]$SkillRoot)
 $ErrorActionPreference = 'Stop'
 $name = 'PSAppDeployToolkit'
 

@@ -26,7 +26,7 @@
     Runs on Windows PowerShell 5.1 and PowerShell 7+.
 
 .PARAMETER SkillRoot
-    Skill root (folder containing scripts/ and config.json). Defaults to the parent of this script.
+    Config home override - where config.json and secret.dpapi are written. Default empty = resolved home.
 
 .PARAMETER TenantId
     Optional tenant id or domain to sign in against. Default 'organizations' - the real tenant id is then
@@ -53,7 +53,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$SkillRoot = (Split-Path $PSScriptRoot -Parent),
+    [string]$SkillRoot,
     [string]$TenantId = 'organizations',
     [ValidateRange(1, 24)][int]$SecretValidMonths = 12,
     [switch]$Force,
@@ -327,6 +327,8 @@ if ($UseCertificate) {
 
 # 7. Persist to config ---------------------------------------------------------------------------------
 $setCfg = Join-Path $PSScriptRoot 'Set-PsadtConfig.ps1'
+# Resolve where the config actually lands (same rule Set-PsadtConfig.ps1 applies) so the summary is honest.
+$cfgPath = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot).Path
 $cfgUpdates = @{
     'intune.tenantId'      = $realTenant
     'intune.clientId'      = $app.appId
@@ -341,7 +343,7 @@ if ($UseCertificate) {
     $cfgUpdates['intune.secretRef'] = 'secret.dpapi'
     & $setCfg -SkillRoot $SkillRoot -Secret $secret -Updates $cfgUpdates
 }
-Write-Ok "Saved to $(Join-Path $SkillRoot 'config.json')"
+Write-Ok "Saved to $cfgPath"
 
 # --- Summary -----------------------------------------------------------------------------------------
 Write-Host "`n----------------------------------------------------------------" -ForegroundColor DarkGray
@@ -367,5 +369,5 @@ Write-Host "----------------------------------------------------------------`n" 
     ConsentGranted = $consentGranted
     AuthMethod     = if ($UseCertificate) { 'Certificate' } else { 'ClientSecret' }
     CredExpires    = $credExpires
-    ConfigPath     = (Join-Path $SkillRoot 'config.json')
+    ConfigPath     = $cfgPath
 }

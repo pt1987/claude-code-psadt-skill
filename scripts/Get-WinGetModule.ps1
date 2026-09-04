@@ -1,11 +1,12 @@
 <#
-.SYNOPSIS  Ensures tools/PSAppDeployToolkit.WinGet is present and current vs the GitHub release.
+.SYNOPSIS  Ensures <config home>\tools\PSAppDeployToolkit.WinGet is present and current vs the GitHub release.
+.PARAMETER SkillRoot    Config home override; default = the home resolved by Get-PsadtConfig.ps1.
 .PARAMETER PackagePath  Optional. Copies the module into <PackagePath>\PSAppDeployToolkit.WinGet\ after download.
 .OUTPUTS   PSCustomObject: Action(Downloaded|Updated|AlreadyCurrent|UpdateFailed), Version, Path
 #>
 [CmdletBinding()]
 param(
-    [string]$SkillRoot   = (Split-Path $PSScriptRoot -Parent),
+    [string]$SkillRoot,
     [string]$PackagePath
 )
 $ErrorActionPreference = 'Stop'
@@ -13,15 +14,12 @@ $repo         = 'mjr4077au/PSAppDeployToolkit.WinGet'
 $assetName    = 'PSAppDeployToolkit.WinGet.zip'
 $fallbackTag  = 'v1.0.5'
 $fallbackUrl  = "https://github.com/$repo/releases/download/$fallbackTag/$assetName"
-$moduleDest   = Join-Path $SkillRoot 'tools/PSAppDeployToolkit.WinGet'
+$cfg          = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot
+$moduleDest   = Join-Path $cfg.Home 'tools/PSAppDeployToolkit.WinGet'
 $manifestPath = Join-Path $moduleDest 'PSAppDeployToolkit.WinGet.psd1'
-$configPath   = Join-Path $SkillRoot 'config.json'
 
-$installedTag = $null
-if (Test-Path $configPath) {
-    try { $installedTag = (Get-Content $configPath -Raw | ConvertFrom-Json).tooling.winGetModuleVersion }
-    catch { Write-Warning "config.json unreadable ($($_.Exception.Message)); proceeding without a recorded version." }
-}
+$installedTag = $cfg.Config.tooling.winGetModuleVersion
+if ($cfg.Error) { Write-Warning "$($cfg.Error) - proceeding without a recorded version." }
 
 $latestTag = $null
 try { $latestTag = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest").tag_name } catch { }

@@ -11,17 +11,18 @@
     { Token, ExpiresOn, TenantId, ClientId }.
 
 .PARAMETER SkillRoot
-    Skill root (folder with config.json). Defaults to the parent of this script.
+    Config home override (folder with config.json + secret.dpapi). Default empty = resolved home.
 
 .OUTPUTS
     PSCustomObject: Token(string), ExpiresOn(datetime), TenantId(string), ClientId(string)
 #>
 [CmdletBinding()]
-param([string]$SkillRoot = (Split-Path $PSScriptRoot -Parent))
+param([string]$SkillRoot)
 
 $ErrorActionPreference = 'Stop'
 
-$cfg = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot).Config
+$probe = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot
+$cfg = $probe.Config
 if (-not $cfg.intune) { throw "config.json has no 'intune' block - run New-PsadtEntraApp.ps1 first." }
 $tenantId = $cfg.intune.tenantId
 $clientId = $cfg.intune.clientId
@@ -74,7 +75,7 @@ if (-not [string]::IsNullOrWhiteSpace([string]$cfg.intune.certThumbprint)) {
 } else {
     # --- DPAPI client secret path ---
     $secretRef = if ($cfg.intune.secretRef) { $cfg.intune.secretRef } else { 'secret.dpapi' }
-    $secretPath = Join-Path $SkillRoot $secretRef
+    $secretPath = Join-Path $probe.Home $secretRef
     if (-not (Test-Path $secretPath)) { throw "Encrypted secret not found: $secretPath (run New-PsadtEntraApp.ps1)." }
 
     $secure = ConvertTo-SecureString (Get-Content $secretPath -Raw)

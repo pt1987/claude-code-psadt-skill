@@ -14,10 +14,8 @@ param(
     [int[]]$SuccessExitCodes = @(0, 1707, 3010, 1641),
     [string]$LogDirectory = 'C:\Windows\Logs\Software',
     [bool]$IsElevated = (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)),
-    # Fail-safe default: under the WinPS 5.1 re-exec ($PSScriptRoot can be empty during param-default
-    # evaluation via `powershell.exe -File`), fall back to $PSCommandPath, then to '' - so param binding
-    # never throws EmptyStringNotAllowed before the action runs. (SkillRoot is currently unused downstream.)
-    [string]$SkillRoot = $(if ($PSScriptRoot) { Split-Path $PSScriptRoot -Parent } elseif ($PSCommandPath) { Split-Path (Split-Path $PSCommandPath -Parent) -Parent } else { '' }),
+    # Unused downstream; accepted so callers can pass it through. Empty = Get-PsadtConfig resolves the home.
+    [string]$SkillRoot,
     # Internal: when set, write the result object as JSON here instead of emitting it. Used by the
     # WinPS 5.1 re-exec child below to hand its result back to a PowerShell 7 (Core) parent.
     [string]$ResultJsonPath,

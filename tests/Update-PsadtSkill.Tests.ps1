@@ -2,6 +2,12 @@ BeforeAll { . "$PSScriptRoot/_helpers.ps1" }
 Describe 'Update-PsadtSkill' {
     BeforeEach {
         $script:root = New-TempSkillRoot   # no .git -> archive method (commit-sha based)
+        # The script resolves the config home when the skill tree has no config.json - pin it to an empty
+        # temp dir so the machine's real %LOCALAPPDATA%\psadt-deploy can never leak into these tests.
+        $script:envBak  = $env:PSADT_DEPLOY_HOME
+        $script:cfgHome = Join-Path ([IO.Path]::GetTempPath()) ("psadthome_" + [guid]::NewGuid().ToString('N'))
+        New-Item $script:cfgHome -ItemType Directory -Force | Out-Null
+        $env:PSADT_DEPLOY_HOME = $script:cfgHome
         Set-Content (Join-Path $script:root 'CHANGELOG.md') "# Changelog`n`n## 0.5.0 - x`n- local"
         $script:run = { param($extra) . (Join-Path $script:root 'scripts/Update-PsadtSkill.ps1') -SkillRoot $script:root @extra }
         # Remote latest commit (commits API) + remote changelog (contents API, base64).
@@ -10,7 +16,11 @@ Describe 'Update-PsadtSkill' {
             @{ content = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("# Changelog`n## 0.5.1 - y`n- newer")) }
         }
     }
-    AfterEach { Remove-TempSkillRoot $script:root }
+    AfterEach {
+        $env:PSADT_DEPLOY_HOME = $script:envBak
+        Remove-Item $script:cfgHome -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-TempSkillRoot $script:root
+    }
 
     It 'reports UpToDate when the recorded commit equals the latest remote commit' {
         @{ version = 1; tooling = @{ skillCommit = 'newsha123' } } | ConvertTo-Json | Set-Content (Join-Path $script:root 'config.json')

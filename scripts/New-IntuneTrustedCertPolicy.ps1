@@ -35,7 +35,7 @@
                          Use when there is no app registration (maximum compatibility). No device code.
 .PARAMETER TenantId      Tenant for interactive sign-in (default: config intune.tenantId, else 'organizations').
 .PARAMETER GraphToken    Optional bearer token (testing / reuse). Default: app-only Get-GraphToken.ps1.
-.PARAMETER SkillRoot     Skill root (config.json). Default: parent of this script.
+.PARAMETER SkillRoot     Config home override; default = the resolved config home.
 
 .OUTPUTS
     PSCustomObject: Executed, ProfileName, Store, Thumbprint, OmaUri, Base64Length, ProfileId, DryRun, ManualSteps
@@ -51,7 +51,7 @@ param(
     [switch]$Interactive,
     [string]$TenantId,
     [string]$GraphToken,
-    [string]$SkillRoot = (Split-Path $PSScriptRoot -Parent)
+    [string]$SkillRoot
 )
 $ErrorActionPreference = 'Stop'
 $GraphBase = 'https://graph.microsoft.com/beta'
