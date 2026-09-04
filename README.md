@@ -39,7 +39,7 @@ That installs the skill into `~/.claude/skills/psadt-deploy` and runs the setup 
 everything it can and names the handful of values only you can supply (see
 [First-run setup](#first-run-setup)). Then open Claude Code in any folder and say what you want:
 
-> *"Create the win32 intune packacge for 7-Zip 24.09"* — or *"package Notepad++ for Intune"*
+> *"Create the Win32 Intune package for 7-Zip 24.09"* — or *"package Notepad++ for Intune"*
 
 The skill asks at most **four decision gates** (scope · deployment semantics · SYSTEM-test consent ·
 upload confirmation). Everything else it researches and states as an assumption instead of asking.
@@ -217,7 +217,8 @@ pwsh "$env:USERPROFILE\.claude\skills\psadt-deploy\scripts\Initialize-PsadtSkill
 
 `npx skills add pt1987/claude-code-psadt-skill` works too, since `SKILL.md` sits in the repository root.
 
-> Needs read access to this repository: the installer clones over your existing git credentials.
+No git on the machine? The installer falls back to the branch tarball and Windows' own `tar.exe`, so the
+one-liner still works.
 
 The skill activates automatically when you ask Claude Code to build an Intune package, or when you work in
 a folder containing `Invoke-AppDeployToolkit.ps1`.

@@ -37,8 +37,8 @@ All notable changes to this skill. Newest first. This project follows a loose [S
   `Restricted`, and a GPO can pin `pwsh` to `AllSigned` — either way an unsigned script would not run.
 - The package is deliberately tiny and the skill is fetched from GitHub at install time, so a new skill
   version needs **no npm republish** — only a change to the installer does.
-- Installing needs read access to the repository: the installer clones over the machine's existing git
-  credentials.
+- Verified end to end against the published package: the git route (update an existing clone) and the
+  git-less route (branch tarball + Windows' `tar.exe`, with the `powershell` fallback for the doctor).
 - Test suite: 307 → **326** tests, all green.
 
 ## 0.22.0 — 2026-09-04 — Third-party drivers
