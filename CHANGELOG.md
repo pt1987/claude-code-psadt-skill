@@ -2,6 +2,30 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.23.1 — 2026-09-04 — Two generators were broken since 0.21.0
+
+### Fixed
+- **`New-BrowserExtensionPackage.ps1` and `New-WindowsFeaturePackage.ps1` failed at run time.** The 0.21.0
+  change that added the per-run `LogName` put the `$logStem` computation *inside* the
+  `$out = $tpl.Replace(...).Replace(...)` chain, which PowerShell reads as `$tpl.$logStem = ...`: valid
+  syntax, empty property name, and the generator died with *"The property '' cannot be found on this
+  object."* The MSI and driver generators were unaffected.
+  - Nothing could have caught it as written: the AST parse check passes on valid syntax, and the generator
+    tests inspect the source without executing it. It surfaced the first time the whole 0.19–0.23 chain was
+    run against a real package.
+  - **Guard added** to all four generator test suites: from `$out = $tpl.` onward, every non-empty line must
+    be a `.Replace(...)` continuation, and the log stem must be computed *before* the chain. The guard was
+    itself verified against a deliberately broken sample and a good one.
+
+### Notes
+- First full end-to-end run of the pipeline on a real package: generator → manifest → per-run `LogName` →
+  pre-flight GREEN → named `.intunewin` (10 MB, `SetupFile` + SHA256 verified) → dossier →
+  `results.preflight` / `results.package` written back to the manifest.
+- The npm package version follows the skill version, so a release means a republish even when only
+  `scripts/` changed. That is deliberate: one version number for the whole thing beats explaining which of
+  two applies.
+- Test suite: 326 → **334** tests, all green.
+
 ## 0.23.0 — 2026-09-04 — `npx psadt-deploy-skill`
 
 ### Added
@@ -35,8 +59,9 @@ All notable changes to this skill. Newest first. This project follows a loose [S
   `-Json` because the doctor's stdout is inherited so the user sees its table live.
 - Both PowerShell hosts are launched with `-ExecutionPolicy Bypass`: Windows PowerShell 5.1 defaults to
   `Restricted`, and a GPO can pin `pwsh` to `AllSigned` — either way an unsigned script would not run.
-- The package is deliberately tiny and the skill is fetched from GitHub at install time, so a new skill
-  version needs **no npm republish** — only a change to the installer does.
+- The package is deliberately tiny: it carries only `bin/`, and the skill itself is fetched from GitHub at
+  install time, so an installed skill updates without npm being involved at all. (The package *version*
+  still follows the skill version — see the 0.23.1 note.)
 - Verified end to end against the published package: the git route (update an existing clone) and the
   git-less route (branch tarball + Windows' `tar.exe`, with the `powershell` fallback for the doctor).
 - Test suite: 307 → **326** tests, all green.

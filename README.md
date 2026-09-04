@@ -369,6 +369,14 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.23.1 - 04.09.2026
+- **Fixed: two generators were broken since 0.21.0.** `New-BrowserExtensionPackage.ps1` and
+  `New-WindowsFeaturePackage.ps1` died at run time — the per-run `LogName` change had wedged a statement
+  into the template `Replace(...)` chain, which PowerShell parses as a property assignment with an empty
+  name. Valid syntax, so neither the parse check nor the source-inspecting tests could see it; it surfaced
+  the first time the whole chain ran against a real package. A guard in all four generator test suites now
+  fails on a broken chain, and the guard itself was verified against a broken and a good sample.
+
 ### 0.23.0 - 04.09.2026
 - **`npx psadt-deploy-skill`.** One line installs or updates the skill into `~/.claude/skills/psadt-deploy`
   and runs the setup doctor. Flags `--dir`, `--project`, `--ref`, `--no-setup`. Cloning to exactly the right
