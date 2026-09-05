@@ -369,6 +369,25 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.24.0 - 05.09.2026
+- **New: `Invoke-PsadtSandboxTest.ps1` runs the whole Phase 6 loop in a throwaway Windows Sandbox** —
+  Install, detection, Uninstall, detection, Reinstall, Repair, final Uninstall, every action as
+  `NT AUTHORITY\SYSTEM` via a scheduled task. **No elevation on the host, and the host is never touched**,
+  so the SYSTEM test stops being the step that gets deferred to "a DEV VM later". Every action starts from
+  a machine that has never seen the app, so a pass cannot be an artefact of the previous run. The verdict
+  is keyed on the detection script; package-specific facts go in via `-PathsPresentAfterInstall` /
+  `-PathsAbsentAfterInstall` / `-PathsAbsentAfterUninstall`. Verified end to end on Notepad++ 8.9.8 x64:
+  GREEN, all seven steps, 5 min 58 s.
+- **Why it is a script and not a snippet:** a hand-rolled version hit three bugs that each destroyed a full
+  VM run and each present as a timeout or a null-reference minutes after launch — `echo %ERRORLEVEL%>file`
+  silently becoming the `0>` stdin redirection (empty file, never a number), file existence read as
+  completion, and `[string]$null` still being `$null` in Windows PowerShell 5.1 (an empty detection output
+  is the *normal* result, so the harness crashed because the package was clean). All three now have
+  regression guards that were each verified to fail on the reintroduced bug.
+- Phase 6 in SKILL.md and the guide now lead with the sandbox route; the per-action route stays for apps a
+  VM cannot host. New anti-patterns cover hand-rolled harnesses, debugging through a long job instead of a
+  two-second local check, and "speeding up" the test by disabling Defender or dropping Uninstall/Repair.
+
 ### 0.23.1 - 04.09.2026
 - **Fixed: two generators were broken since 0.21.0.** `New-BrowserExtensionPackage.ps1` and
   `New-WindowsFeaturePackage.ps1` died at run time — the per-run `LogName` change had wedged a statement

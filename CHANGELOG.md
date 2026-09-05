@@ -2,6 +2,63 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.24.0 - 2026-09-05 - The whole Phase 6 loop in a Windows Sandbox, without elevation
+
+### Added
+- **`scripts/Invoke-PsadtSandboxTest.ps1`** - runs the COMPLETE SYSTEM-test loop (Install, detection,
+  Uninstall, detection, Reinstall, Repair, final Uninstall) inside one throwaway Windows Sandbox, every
+  action executed as `NT AUTHORITY\SYSTEM` through a scheduled task. It is now the DEFAULT Phase 6 route.
+  - **Needs no elevation on the host and never modifies it.** The per-action `Invoke-PsadtSystemTest.ps1`
+    needs an elevated session and installs on the machine it runs on, which is why Phase 6 kept being
+    deferred to "a DEV VM later". This one is available in an ordinary packaging session.
+  - Every action starts from a machine that has never seen the app, so a pass cannot be an artefact of what
+    the previous run left behind.
+  - The verdict is keyed on the **detection script** - what Intune actually evaluates - with
+    package-specific facts asserted via `-PathsPresentAfterInstall` / `-PathsAbsentAfterInstall` /
+    `-PathsAbsentAfterUninstall`.
+  - Writes `results.sandboxTest` and one `results.systemTest[]` entry per action to the manifest, and
+    copies the PSADT logs back to the host.
+  - Guards: `Containers-DisposableClientVM` read through `Win32_OptionalFeature` (WMI, unelevated - NOT
+    `Get-WindowsOptionalFeature`, which needs admin), and a refusal to start while another sandbox is
+    running, because Windows permits one instance and a second launch silently attaches to the first.
+  - `-GenerateOnly` writes the runner and the `.wsb` without launching - for inspection, and the seam the
+    test suite uses.
+  - Verified end to end on a real package (Notepad++ 8.9.8 x64 MSI): **GREEN, all seven steps, 5 min 58 s.**
+
+- **`tests/Invoke-PsadtSandboxTest.Tests.ps1`** - 20 tests. Six on the guards, three REGRESSION GUARDS on
+  the generated runner, the rest on the generated `.wsb`, quoting and parseability. Each regression guard
+  was verified to FAIL when its bug is deliberately reintroduced.
+
+### Notes - why the script exists (full write-up: guide Appendix G, 2026-09-05)
+Driving deployment actions as SYSTEM and reading their exit codes back looks like ten lines of `schtasks`.
+A hand-rolled version hit three bugs, each of which silently destroyed a full VM run and each of which
+presents as a timeout or a null-reference minutes after launch, nowhere near its cause:
+
+1. **`echo %ERRORLEVEL%>file` is not what it looks like.** With a single-digit exit code cmd parses
+   `echo 0>file`, where `0>` is the **stdin redirection operator** - the file is created EMPTY and never
+   receives the number. The space in `echo %ERRORLEVEL% > file` is load-bearing.
+2. **File existence is not completion.** The redirection creates the file before the value lands, so
+   `Test-Path` is true on an empty file. Poll until the content matches a number.
+3. **`Get-Content -Raw` returns `$null` for an empty file, and `$x = [string]$null` is STILL `$null` in
+   Windows PowerShell 5.1.** Only `'' + (...)` or a typed variable yields a real empty string. An empty
+   file is the NORMAL result here - it is exactly what a correct detection script writes when the app is
+   absent - so the harness crashed *because the package was clean*.
+
+Three further process lessons from the same session, also in Appendix G: write the two-second local check
+before debugging via a ten-minute VM round-trip; collapse N sequential probes of one artefact (an MSI's
+tables, a module's cmdlet signatures) into one script; and run Phase 6 in parallel with Phases 7-8 instead
+of after them, since packaging and the dossier do not depend on the verdict.
+
+### Changed
+- **SKILL.md Phase 6** now leads with the sandbox route and names the per-action route as the fallback for
+  apps the VM cannot host (domain join, TPM, GPU, a reboot to complete).
+- **Gate 3 (SYSTEM-test consent)** offers the sandbox first; only the DEV-VM route asks for a snapshot.
+  "Skip the test" is explicitly not an option to offer while `decisions.upload = true`.
+- **Anti-patterns** gained: hand-rolling the SYSTEM-test harness; debugging through a long job when a local
+  check would do; N tool calls against one artefact; serialising Phase 6 after 7-8; and "speeding up" the
+  test by disabling Defender or dropping Repair/Uninstall.
+- **Guide Phase 6** rewritten into 6.1 sandbox / 6.2 per-action / 6.3 run it in parallel.
+
 ## 0.23.1 — 2026-09-04 — Two generators were broken since 0.21.0
 
 ### Fixed

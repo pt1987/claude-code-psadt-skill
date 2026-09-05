@@ -534,6 +534,45 @@ lessons in Appendix G.
 discipline any more: the decision is `decisions.upload` in the package manifest, and
 `New-PsadtReport.ps1 -ManifestPath` throws on a missing SYSTEM test when it is `true`.
 
+### 6.1 Default route: the whole loop in a Windows Sandbox
+
+```powershell
+pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath '<pkg>' `
+    -PathsPresentAfterInstall 'C:\Program Files\<App>\<app>.exe' `
+    -PathsAbsentAfterInstall  'C:\Program Files\<App>\updater\GUP.exe'
+```
+
+One command, one throwaway VM, ~6 minutes: Install -> detection -> Uninstall -> detection -> Reinstall ->
+Repair -> final Uninstall, **every action as SYSTEM** through a scheduled task, exactly like the Intune
+Management Extension. Returns `{ Verdict, Steps, FailedAssertions, Assertions, ResultPath, LogFolder }`,
+writes `results.sandboxTest` plus one `results.systemTest[]` entry per action, and copies the PSADT logs
+back to the host.
+
+Why this is the default:
+- **No elevation on the host** and the host is never modified, so the test is available in an ordinary
+  packaging session instead of being deferred to "a DEV VM later" - which in practice means never.
+- **Every action starts from a machine that has never seen the app**, so "it passed because the previous
+  run left something behind" cannot happen.
+- The verdict is keyed on the **detection script**, which is what Intune evaluates. Package-specific facts
+  (an updater that must be absent, a binary that must exist) are asserted through the `-Paths*` parameters.
+
+Prerequisite: the optional feature `Containers-DisposableClientVM`. The script checks it through
+`Win32_OptionalFeature` (WMI, no elevation - deliberately not `Get-WindowsOptionalFeature`, which needs
+admin) and prints the one-time enable command if it is off. Windows permits exactly ONE sandbox instance,
+and a second launch silently attaches to the first, so the script refuses to start while one is running.
+
+When the sandbox is NOT the right host: the app needs domain join, a real TPM, GPU acceleration, a reboot
+to complete (the VM is discarded), or hardware the VM does not have. Then use 6.2.
+
+`-GenerateOnly` writes the runner and the `.wsb` without starting anything - for inspecting or hand-tuning
+the configuration.
+
+**Do not re-implement this by hand.** Three bugs in a hand-rolled version each burned a full VM run on
+2026-09-05; all three surface as a timeout or a null-reference minutes after launch. Appendix G has them,
+`tests/Invoke-PsadtSandboxTest.Tests.ps1` guards them.
+
+### 6.2 Per-action route (DEV VM, or an app the sandbox cannot host)
+
 ```powershell
 pwsh scripts/Invoke-PsadtSystemTest.ps1 -PackagePath '<pkg>' -DeploymentType Install -DetectionScript '<pkg>\Detect-<App>.ps1'
 pwsh scripts/Invoke-PsadtSystemTest.ps1 -PackagePath '<pkg>' -DeploymentType Uninstall -DetectionScript '<pkg>\Detect-<App>.ps1'
@@ -542,8 +581,14 @@ pwsh scripts/Invoke-PsadtSystemTest.ps1 -PackagePath '<pkg>' -DeploymentType Uni
 Install AND Uninstall must both pass. Each run appends to `results.systemTest[]` and its log to
 `artifacts.logs[]`, so the evidence is in the package rather than in someone's terminal scrollback.
 Requires an elevated session (a SYSTEM scheduled task) and Windows PowerShell 5.1 (PSScheduledJob); the
-script re-execs itself into 5.1 when started from pwsh. Cannot run it? STOP before `-Execute` and hand the
-exact command back - never upload untested.
+script re-execs itself into 5.1 when started from pwsh. Cannot run either route? STOP before `-Execute` and
+hand the exact command back - never upload untested.
+
+### 6.3 Run it in parallel with Phases 7 and 8
+
+Packaging and the dossier do not depend on the test result; only the verdict *recorded in* the dossier
+does. Start the sandbox test, build the `.intunewin` and the report while it runs, then fold the result in
+and regenerate the dossier. Serialising them adds the whole test duration to the wall clock for nothing.
 
 ---
 
@@ -1364,6 +1409,74 @@ These lessons come from concrete packaging projects and apply to PSADT v4 Intune
 1. **SYSTEM test loop dies under PowerShell 7 - `New-ScheduledJobOption` / PSScheduledJob cannot load**: running `Invoke-PsadtSystemTest.ps1` (which calls `Invoke-CommandAs -AsSystem`) from **pwsh 7** failed on every action with `The 'New-ScheduledJobOption' command was found in the module 'PSScheduledJob', but the module could not be loaded`. The launcher never actually ran as SYSTEM, so every step came back `ExitCode=0 Success=False Detection=not-installed` (deceptive: exit 0 but nothing happened). **Cause**: `Invoke-CommandAs -AsSystem` schedules its work via the **`PSScheduledJob`** module (`New-ScheduledJobOption`, `Register-ScheduledJob`). `PSScheduledJob` is a **Windows PowerShell 5.1-only** module and is **blocked** from loading under PowerShell 7 (Core) by the `WindowsPowerShellCompatibilityModuleDenyList`. Under WinPS 5.1 the same calls work natively. (Tell-tale: PS7 renders errors in ConciseView with `Line |` + `~~~~` underlines; WinPS 5.1 uses the older NormalView - the error format alone reveals which host you are in.) **Fix**: `Invoke-PsadtSystemTest.ps1` now detects `$PSVersionTable.PSEdition -eq 'Core'` and transparently **re-execs itself under `...\WindowsPowerShell\v1.0\powershell.exe` (5.1)**, marshalling the structured result back via a temp JSON file (UTF-8 **no BOM**, so `ConvertFrom-Json` reads it cleanly). **General lesson**: any helper that relies on `Invoke-CommandAs`/`PSScheduledJob`/`Register-ScheduledJob` (scheduled-job-backed "run as SYSTEM" tricks) is **WinPS-5.1-only** - never assume it works in pwsh 7. Either force the 5.1 host or use a native `Register-ScheduledTask` (CIM) SYSTEM principal. Gotcha when re-execing via `powershell.exe -File`: **`[int[]]` array parameters do NOT bind** (only the first value binds, the rest become stray positional args -> "no positional parameter accepts ...") - marshal arrays as a CSV string and split inside the child.
 
 2. **`Start-ADTMsiProcess -Action Uninstall -FilePath '{GUID}'` -> exit 60001 (`InvalidFilePathParameterValue`)**: once the SYSTEM loop actually ran, Install was green but Uninstall failed with `FullyQualifiedErrorId : InvalidFilePathParameterValue,Start-ADTMsiProcess` (exit 60001, app stayed installed). **Cause**: in **PSADT 4.1.x** `Start-ADTMsiProcess` split the target into two parameters - `-FilePath` is now validated as a **real .msi file path**, and a **ProductCode GUID must be passed via the dedicated `-ProductCode` parameter**. Older v4.0 patterns (and earlier versions of this skill's own examples) used `-FilePath '{<ProductCode>}'`, which now throws. **Fix**: `Start-ADTMsiProcess -Action Uninstall -ProductCode '{<GUID>}'` (same for `-Action Repair`). **General lesson**: this is exactly the "newer PSADT version changed a command" trap from Phase 4 - verify cmdlet parameters against the **installed** module (`(Get-Command Start-ADTMsiProcess).Parameters.Keys`) instead of trusting a remembered pattern; `-ProductCode` for GUIDs, `-FilePath` for actual files.
+
+### 2026-09-05 - Notepad++ package (official MSI, first Windows Sandbox SYSTEM test)
+
+Outcome: package GREEN, all seven loop steps clean. But it took **75 minutes of wall clock for an app that
+an experienced admin packages by hand in fifteen**, and every one of those extra minutes came from the four
+lessons below. They are ordered by how much time they cost.
+
+1. **Never hand-roll the SYSTEM-test harness (cost: ~40 min, three wasted VM runs).** Driving deployment
+   actions as SYSTEM and reading their exit codes back looks like ten lines of `schtasks`. It is not. Three
+   separate bugs each destroyed a full sandbox run, and all three present as *a timeout or a null-reference
+   minutes after launch*, nowhere near the cause:
+   - **`echo %ERRORLEVEL%>file` is not what you think.** With a single-digit exit code cmd reads
+     `echo 0>file`, where **`0>` is the stdin redirection operator** - the file is created EMPTY and never
+     receives the number. Write `echo %ERRORLEVEL% > file`, with the space.
+   - **File existence is not completion.** The redirection creates the file before the value lands, so
+     `Test-Path` returns true on an empty file. Poll until the content *matches a number*.
+   - **`Get-Content -Raw` on an empty file returns `$null`, and in Windows PowerShell 5.1 `$x = [string]$null`
+     is STILL `$null`** - only concatenation (`'' + (...)`) or a typed variable (`[string]$x = ...`) produces
+     a real empty string. An empty file is the NORMAL result here: it is exactly what a correct detection
+     script writes when the app is absent. So the harness crashed *because the package was clean*.
+   **General lesson**: use `scripts/Invoke-PsadtSandboxTest.ps1`. Its
+   `tests/Invoke-PsadtSandboxTest.Tests.ps1` contains a regression guard for each of these, and each guard
+   was verified to FAIL when the bug is reintroduced.
+
+2. **A local self-test beats a VM round-trip by three orders of magnitude (cost: the same 40 min).** Each of
+   those bugs was found by launching a VM and waiting ten minutes. All three are reproducible in **two
+   seconds** on the host with a temp file and four lines of PowerShell. **General lesson**: before any
+   change that can only be observed after a long-running job, write the two-second local check first. If a
+   probe would take longer than the thing it verifies, it is the wrong probe.
+
+3. **Batch installer probing into ONE script (cost: ~10 min).** Reading an MSI's Property, Feature,
+   FeatureComponents, File, Directory, Shortcut, Registry and Upgrade tables was done as eight separate
+   round-trips, each ~30-60 s of process start plus COM setup. One script that opens the database once and
+   dumps every table costs one round-trip. **General lesson**: N sequential probes of the same artefact is
+   a single script, not N tool calls. Same for `Get-Command`/`Get-Help` parameter verification.
+
+4. **Start the SYSTEM test in parallel with Phase 7/8, not after them.** Packaging (`Invoke-PsadtPackage`)
+   and the dossier do not depend on the test result - only the *verdict recorded in* the dossier does. Boot
+   the sandbox first, build the `.intunewin` and the report while it runs, then fold the result in and
+   regenerate. Serialising them adds the full test duration to the wall clock for no reason.
+
+Two things that were NOT the problem, recorded so the next run does not "optimise" them away:
+
+- **Windows Sandbox is fast enough.** The complete seven-step loop - Install, detection, Uninstall,
+  detection, Reinstall, Repair, final Uninstall, all as SYSTEM - ran in **5 minutes 58 seconds**
+  unattended, with no elevation on the host and no DEV VM. Individual actions take ~2 min instead of ~20 s
+  because the VM has no warm file cache and Defender scans every file it sees. That is the price of a
+  machine that has provably never seen the app; do not "fix" it by disabling Defender, which would test a
+  configuration no real client has.
+- **The package itself never failed.** Not once across four runs. When a test harness and the thing under
+  test both look broken, check the harness first: it is the part that was written today.
+
+Package-specific findings worth generalising:
+
+- **An official MSI may exist even where everyone uses the EXE.** Notepad++ has shipped an x64 MSI
+  "intended for IT departments" since 8.8.8, while practically every public guide still documents the NSIS
+  `/S` route. Check the vendor's full asset list before accepting the community answer - the MSI brought a
+  ProductCode detection rule, native repair and standard exit codes for free.
+- **Prefer an MSI FEATURE over post-install cleanup.** The auto-updater is its own feature
+  (`AutoUpdaterFeature`), so `ADDLOCAL=MainApplication` keeps it off the device entirely instead of
+  installing it and deleting it afterwards. Read the Feature/FeatureComponents tables before writing any
+  cleanup code.
+- **`msidbUpgradeAttributesMigrateFeatures` can defeat `ADDLOCAL` on an upgrade.** A device upgrading from
+  an install that HAD the feature can migrate that state. Keep the cleanup as a belt-and-braces second step
+  even when the feature selection is correct.
+- **A non-MSI predecessor is invisible to `RemoveExistingProducts`.** An app installed by an NSIS/Inno
+  setup is not a Windows Installer product, so the MSI's UpgradeCode cannot supersede it: the device ends
+  up with two ARP entries over one directory. Detect and remove it in Pre-Install.
 
 ---
 

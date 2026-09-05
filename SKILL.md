@@ -62,8 +62,10 @@ researched defaults; recommended option first.
    goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641). Pre-select defaults from
    the installer type. Group assignment is **opt-in**: only when the user wants it here do you create/assign
    Entra groups (Phase 10, config `intune.groups`, guide Appendix M); the default is upload-without-assignment.
-3. **SYSTEM-test consent** - it installs the real software as SYSTEM; recommend a VM/snapshot before the
-   first install.
+3. **SYSTEM-test consent** - it installs the real software as SYSTEM. Offer the Windows Sandbox route
+   FIRST (`Invoke-PsadtSandboxTest.ps1`: whole loop, ~6 min, host untouched, no elevation) and the DEV-VM
+   route second; only the second one needs a snapshot. "Skip the test" is NOT an option to offer while
+   `decisions.upload = true`, and a package whose Uninstall was never run is not a finished package.
 4. **Upload confirm** - show the dry-run summary + the exact `On -Execute` action; confirm before `-Execute`.
 
 Context follow-ups (coexistence, processes-to-close, architecture) come situationally, also via
@@ -233,7 +235,24 @@ the acid-test stub (a live acid test would install): guide Appendix I.4.
 **Phase 6 - SYSTEM test loop.** **BINDING before any upload; skippable ONLY when no upload is planned** -
 and that decision is recorded as `decisions.upload` in the manifest, which is what the dossier enforces
 (the report throws on a missing SYSTEM test when `decisions.upload = true`). Each run appends to
-`results.systemTest[]` + `artifacts.logs[]`. `Invoke-PsadtSystemTest.ps1` runs ONE action as SYSTEM and
+`results.systemTest[]` + `artifacts.logs[]`.
+
+**Default route: `pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg>`.** It runs the WHOLE loop -
+Install, detection, Uninstall, detection, Reinstall, Repair, final Uninstall - inside one throwaway Windows
+Sandbox, every action as SYSTEM via a scheduled task, and returns `{ Verdict, Steps, FailedAssertions,
+Assertions, ResultPath, LogFolder }`. It needs **no elevation on the host**, never touches the host, and
+gives every action a machine that has never seen the app. ~6 minutes end to end. The verdict is keyed on
+the DETECTION SCRIPT (what Intune actually evaluates); package-specific facts go in as
+`-PathsPresentAfterInstall` / `-PathsAbsentAfterInstall` / `-PathsAbsentAfterUninstall`. Requires the
+optional feature `Containers-DisposableClientVM` (the script prints the one-time enable command, which does
+need elevation + a restart). Not usable when the app needs domain join, a real TPM, GPU acceleration or
+hardware the VM lacks - fall back to the per-action route below.
+
+**Never hand-roll this harness.** Running deployment actions as SYSTEM and reading their exit codes back
+looks like ten lines of `schtasks` and is not: see guide Appendix G (2026-09-05) for three bugs that each
+silently burned a full VM run. `tests/Invoke-PsadtSandboxTest.Tests.ps1` guards all three.
+
+**Per-action route (DEV VM, or when the sandbox cannot host the app).** `Invoke-PsadtSystemTest.ps1` runs ONE action as SYSTEM and
 returns `{ DeploymentType, ExitCode, Success, DetectionState, LogPath, LogTail, ErrorLines, Elevated }`; it
 fixes nothing - YOU drive the loop, hard cap 5 iterations (you own the count). Needs an ELEVATED session +
 WinPS 5.1 and belongs on a DEV VM (Gate 3 consent + snapshot first). Loop: Install → verify detection →
@@ -331,6 +350,14 @@ Full symptom/HRESULT catalogue: guide Appendix A.
 - Shipping the PSADT default `AppIcon.png`/Banner as the logo; skipping or hand-assembling the HTML report.
 - Auto-imposing user/org choices on upload (category/featured/`notes`), or assigning groups when the user did
   NOT opt in at Gate 2; DELETING the older version instead of `-OnExisting CreateNewCoexist`.
+- Hand-rolling the SYSTEM-test harness instead of `scripts/Invoke-PsadtSandboxTest.ps1` (App. G, 2026-09-05:
+  `echo %ERRORLEVEL%>file` silently becomes the `0>` stdin redirection and writes an EMPTY file; file
+  existence read as completion; `[string]$null` still `$null` in WinPS 5.1 - each cost a whole VM run).
+- Probing a long-running job to find a bug that a two-second local check would have shown; issuing N
+  sequential tool calls against ONE artefact (an MSI's tables, a module's cmdlet signatures) instead of one
+  script; running Phase 6 strictly after Phases 7-8 when they are independent.
+- Disabling Defender or dropping Repair/Uninstall to make the SYSTEM test "faster" - that tests a
+  configuration no client has, and a package whose Uninstall never ran is not a finished package.
 - Uploading without the Phase 6 SYSTEM test passing; a blanket `exit 0` or a `finally`-written detection tag in a
   fix script - both report GREEN on failure (guide K.7).
 - Claiming Intune "can't" put a cert in `TrustedPublisher` (it can - `RootCATrustedCertificates` CSP via Custom
