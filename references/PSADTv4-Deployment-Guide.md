@@ -1478,6 +1478,58 @@ Package-specific findings worth generalising:
   setup is not a Windows Installer product, so the MSI's UpgradeCode cannot supersede it: the device ends
   up with two ARP entries over one directory. Detect and remove it in Pre-Install.
 
+### 2026-09-05 (same day, second package) - PuTTY 0.85: the lessons above, measured
+
+The Notepad++ entry was written after a 75-minute run. PuTTY 0.85 - comparable app, same official-MSI
+shape - was packaged straight afterwards with those lessons applied: **13 minutes 45 seconds end to end**,
+from "package PuTTY" to a GREEN seven-step SYSTEM test, a verified `.intunewin` and a finished dossier.
+
+What actually produced the difference, in order of effect:
+
+1. **The sandbox test cost ZERO wall-clock time.** It was started the moment pre-flight went GREEN and ran
+   while the `.intunewin`, the logo and the dossier were produced. 6 minutes 24 seconds of testing,
+   0 seconds of waiting. Serialising it - as the Notepad++ run did - would have added its full duration.
+2. **One MSI probe instead of eight.** `Get-PsadtMsiFacts.ps1` returned identity, signature, features,
+   feature-component counts, shortcuts, directories, upgrade flags, files and registry rows in a single
+   call. That one call is what surfaced `DesktopFeature` at Level 2 and the `MigrateFeatures` upgrade flag,
+   which together decided the whole `ADDLOCAL` design.
+3. **Gates 1 and 2 in ONE `AskUserQuestion` call**, every option pre-filled from the probe. Three
+   questions, one interaction, no back-and-forth.
+4. **One research pass, not a three-agent fan-out.** For a well-known app with an official MSI, the vendor
+   download page plus the MSI itself IS the research. The fan-out is for apps whose silent switches are
+   genuinely unknown.
+
+Two things still went wrong, and both are now closed:
+
+- **The Wikimedia thumbnail trap was hit AGAIN**, in the same session, for the same reason: a hand-built
+  `1024px-` URL returns HTTP 400 because only pre-rendered widths are served. Cost ~1 minute, twice.
+  Appendix J now says: never hand-build the URL, take `thumburl` from the API verbatim, and search the File
+  namespace instead of guessing a file name (`File:Putty-256.png` does not exist; `File:PuTTY Icon.svg`
+  does). **General lesson**: a mistake repeated inside one session is a missing guard-rail, not
+  carelessness - write it down the first time.
+- **The MSI probe itself took four attempts to get right** (COM `InvokeMember` vs. a direct call,
+  `Execute`/`Close` returning `$null` into the pipeline, a `return ,$rows` over-correction, and
+  `SummaryInformation` needing the direct call too). That is the same script for every MSI package ever
+  built, so it belongs in the skill rather than in a scratch file. It is now
+  `scripts/Get-PsadtMsiFacts.ps1` with five regression guards, each verified to fail on its reintroduced
+  bug. **General lesson**: the second time you write a probe by hand, it is not a probe, it is a missing
+  script.
+
+Package-specific findings worth generalising:
+
+- **A Level 2 feature is not installed by default, but an upgrade can still bring it in.** PuTTY's
+  `DesktopFeature` is Level 2, so a plain install skips the desktop icon - yet the Upgrade row carries
+  `MigrateFeatures`, so a device upgrading from an install where someone ticked it would keep it. Naming
+  the wanted features in `ADDLOCAL` beats relying on the level.
+- **A feature that edits the PATH turns the install directory into a drop zone.** PuTTY's `PathFeature`
+  puts the install directory on the system PATH, which invites third-party binaries into a folder the MSI
+  does not own - so the folder survives uninstall and a leftover `putty.exe` keeps detection reporting the
+  app as installed. Clean the directory in Post-Uninstall whenever a package edits the PATH.
+- **Leave SSH host keys alone.** PuTTY's saved sessions and host keys live in
+  `HKCU\Software\SimonTatham\PuTTY`. Purging them on uninstall would make a genuine man-in-the-middle
+  warning indistinguishable from a normal first-connection prompt. "Clean uninstall" never means deleting
+  a user's trust store.
+
 ---
 
 ## Appendix H: Direct Intune upload via Microsoft Graph (win32LobApp) - hard-won lessons
@@ -1683,14 +1735,35 @@ default `Assets\AppIcon.png`/`Banner.Classic.png` (see H.10 — the upload scrip
 1. **Microsoft products:** `https://learn.microsoft.com/en-us/<product>/media/index/<product>.png`
    (transparent PNG, direct download; `<product>` lowercase, e.g. `powershell`, `sqlserver`, `azure`).
 2. **Other vendors:** official vendor/project source (e.g. `apache.org/logos/res/<project>/`).
-3. **Wikimedia Commons** (stable URLs, SVG rendered server-side as transparent PNG):
+3. **Wikimedia Commons** (stable URLs, SVG rendered server-side as transparent PNG).
+   **Two rules, both learned the hard way (2026-09-05, twice in one session):**
+   - **Never guess the file name.** `File:<App> Logo.svg` is as likely to 404 as to exist. Search the File
+     namespace first and take the title from the result:
+     ```powershell
+     $q = 'https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=' +
+          [uri]::EscapeDataString('<App> logo') + '&srnamespace=6&srlimit=10&format=json'
+     (Invoke-RestMethod $q -Headers @{'User-Agent'='PSADT-pkg/1.0'}).query.search.title
+     ```
+   - **Only listed thumbnail widths are served.** A width the wiki has not pre-rendered returns
+     **HTTP 400 "Use thumbnail sizes listed on ..."**, not an image - `1024px-` fails where `1280px-`
+     works. Do not hand-build the URL: take `thumburl` from the API response verbatim (it names a width
+     that is guaranteed to exist) and strip any `?utm_*` query string.
+
    ```powershell
    $api = "https://commons.wikimedia.org/w/api.php?action=query&titles=$([uri]::EscapeDataString('File:<Logo>.svg'))&prop=imageinfo&iiprop=url&iiurlwidth=1024&format=json"
    $thumb = ((Invoke-RestMethod $api -Headers @{'User-Agent'='PSADT-pkg/1.0'}).query.pages.PSObject.Properties.Value).imageinfo[0].thumburl
    Invoke-WebRequest $thumb -OutFile '<pkg>\Assets\<App>-Logo.png' -Headers @{'User-Agent'='PSADT-pkg/1.0'}
    ```
    Avoid third-party PNG portals (stickpng, toppng, nicepng, ...) — hotlink protection/ads/poor quality.
-4. **MSI Icon-table fallback** (when web download fails): MSI installers embed `.ico` files in an `Icon`
+4. **MSI Icon-table fallback** (when web download fails). `Get-PsadtMsiFacts.ps1` lists the `Icon` table
+   entries, so check there first whether the MSI even carries one.
+   **Check the frame table before trusting this route.** The reader below assumes a 32-bpp DIB frame; an
+   older installer often carries nothing better than **48x48 at 8 bpp** (PuTTY 0.85 does), and then
+   `FromDib32` throws *"Source array was not long enough"* because a palette frame is a fraction of the
+   expected size. Read the ICO directory first (`bpp` sits at offset `base+6` of each 16-byte entry) and
+   fall back to a web source when the largest frame is below ~256px or not 32 bpp — a correct 48px icon is
+   still too small for the Intune tile.
+   MSI installers embed `.ico` files in an `Icon`
    table. `System.Drawing.Icon` silently falls back to 48x48 when the 256x256 frame is PNG-compressed inside
    the `.ico` on .NET 4.x — parse the raw ICO binary and extract the largest frame directly:
    ```powershell

@@ -184,7 +184,14 @@ end. Resolve scope via decision gates 1 + 2 only; pre-fill every option from res
 
 **Phase 2 - Research fan-out (parallel sub-agents, no asking back).** Dispatch the three Researcher roles
 concurrently, collect into the Phase-0.3 findings table, and show it before scaffold. Record per deployment
-type: switch, expected exit codes, log path, known leftovers. **Consult guide Appendix L (installer technologies
+type: switch, expected exit codes, log path, known leftovers. **For an MSI, the probe IS the research: `pwsh scripts/Get-PsadtMsiFacts.ps1 -Path <msi> -AsText`** returns
+identity, signature, SHA256, features + component counts, decoded upgrade flags, shortcuts, directories,
+file versions, registry rows and the Icon table in ONE call. Read it before web-searching anything: it is
+what reveals an auto-updater sitting in its own feature (so `ADDLOCAL` beats post-install cleanup), a
+`DesktopFeature` you must not install, `MigrateFeatures` on the upgrade row (so `ADDLOCAL` alone is not
+enough), and the exact file version for the detection script. Never hand-roll this probe - guide App. G
+(2026-09-05) records the four COM/pipeline traps it costs.
+**Consult guide Appendix L (installer technologies
 + silent switches) BEFORE web-searching switches**; for a script-only fix/remediation/debloat package (no vendor
 installer) follow guide Appendix K instead of the normal installer flow. For a **browser-extension** package the
 research is store-availability + per-store IDs (Chrome/Edge 32-char `a-p`, Firefox `id@domain` + AMO slug), not
@@ -354,8 +361,12 @@ Full symptom/HRESULT catalogue: guide Appendix A.
   `echo %ERRORLEVEL%>file` silently becomes the `0>` stdin redirection and writes an EMPTY file; file
   existence read as completion; `[string]$null` still `$null` in WinPS 5.1 - each cost a whole VM run).
 - Probing a long-running job to find a bug that a two-second local check would have shown; issuing N
-  sequential tool calls against ONE artefact (an MSI's tables, a module's cmdlet signatures) instead of one
-  script; running Phase 6 strictly after Phases 7-8 when they are independent.
+  sequential tool calls against ONE artefact instead of one script - for an MSI that script exists, it is
+  `scripts/Get-PsadtMsiFacts.ps1`; running Phase 6 strictly after Phases 7-8 when they are independent;
+  a three-agent research fan-out for an app whose vendor ships an official MSI (the MSI is the research).
+- Hand-building a Wikimedia thumbnail URL (only pre-rendered widths are served - `1024px-` returns HTTP 400
+  where `1280px-` works; take `thumburl` from the API verbatim) or guessing a Commons file name instead of
+  searching the File namespace. Both cost time twice in one session on 2026-09-05; App. J now has them.
 - Disabling Defender or dropping Repair/Uninstall to make the SYSTEM test "faster" - that tests a
   configuration no client has, and a package whose Uninstall never ran is not a finished package.
 - Uploading without the Phase 6 SYSTEM test passing; a blanket `exit 0` or a `finally`-written detection tag in a
@@ -376,7 +387,8 @@ Full symptom/HRESULT catalogue: guide Appendix A.
 `references/app-registration.md` - THE Graph permission matrix (app roles + capabilities + bootstrap scopes).
 `references/PSADTv4-Deployment-Guide.md` - **Phase 0 setup doctor + config home + Intune access** ·
 Phase 1.2 intake catalogue · 1.1/1.3 research · Phase 3 scaffold ·
-4 customize · 5 pre-flight · 7 package · 8-9 Intune config fields · 11 test · 12 rollout · App. A errors ·
+4 customize · 5 pre-flight · **6.1 sandbox SYSTEM test / 6.2 per-action / 6.3 run it in parallel** ·
+7 package · 8-9 Intune config fields · 11 test · 12 rollout · App. A errors ·
 B anti-patterns · C test stubs · D URLs · E deploy checklist · F dossier template (all fields) · G lessons
 learned · H direct Graph upload · **I WinGet packaging** · **J app-logo acquisition + verification** ·
 **K script-only / remediation packages (ESP-safe)** · **L installer technologies + silent switches** ·

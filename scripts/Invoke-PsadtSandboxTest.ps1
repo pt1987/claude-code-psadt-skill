@@ -16,11 +16,18 @@
   Intune actually evaluates. Package-specific facts (an updater directory that must be absent, a shortcut
   that must exist) are asserted through the -Paths* parameters.
 
+  Where the evidence ends up: result.json, the PSADT logs and the .wsb are copied into
+  <outputRoot>\<Stem>\SandboxTest\, beside the dossier and the detection script, and the log paths are
+  appended to artifacts.logs[]. The scratch work folder under the config home is then removed - it holds
+  only the generated runner and raw output, all of which the next run regenerates. Deliberately NOT the
+  package folder: that is what IntuneWinAppUtil packs, and test logs have no business shipping to devices.
+  A run that fails before producing a result keeps its work folder so it can be investigated.
+
   What it does NOT do: it decides nothing about fixes. Like Invoke-PsadtSystemTest it reports facts, and the
   caller drives the loop.
 .OUTPUTS
-  PSCustomObject: Verdict ('GREEN'|'RED'|'ERROR'), Steps, FailedAssertions, ResultPath, LogFolder,
-  SandboxWorkFolder, DurationMinutes
+  PSCustomObject: Verdict ('GREEN'|'RED'|'ERROR'), Steps, FailedAssertions, Assertions, ResultPath,
+  LogFolder, EvidenceFolder, SandboxWorkFolder (null once the scratch is cleaned up), DurationMinutes
 .EXAMPLE
   Invoke-PsadtSandboxTest.ps1 -PackagePath C:\PSADT\Packages\NotepadPlusPlus
 
@@ -58,6 +65,11 @@ param(
 
     # Leave the VM running at the end instead of shutting it down. For looking at a failure by hand.
     [switch]$KeepSandboxOpen,
+
+    # Keep the scratch work folder (generated runner, .wsb, raw sandbox output). Off by default: the
+    # evidence is copied into the package's Output folder, and what is left behind is regenerated on every
+    # run, so keeping it only grows one stale directory per app under the config home forever.
+    [switch]$KeepWorkFolder,
 
     # Write the runner and the .wsb, then stop without starting the VM. Returns the generated paths.
     # A human uses it to inspect or hand-tune the configuration; the test suite uses it to assert on the
@@ -388,6 +400,30 @@ if (-not $result) {
     }
 }
 
+# --- 7a. Move the evidence next to the package's other artefacts ------------------------------------
+# The work folder lives under the config home and is wiped at the start of the next run for this stem, so
+# anything left there is not evidence, it is scratch. result.json and the PSADT logs ARE the proof that
+# Phase 6 passed, so they belong beside the dossier and the detection script - the same place the rest of
+# the package's deliverables live, and a place that is NOT inside the folder IntuneWinAppUtil packs.
+$evidenceFolder = $null
+try {
+    $outputFolder = $null
+    if ($mf.Exists -and -not $mf.Error -and $mf.Manifest.artifacts -and $mf.Manifest.artifacts.outputFolder) {
+        $outputFolder = [string]$mf.Manifest.artifacts.outputFolder
+    }
+    if (-not $outputFolder) { $outputFolder = Join-Path $cfg.Config.paths.outputRoot $stem }
+    $evidenceFolder = Join-Path $outputFolder 'SandboxTest'
+
+    if (Test-Path -LiteralPath $evidenceFolder) { Remove-Item -LiteralPath $evidenceFolder -Recurse -Force }
+    New-Item -ItemType Directory -Path $evidenceFolder -Force | Out-Null
+    Copy-Item -Path (Join-Path $resultsFolder '*') -Destination $evidenceFolder -Recurse -Force
+    Copy-Item -LiteralPath $wsbPath -Destination $evidenceFolder -Force
+    $resultPath = Join-Path $evidenceFolder 'result.json'
+} catch {
+    Write-Warning "Could not copy the sandbox evidence to the Output folder: $($_.Exception.Message)"
+    $evidenceFolder = $null
+}
+
 # --- 7. Record in the manifest (best effort, exactly like Invoke-PsadtSystemTest) --------------------
 try {
     if ($mf.Exists -and -not $mf.Error) {
@@ -411,13 +447,45 @@ try {
                 verdict          = $result.verdict
                 failedAssertions = @($result.failedAssertions)
                 resultPath       = $resultPath
+                evidenceFolder   = $evidenceFolder
                 at               = $result.finishedUtc
             }
         } | Out-Null
+
+        if ($evidenceFolder) {
+            $logs = @(Get-ChildItem -LiteralPath (Join-Path $evidenceFolder 'psadt-logs') -File -ErrorAction SilentlyContinue | ForEach-Object FullName)
+            foreach ($log in $logs) {
+                & (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath $PackagePath -Append @{ 'artifacts.logs' = $log } | Out-Null
+            }
+        }
     }
 } catch {
     Write-Warning "Could not record the sandbox-test result in the manifest: $($_.Exception.Message)"
 }
+
+$logFolder = if ($evidenceFolder) { Join-Path $evidenceFolder 'psadt-logs' } else { Join-Path $resultsFolder 'psadt-logs' }
+
+# --- 8. Clean up the scratch ------------------------------------------------------------------------
+# Only reached once the evidence is safely copied out; on the failure paths above the function has already
+# returned, so a run worth investigating still has its work folder.
+#
+# The retry is not defensive padding: the host keeps the mapped-folder handle for a few seconds after the
+# guest has shut down, so the FILES delete while the directory itself stays locked. A single
+# Remove-Item -ErrorAction SilentlyContinue therefore leaves an empty directory behind AND reports success,
+# which is why this is verified below instead of assumed.
+if (-not $KeepWorkFolder -and $evidenceFolder) {
+    foreach ($attempt in 1..10) {
+        if (-not (Test-Path -LiteralPath $workRoot)) { break }
+        Remove-Item -LiteralPath $workRoot -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $workRoot) { Start-Sleep -Seconds 2 }
+    }
+    if (Test-Path -LiteralPath $workRoot) {
+        Write-Warning "The scratch work folder is still locked and could not be removed: $workRoot. The evidence is safe in $evidenceFolder; delete the work folder by hand or leave it for the next run of this package, which wipes it before starting."
+    }
+}
+
+# Report what is actually on disk, never what was intended.
+$workFolderRemaining = if (Test-Path -LiteralPath $workRoot) { $workFolder } else { $null }
 
 return [pscustomobject]@{
     Verdict           = $result.verdict
@@ -426,7 +494,8 @@ return [pscustomobject]@{
     Assertions        = $result.assertions
     Error             = $result.error
     ResultPath        = $resultPath
-    LogFolder         = (Join-Path $resultsFolder 'psadt-logs')
-    SandboxWorkFolder = $workFolder
+    LogFolder         = $logFolder
+    EvidenceFolder    = $evidenceFolder
+    SandboxWorkFolder = $workFolderRemaining
     DurationMinutes   = [math]::Round(((Get-Date) - $startedAt).TotalMinutes, 1)
 }

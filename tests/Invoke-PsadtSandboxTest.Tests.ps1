@@ -12,6 +12,13 @@ BeforeAll {
 Describe 'Invoke-PsadtSandboxTest' {
     BeforeEach {
         $script:root = New-TempSkillRoot
+        # The script derives its work folder from the resolved config home. Without this override the test
+        # suite would create - and leave behind - a folder under the REAL %LOCALAPPDATA%\psadt-deploy on
+        # whatever machine runs the tests.
+        $script:prevHome = $env:PSADT_DEPLOY_HOME
+        $env:PSADT_DEPLOY_HOME = Join-Path $script:root 'confighome'
+        New-Item -ItemType Directory -Path $env:PSADT_DEPLOY_HOME -Force | Out-Null
+
         $script:pkg = Join-Path $script:root 'MyPackage'
         New-Item $script:pkg -ItemType Directory -Force | Out-Null
         Set-Content (Join-Path $script:pkg 'Invoke-AppDeployToolkit.ps1') '# stub launcher'
@@ -23,7 +30,18 @@ Describe 'Invoke-PsadtSandboxTest' {
         Mock -CommandName Get-CimInstance -MockWith { [pscustomobject]@{ Name = 'Containers-DisposableClientVM'; InstallState = 1 } }
         Mock -CommandName Get-Process -MockWith { @() }
     }
-    AfterEach { Remove-TempSkillRoot $script:root }
+    AfterEach {
+        if ($null -eq $script:prevHome) { Remove-Item Env:\PSADT_DEPLOY_HOME -ErrorAction SilentlyContinue }
+        else { $env:PSADT_DEPLOY_HOME = $script:prevHome }
+        Remove-TempSkillRoot $script:root
+    }
+
+    It 'writes its work folder under the resolved config home, never under a hard-coded path' {
+        # Guarantees the PSADT_DEPLOY_HOME override above actually takes effect, so a test run cannot
+        # litter the real config home.
+        $gen = & $script:script -PackagePath $script:pkg -GenerateOnly
+        $gen.SandboxWorkFolder | Should -BeLike "$($env:PSADT_DEPLOY_HOME)*"
+    }
 
     Context 'guards' {
         It 'throws when the folder is not a PSADT package' {
@@ -112,6 +130,53 @@ Describe 'Invoke-PsadtSandboxTest' {
             # UTF-8 BOM is allowed (the file is written with one); no other byte may exceed 7-bit ASCII.
             $body = if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF) { $bytes[3..($bytes.Length - 1)] } else { $bytes }
             @($body | Where-Object { $_ -gt 127 }).Count | Should -Be 0
+        }
+    }
+
+    Context 'evidence handling and cleanup' {
+        BeforeAll {
+            $script:sbxSrc = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\Invoke-PsadtSandboxTest.ps1')).ProviderPath
+            $raw = Get-Content -LiteralPath $script:sbxSrc -Raw
+            $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseInput($raw, [ref]$tokens, [ref]$null) | Out-Null
+            $b = [System.Text.StringBuilder]::new($raw)
+            foreach ($t in @($tokens | Where-Object { $_.Kind -eq 'Comment' } | Sort-Object { $_.Extent.StartOffset } -Descending)) {
+                $len = $t.Extent.EndOffset - $t.Extent.StartOffset
+                [void]$b.Remove($t.Extent.StartOffset, $len); [void]$b.Insert($t.Extent.StartOffset, (' ' * $len))
+            }
+            $script:sbxCode = $b.ToString()
+        }
+
+        It 'copies the evidence into the Output folder, not into the package' {
+            # The package folder is what IntuneWinAppUtil packs - test logs must never ship to devices.
+            $script:sbxCode | Should -Match "Join-Path \`$outputFolder 'SandboxTest'"
+            $script:sbxCode | Should -Not -Match "Join-Path \`$PackagePath 'SandboxTest'"
+        }
+
+        It 'removes the scratch work folder only after the evidence is copied out' {
+            # The guard on $evidenceFolder is what keeps a failed run investigable.
+            $script:sbxCode | Should -Match '-not \$KeepWorkFolder -and \$evidenceFolder'
+            $script:sbxCode | Should -Match 'Remove-Item -LiteralPath \$workRoot -Recurse -Force'
+        }
+
+        It 'offers -KeepWorkFolder for the investigate-by-hand case' {
+            (Get-Command $script:sbxSrc).Parameters.Keys | Should -Contain 'KeepWorkFolder'
+        }
+
+        It 'records the copied logs in the manifest' {
+            $script:sbxCode | Should -Match "'artifacts.logs'"
+        }
+
+        It 'retries the cleanup, because the mapped-folder handle outlives the guest' {
+            # The files delete while the directory itself stays locked for a few seconds after shutdown.
+            $script:sbxCode | Should -Match 'foreach \(\$attempt in 1\.\.10\)'
+        }
+
+        It 'reports the work folder from what is on disk, not from what was intended' {
+            # A single Remove-Item -ErrorAction SilentlyContinue leaves an empty directory behind AND
+            # reports success. The returned value must be a Test-Path result, not a flag.
+            $script:sbxCode | Should -Match '\$workFolderRemaining = if \(Test-Path -LiteralPath \$workRoot\)'
+            $script:sbxCode | Should -Match 'SandboxWorkFolder = \$workFolderRemaining'
         }
     }
 

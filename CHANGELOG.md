@@ -2,6 +2,59 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.25.0 - 2026-09-05 - One MSI probe instead of eight, and the sandbox stops leaving litter
+
+### Added
+- **`scripts/Get-PsadtMsiFacts.ps1`** - reads everything a packaging decision needs out of an MSI in ONE
+  pass: identity, Authenticode status, SHA256, features with component counts, DECODED upgrade flags,
+  shortcuts, directories, file versions, registry rows and the Icon table. `-AsText` prints the readable
+  dump; without it you get an object to feed the manifest and the dossier.
+  - This is the probe that decides how a package is built. On two real MSIs it is what surfaced Notepad++'s
+    `AutoUpdaterFeature` (so `ADDLOCAL` replaces post-install cleanup), PuTTY's `DesktopFeature` at Level 2,
+    and `MigrateFeatures` on both upgrade rows - the flag that means `ADDLOCAL` alone is not enough.
+  - Four load-bearing details, each a real failure while the same probe was written by hand four times:
+    `OpenDatabase` must be a DIRECT method call (`InvokeMember` throws `DISP_E_TYPEMISMATCH` against the
+    Windows Installer automation object); `Execute`/`Close` return `$null` that must be swallowed or the
+    caller indexes into it; rows are PSCustomObjects with named columns, never nested arrays (which break
+    only when a table has exactly one row); and `OpenDatabase` is retried, because a freshly downloaded MSI
+    can still be held by the on-access scanner. Every table except `Property` is optional.
+- **`tests/Get-PsadtMsiFacts.Tests.ps1`** - 15 tests: guards, five regression guards on the code, and
+  functional tests against any real MSI found on the machine (skipped when there is none). Each regression
+  guard was verified to FAIL when its bug is reintroduced.
+
+### Fixed
+- **The sandbox test left its work folder behind - one per app, under the config home, forever.** Worse,
+  the EVIDENCE lived there: `result.json` and the PSADT logs, with the manifest pointing into a profile
+  directory. `Invoke-PsadtSandboxTest.ps1` now copies result.json, the PSADT logs and the `.wsb` into
+  `<outputRoot>\<Stem>\SandboxTest\` - beside the dossier and the detection script, and deliberately NOT
+  into the package folder, which is what IntuneWinAppUtil packs. The log paths are appended to
+  `artifacts.logs[]`, and the scratch folder is then removed. `-KeepWorkFolder` keeps it; a run that fails
+  before producing a result keeps it automatically, so a failure stays investigable.
+- **The test suite wrote into the REAL config home.** `Invoke-PsadtSandboxTest.Tests.ps1` now points
+  `PSADT_DEPLOY_HOME` at a temp directory, with a test that asserts the work folder actually lands there.
+
+### Changed
+- **Phase 2 in SKILL.md**: for an MSI, the probe IS the research - run `Get-PsadtMsiFacts.ps1` before
+  web-searching anything.
+- **Guide Appendix J** gained the two Wikimedia rules that cost time twice in one session: never guess a
+  Commons file name (search the File namespace), and never hand-build a thumbnail URL - only pre-rendered
+  widths are served, so `1024px-` returns HTTP 400 where `1280px-` works. Take `thumburl` from the API
+  verbatim. The MSI Icon-table fallback now warns that the DIB reader assumes 32 bpp, while older
+  installers often carry nothing better than 48x48 at 8 bpp (PuTTY 0.85 does).
+- **New anti-patterns**: hand-building a Wikimedia thumbnail URL or guessing a Commons file name; a
+  three-agent research fan-out for an app whose vendor ships an official MSI.
+
+### Notes - the lessons, measured (guide Appendix G, 2026-09-05 second entry)
+PuTTY 0.85 was packaged straight after the 75-minute Notepad++ run, with those lessons applied:
+**13 minutes 45 seconds end to end**, GREEN seven-step SYSTEM test, verified `.intunewin`, finished dossier.
+The single biggest factor was that the sandbox test cost ZERO wall-clock time - started the moment
+pre-flight went GREEN, it ran while the `.intunewin`, the logo and the dossier were produced.
+
+Two things still went wrong and are now closed: the Wikimedia thumbnail trap was hit AGAIN in the same
+session (a mistake repeated inside one session is a missing guard-rail, not carelessness - write it down
+the first time), and the MSI probe took four attempts (the second time you write a probe by hand, it is not
+a probe, it is a missing script).
+
 ## 0.24.0 - 2026-09-05 - The whole Phase 6 loop in a Windows Sandbox, without elevation
 
 ### Added

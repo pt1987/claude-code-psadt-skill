@@ -369,6 +369,26 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.25.0 - 05.09.2026
+- **New: `Get-PsadtMsiFacts.ps1` reads an MSI in one pass** — identity, signature, SHA256, features with
+  component counts, *decoded* upgrade flags, shortcuts, directories, file versions, registry rows and the
+  Icon table. For an MSI this probe **is** the research: it is what reveals an auto-updater sitting in its
+  own feature (so `ADDLOCAL` replaces post-install cleanup), a `DesktopFeature` you must not install, and
+  `MigrateFeatures` on the upgrade row — the flag that means `ADDLOCAL` alone is not enough. Five
+  regression guards, each verified to fail on its reintroduced bug.
+- **Fixed: the sandbox test left litter and put the evidence in the wrong place.** It kept one work folder
+  per app under the config home forever, and `result.json` plus the PSADT logs lived there with the
+  manifest pointing into a profile directory. Evidence now lands in
+  `<outputRoot>\<Stem>\SandboxTest\` beside the dossier — not in the package folder, which is what
+  IntuneWinAppUtil packs — the logs are recorded in `artifacts.logs[]`, and the scratch is removed.
+  `-KeepWorkFolder` keeps it, and a failed run keeps it automatically.
+- **Fixed: the test suite wrote into the real config home.** It now redirects `PSADT_DEPLOY_HOME` to a temp
+  directory, with a test that asserts it.
+- **Measured:** PuTTY 0.85 packaged with these lessons applied took **13 min 45 s end to end** — versus 75
+  minutes for the Notepad++ run that produced them. The largest single factor: the sandbox test costs zero
+  wall-clock time when started as soon as pre-flight goes GREEN, because packaging and the dossier do not
+  depend on its verdict.
+
 ### 0.24.0 - 05.09.2026
 - **New: `Invoke-PsadtSandboxTest.ps1` runs the whole Phase 6 loop in a throwaway Windows Sandbox** —
   Install, detection, Uninstall, detection, Reinstall, Repair, final Uninstall, every action as
