@@ -130,7 +130,23 @@ $workLeaf = '_PsadtSandboxTest'
 if ($packageLeaf -eq $workLeaf) { throw "The package folder must not be named '$workLeaf' - that name is reserved for the sandbox work folder." }
 
 $workRoot = Join-Path $cfg.Home "sandbox\$stem"
-if (Test-Path -LiteralPath $workRoot) { Remove-Item -LiteralPath $workRoot -Recurse -Force }
+if (Test-Path -LiteralPath $workRoot) {
+    # A previous run's folder must go: it was mapped into a VM, and reusing it would map stale content.
+    # The realistic failure here is an ORPHANED vmmemWindowsSandbox worker still holding the mapped folder
+    # open - it survives the client processes, cannot be killed (the Hyper-V compute service owns it), and
+    # usually clears on a reboot. Say that, instead of surfacing a bare "used by another process".
+    try {
+        Remove-Item -LiteralPath $workRoot -Recurse -Force -ErrorAction Stop
+    } catch {
+        $orphan = @(Get-Process -Name 'vmmemWindowsSandbox' -ErrorAction SilentlyContinue).Count -gt 0
+        $why = if ($orphan) {
+            "A Windows Sandbox VM worker (vmmemWindowsSandbox) is still running and holding it open. It cannot be terminated directly - the Hyper-V compute service owns it - so either wait for it to exit or reboot."
+        } else {
+            "Something still holds a handle on it."
+        }
+        throw "The work folder from a previous run cannot be removed: $workRoot`n$why`nOriginal error: $($_.Exception.Message)"
+    }
+}
 $workFolder = Join-Path $workRoot $workLeaf
 $resultsFolder = Join-Path $workFolder 'results'
 New-Item -ItemType Directory -Path $resultsFolder -Force | Out-Null
@@ -172,7 +188,6 @@ $actionTimeout     = __ACTIONTIMEOUT__
 $pathsPresentAfterInstall  = __PATHSPRESENTINSTALL__
 $pathsAbsentAfterInstall   = __PATHSABSENTINSTALL__
 $pathsAbsentAfterUninstall = __PATHSABSENTUNINSTALL__
-$keepOpen = $__KEEPOPEN__
 
 $report = [ordered]@{ startedUtc = (Get-Date).ToUniversalTime().ToString('o'); steps = @(); verdict = 'UNKNOWN'; failedAssertions = @() }
 $assertions = @()
@@ -322,13 +337,19 @@ finally {
     $report.finishedUtc = (Get-Date).ToUniversalTime().ToString('o')
     $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $results 'result.json') -Encoding UTF8
 
-    # Written last: the host treats this file as "results are complete on disk".
+    # Written last: the host treats this file as "results are complete on disk", and it is the host that
+    # tears the VM down from there.
+    #
     Set-Content -LiteralPath (Join-Path $mapped 'DONE.txt') -Value $report.verdict -Encoding ASCII
 
-    if (-not $keepOpen) {
-        Start-Sleep -Seconds 8   # let the mapped-folder writes reach the host before the VM disappears
-        & shutdown.exe /s /t 0
-    }
+    # The guest shuts ITSELF down, and that is not interchangeable with the host killing the VM: only a
+    # guest-initiated shutdown tears the virtual machine down cleanly, so the vmmemWindowsSandbox worker
+    # exits and releases the mapped folder. Force-killing the client from the host instead orphans that
+    # worker, which then holds the host's work folder open indefinitely.
+    # The cost of shutting down here is that the RDP-style client is left showing a connection-lost dialog -
+    # which the host disposes of separately (Stop-SandboxInstance), so the user never sees it.
+    Start-Sleep -Seconds 5   # let the mapped-folder writes above reach the host
+    & shutdown.exe /s /t 0
 }
 '@
 
@@ -340,8 +361,7 @@ $runner = $runnerTemplate.
     Replace('__ACTIONTIMEOUT__', [string]$ActionTimeoutSeconds).
     Replace('__PATHSPRESENTINSTALL__', (ConvertTo-PsArrayLiteral $PathsPresentAfterInstall)).
     Replace('__PATHSABSENTINSTALL__', (ConvertTo-PsArrayLiteral $PathsAbsentAfterInstall)).
-    Replace('__PATHSABSENTUNINSTALL__', (ConvertTo-PsArrayLiteral $PathsAbsentAfterUninstall)).
-    Replace('__KEEPOPEN__', $(if ($KeepSandboxOpen) { 'true' } else { 'false' }))
+    Replace('__PATHSABSENTUNINSTALL__', (ConvertTo-PsArrayLiteral $PathsAbsentAfterUninstall))
 
 $runnerPath = Join-Path $workFolder 'Run-PsadtSandboxTest.ps1'
 [System.IO.File]::WriteAllText($runnerPath, $runner, [System.Text.UTF8Encoding]::new($true))
@@ -397,7 +417,52 @@ while ((Get-Date) -lt $hostDeadline) {
     Start-Sleep -Seconds 10
 }
 
+function Stop-SandboxInstance {
+    <#
+      Disposes of the Windows Sandbox client window and waits until the VM is really gone.
+
+      The division of labour matters and is not interchangeable:
+        * The GUEST shuts itself down (see the generated runner). Only a guest-initiated shutdown tears the
+          virtual machine down cleanly, so vmmemWindowsSandbox exits and releases the host's mapped folder.
+          Force-killing the VM from the host instead ORPHANS that worker: the client processes disappear,
+          the work folder stays locked, and the cleanup then reports a failure it could not have avoided.
+          That was measured on 2026-09-06 - the orphan outlived the run by minutes.
+        * The HOST kills only the CLIENT window. The client is an RDP-style viewer; when the guest shuts
+          down the session drops out from under it and it leaves a connection-lost dialog on the user's
+          desktop. Killing it is what makes the run silent.
+        * The client is terminated rather than sent WM_CLOSE, because closing the window politely makes
+          Windows Sandbox ask "are you sure - all contents will be discarded". An unattended run must not
+          produce a prompt. Discarding is the entire point, and the evidence reached the host before
+          DONE.txt was written.
+    #>
+    param([int]$TimeoutSeconds = 180)
+
+    # The viewer only - never WindowsSandboxServer, which is what supervises the VM teardown.
+    foreach ($name in 'WindowsSandboxRemoteSession', 'WindowsSandboxClient', 'WindowsSandbox') {
+        Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+
+    # Wait for the VM worker, not for the client: vmmemWindowsSandbox does not match 'WindowsSandbox*' and
+    # it is the process that holds the mapped folder. vmwp is deliberately NOT waited on - it is shared with
+    # every other Hyper-V guest on the machine (WSL, a dev VM) and may legitimately never exit.
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $alive = @(Get-Process -Name 'vmmemWindowsSandbox', 'WindowsSandboxServer' -ErrorAction SilentlyContinue)
+        if ($alive.Count -eq 0) { return $true }
+        Start-Sleep -Seconds 3
+    }
+    return @(Get-Process -Name 'vmmemWindowsSandbox', 'WindowsSandboxServer' -ErrorAction SilentlyContinue).Count -eq 0
+}
+
 $verdictFile = if (Test-Path -LiteralPath $donePath) { (Get-Content -LiteralPath $donePath -Raw).Trim() } else { $null }
+
+# Tear the VM down before touching the work folder: while the sandbox lives it holds the mapped-folder
+# handle, which is what made the cleanup below need a retry loop in the first place.
+if (-not $KeepSandboxOpen) {
+    if (-not (Stop-SandboxInstance)) {
+        Write-Warning 'The Windows Sandbox process did not exit within 60 seconds; close the window by hand.'
+    }
+}
 $result = $null
 if (Test-Path -LiteralPath $resultPath) {
     $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json

@@ -167,6 +167,47 @@ Describe 'Invoke-PsadtSandboxTest' {
             $script:sbxCode | Should -Match "'artifacts.logs'"
         }
 
+        It 'has the guest shut ITSELF down' {
+            # Not interchangeable with a host-side kill: only a guest-initiated shutdown tears the VM down
+            # cleanly, so vmmemWindowsSandbox exits and releases the mapped folder. Killing the VM from the
+            # host orphans that worker and the work folder stays locked for minutes (measured 2026-09-06).
+            $gen = & $script:script -PackagePath $script:pkg -GenerateOnly
+            $raw = Get-Content -LiteralPath $gen.RunnerPath -Raw
+            $tk = $null
+            [System.Management.Automation.Language.Parser]::ParseInput($raw, [ref]$tk, [ref]$null) | Out-Null
+            $sb = [System.Text.StringBuilder]::new($raw)
+            foreach ($t in @($tk | Where-Object { $_.Kind -eq 'Comment' } | Sort-Object { $_.Extent.StartOffset } -Descending)) {
+                $len = $t.Extent.EndOffset - $t.Extent.StartOffset
+                [void]$sb.Remove($t.Extent.StartOffset, $len); [void]$sb.Insert($t.Extent.StartOffset, (' ' * $len))
+            }
+            $sb.ToString() | Should -Match 'shutdown\.exe /s /t 0'
+        }
+
+        It 'kills the viewer from the host so no connection-lost dialog is left behind' {
+            $script:sbxCode | Should -Match 'function Stop-SandboxInstance'
+            $script:sbxCode | Should -Match "'WindowsSandboxRemoteSession', 'WindowsSandboxClient', 'WindowsSandbox'"
+        }
+
+        It 'never kills WindowsSandboxServer, which supervises the VM teardown' {
+            $script:sbxCode | Should -Not -Match "foreach \(\$name in 'WindowsSandboxRemoteSession', 'WindowsSandboxClient', 'WindowsSandbox', 'WindowsSandboxServer'\)"
+        }
+
+        It 'waits for the VM worker, not for the viewer' {
+            # vmmemWindowsSandbox does not match 'WindowsSandbox*' and is the process holding the mapped folder.
+            $script:sbxCode | Should -Match "'vmmemWindowsSandbox', 'WindowsSandboxServer'"
+        }
+
+        It 'does not wait on vmwp, which is shared with every other Hyper-V guest' {
+            $script:sbxCode | Should -Not -Match "Get-Process -Name 'vmwp'"
+        }
+
+        It 'terminates the viewer instead of asking it to close politely' {
+            # WM_CLOSE makes Windows Sandbox prompt "are you sure - all contents will be discarded", which an
+            # unattended run must never produce. Discarding is the point, and the evidence is already copied.
+            $script:sbxCode | Should -Match 'Stop-Process -Force'
+            $script:sbxCode | Should -Not -Match 'CloseMainWindow'
+        }
+
         It 'retries the cleanup, because the mapped-folder handle outlives the guest' {
             # The files delete while the directory itself stays locked for a few seconds after shutdown.
             $script:sbxCode | Should -Match 'foreach \(\$attempt in 1\.\.10\)'

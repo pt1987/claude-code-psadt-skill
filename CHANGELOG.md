@@ -2,6 +2,38 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.25.2 - 2026-09-06 - No error dialog left on the desktop after a sandbox run
+
+### Fixed
+- **The Windows Sandbox client left a connection-lost dialog behind.** The guest shuts itself down at the
+  end of a run; the client is an RDP-style viewer, so the session drops out from under it and it puts an
+  error box on the user's desktop plus a lingering `WindowsSandboxRemoteSession` process. Nothing was
+  broken, but an unattended packaging run has no business littering the desktop. The host now disposes of
+  the viewer (`Stop-SandboxInstance`) as soon as `DONE.txt` appears.
+
+### Notes - the wrong fix, and why it was wrong
+The obvious move was to stop shutting the guest down and let the host kill the VM instead. Measured: that
+ORPHANS the `vmmemWindowsSandbox` worker. Client processes vanish, the worker survives - it cannot be
+terminated, the Hyper-V compute service owns it - and it keeps the host's mapped work folder open for
+minutes, so the cleanup then reports a failure it could not have avoided. The folder was still locked long
+after the run and only cleared when a later, correct run tore its VM down properly.
+
+So the division of labour is not interchangeable, and the code says so:
+- the **guest** shuts itself down, because only that tears the VM down cleanly and releases the mapped folder;
+- the **host** kills only the **viewer**, which is the thing showing the dialog;
+- `WindowsSandboxServer` is deliberately NOT killed - it supervises the teardown;
+- the wait is on `vmmemWindowsSandbox`, which does NOT match `WindowsSandbox*` and is the process actually
+  holding the folder. `vmwp` is deliberately not waited on: it is shared with every other Hyper-V guest on
+  the machine (WSL, a dev VM) and may legitimately never exit.
+
+This was only visible because 0.25.0 made the script report the work folder from `Test-Path` instead of
+from a flag. A cleanup that assumed its own success would have hidden it.
+
+- A stale work folder that cannot be removed at the start of a run now fails with a message naming the
+  orphaned worker and the fact that a reboot clears it, instead of a bare "used by another process".
+- Six regression tests pin the division of labour. Suite: 388 passed.
+- Verified end to end: GREEN, no leftover processes, work folder removed on the first attempt.
+
 ## 0.25.1 - 2026-09-06 - Array parameters survive the `-File` binder
 
 ### Fixed

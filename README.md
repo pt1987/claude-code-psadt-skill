@@ -369,6 +369,14 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.25.2 - 06.09.2026
+- **Fixed: a sandbox run left an error dialog on the desktop.** The guest shuts itself down at the end, the
+  RDP-style client loses its session and shows a connection-lost box. The host now disposes of the viewer as
+  soon as the run reports in. The tempting fix — let the host kill the VM instead of shutting the guest down
+  — was measured and is wrong: it orphans the `vmmemWindowsSandbox` worker, which then holds the work folder
+  open for minutes and cannot be killed. Guest shuts down, host closes the window, and the wait is on the VM
+  worker rather than on the client processes.
+
 ### 0.25.1 - 06.09.2026
 - **Fixed: array parameters broke under the `-File` binder.** `pwsh script.ps1 -Intents a,b` passes the
   whole string as ONE element, so `Invoke-IntuneAppAssignment.ps1` rejected a perfectly valid comma-separated
