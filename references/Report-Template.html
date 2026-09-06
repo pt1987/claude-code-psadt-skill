@@ -149,6 +149,8 @@
   }
   .card > h2 .ix { width: 26px; height: 26px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-dark); display: grid; place-items: center; font-size: 14px; flex: 0 0 auto; }
   .card > h2 .tag { margin-left: auto; font-family: var(--font); font-weight: 600; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .6px; }
+  /* A section-level action button sits flush right, like .tag does. The h2 is a flex row. */
+  .card > h2 .copy-btn { margin-left: auto; flex: 0 0 auto; }
   .card-body { padding: 6px 22px 20px; }
   .group-label { display: flex; align-items: center; gap: 12px; margin: 34px 0 12px; padding: 0 2px; }
   .group-label:first-child { margin-top: 6px; }
@@ -171,6 +173,9 @@
   .b-fail { color: var(--fail); background: var(--fail-bg); } .b-neut { color: var(--neutral); background: var(--neutral-bg); }
   .b-ok::before{background:var(--ok)} .b-warn::before{background:var(--warn)} .b-fail::before{background:var(--fail)} .b-neut::before{background:var(--neutral)}
   .b-info { color: var(--accent-dark); background: var(--accent-soft); } .b-info::before{background:var(--accent)}
+  /* The Graph enum token next to the portal label: the portal shows "Soft reboot", the API wants
+     "softReboot", and the dossier serves both readers. */
+  .rc-token { font-family: var(--mono); font-size: 11px; color: var(--ink-3); white-space: nowrap; }
 
   /* ---------- Description preview / markdown ---------- */
   .desc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -423,7 +428,8 @@
 
     <!-- Return codes -->
     <section class="card" id="returncodes">
-      <h2><span class="ix">&#8644;</span> <span data-de="Return Codes" data-en="Return codes">Return Codes</span></h2>
+      <h2><span class="ix">&#8644;</span> <span data-de="Return Codes" data-en="Return codes">Return Codes</span>
+        <button class="copy-btn cp" onclick="copyReturnCodes(this)" data-de="Tabelle kopieren" data-en="copy table">Tabelle kopieren</button></h2>
       <div class="card-body">
         <table>
           <thead><tr><th style="width:120px">Code</th><th data-de="Typ" data-en="Type">Typ</th><th data-de="Bedeutung" data-en="Meaning">Bedeutung</th></tr></thead>
@@ -621,11 +627,23 @@
   }
 
   // ---- Language toggle (DE/EN). Browser auto-translate still works on top. ----
+  // Replaces ONLY the text of a bilingual element and re-attaches any element children.
+  // "el.textContent = v" deletes them, and a cell may carry an appended copy button - the failure then
+  // shows up on the first DE/EN toggle rather than on load, which is exactly the kind of bug that
+  // survives a screenshot review. Output is unchanged for elements without element children.
+  function setLangText(el, v) {
+    var kept = [];
+    for (var i = 0; i < el.childNodes.length; i++) {
+      if (el.childNodes[i].nodeType === 1) kept.push(el.childNodes[i]);
+    }
+    el.textContent = v;                                  // getAttribute returns entity-decoded text -> safe
+    kept.forEach(function (c) { el.appendChild(c); });
+  }
   function setLang(lang) {
     document.documentElement.lang = lang;
     document.querySelectorAll('[data-de]').forEach(function (el) {
       var v = el.getAttribute('data-' + lang);
-      if (v !== null) el.textContent = v;   // getAttribute returns entity-decoded text -> textContent is safe
+      if (v !== null) setLangText(el, v);
     });
     document.querySelectorAll('.lang-switch button').forEach(function (b) {
       b.classList.toggle('active', b.getAttribute('data-lang') === lang);
@@ -680,13 +698,28 @@
   }
   function addFieldCopyButtons() {
     var icon = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-    ['appinfo', 'program', 'requirements', 'detection', 'deps'].forEach(function (id) {
-      var sec = document.getElementById(id);
+    // Which cell of a row is worth copying. Everywhere else it is the VALUE cell (the last one); in the
+    // return-code table it is the CODE (the first), because that is the value transcribed into the
+    // Intune portal's return-code grid.
+    var COPY_SECTIONS = [
+      { id: 'appinfo', cell: 'last' },
+      { id: 'program', cell: 'last' },
+      { id: 'requirements', cell: 'last' },
+      { id: 'detection', cell: 'last' },
+      { id: 'deps', cell: 'last' },
+      { id: 'returncodes', cell: 'first' }
+    ];
+    COPY_SECTIONS.forEach(function (spec) {
+      var sec = document.getElementById(spec.id);
       if (!sec) return;
       sec.querySelectorAll('table tr').forEach(function (tr) {
+        // 'table tr' matches the header row too. Harmless while every whitelisted section used the LAST
+        // cell (a <th> with no text worth copying), but the return-code header's first cell says "Code".
+        if (tr.parentNode && tr.parentNode.tagName === 'THEAD') return;
         var tds = tr.children;
         if (tds.length < 2) return;
-        var val = tds[tds.length - 1];
+        var val = (spec.cell === 'first') ? tds[0] : tds[tds.length - 1];
+        if (val.tagName === 'TH') return;               // belt and braces
         if (val.classList.contains('k')) return;        // skip label cells
         if (!cellText(val)) return;                      // skip empty values
         val.classList.add('cpv');
@@ -722,6 +755,20 @@
     window.addEventListener('resize', update, { passive: true });
     update();
   })();
+
+  // Copies the whole table as "code<TAB>type" lines - the Graph token, not the display label, so the
+  // result can be pasted straight into a script or a ticket.
+  function copyReturnCodes(btn) {
+    var rows = document.querySelectorAll('#returncodes tbody tr');
+    var lines = [];
+    rows.forEach(function (tr) {
+      var code = (tr.children[0].textContent || '').trim();
+      var token = tr.querySelector('.rc-token');
+      lines.push(code + '	' + (token ? token.textContent.trim() : ''));
+    });
+    if (lines.length) copyText(lines.join('
+'), btn);
+  }
 
   renderPreviews();
   setLang(document.documentElement.lang === 'en' ? 'en' : 'de');

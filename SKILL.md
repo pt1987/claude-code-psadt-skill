@@ -277,8 +277,11 @@ deletes) foreign `.intunewin` files. Extractability check: guide Phase 7.
 **Phase 8 - HTML report (ALWAYS) + real logo.** `New-PsadtReport.ps1 -ManifestPath <pkg>\psadt-package.json
 -LogoPath <logo> -OutputPath <artifacts.outputFolder>\Intune-Dossier.html`; `-Metadata` still overrides any
 key (list: guide Appendix F.0).
-Mandatory return codes: `0, 1707 Success; 3010 soft / 1641 hard reboot; 1618 retry; 60001, 60008 Failed` +
-researched installer codes. App description = Markdown, dossier language, real umlauts (structure/template:
+Return codes come from `scripts/Get-PsadtReturnCodes.ps1` - the SINGLE source of truth the upload reads too.
+Intune accepts exactly `success`, `softReboot`, `hardReboot`, `retry`, `failed`; **there is no "Ignored"**, and an
+invalid type THROWS rather than rendering. Pass only the INSTALLER-SPECIFIC codes as
+`@{ Code; Type; De; En }` - they merge over the mandatory `0, 1707, 3010, 1641, 1618, 60001, 60008` table, never
+replace it. Record them once as `research.returnCodes` in the manifest and dossier + upload both pick them up. App description = Markdown, dossier language, real umlauts (structure/template:
 guide F.2). Logo fetch + verify + MSI-icon fallback: guide Appendix J. WinGet dossier additions
 (WinGet >= 1.7.10582 requirement, registry/file detection note): guide Appendix I.6.
 

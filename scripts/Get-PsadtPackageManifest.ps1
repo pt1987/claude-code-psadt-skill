@@ -14,7 +14,9 @@
       package    name, type (installer|winget|script|browser-extension|windows-feature|driver),
                  installerTech, sourceStrategy
       decisions  gate1, gate2{audience,uninstallScope,repair,reboot}, systemTest, upload
-      research   switches, exitCodes, logPaths, leftovers
+      research   switches, exitCodes, logPaths, leftovers, returnCodes[] ({ code, type, de, en } -
+                 installer-specific Intune return codes; type is one of success/softReboot/hardReboot/
+                 retry/failed and is validated by Get-PsadtReturnCodes.ps1)
       driverTrust classification, owner, thumbprint
       results    preflight, systemTest[], package, report, upload
       artifacts  outputFolder, intunewin, detection, dossier, logo, logs[]

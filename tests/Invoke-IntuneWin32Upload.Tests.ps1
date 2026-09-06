@@ -135,3 +135,45 @@ Describe '-ManifestPath (0.21.0): identity comes from the package, not the comma
         }
     }
 }
+
+Describe 'Return codes come from the shared canonical table' {
+    BeforeAll { $script:rcSrc = Get-Content -LiteralPath $script:Upload -Raw }
+
+    It 'no longer carries its own literal table' {
+        # Before 0.26.0 this script and New-PsadtReport.ps1 each held an independent literal of the same
+        # seven codes. They agreed by coincidence, not by construction, and a dossier that promises a
+        # mapping the uploaded app does not carry is worse than no dossier.
+        $script:rcSrc | Should -Not -Match "returnCode\s*=\s*\d"
+        $script:rcSrc | Should -Match 'Get-PsadtReturnCodes\.ps1'
+    }
+
+    It 'resolves the codes BEFORE acquiring a token' {
+        # An invalid return code must fail at validation time, not after a network round trip and an
+        # authentication against the customer tenant.
+        $iRc = $script:rcSrc.IndexOf('Get-PsadtReturnCodes.ps1')
+        $iTok = $script:rcSrc.IndexOf('Get-GraphToken.ps1')
+        $iRc | Should -BeGreaterThan 0
+        $iTok | Should -BeGreaterThan 0
+        $iRc | Should -BeLessThan $iTok
+    }
+
+    It 'exposes -ReturnCodes so researched installer codes can reach Intune' {
+        (Get-Command $script:Upload).Parameters.Keys | Should -Contain 'ReturnCodes'
+    }
+
+    It 'takes researched codes from the manifest when the parameter is not bound' {
+        $script:rcSrc | Should -Match "PSBoundParameters\.ContainsKey\('ReturnCodes'\)"
+        $script:rcSrc | Should -Match '\$mfUp\.research\.returnCodes'
+    }
+
+    It 'rejects an invalid type before any network call' {
+        # The dummy path would throw '*Not found*' later; the type error must come first.
+        { & $script:Upload -IntuneWinPath 'C:\nope\x.intunewin' -DisplayName 'X' `
+              -ReturnCodes @(@{ Code = 5; Type = 'ignored' }) } | Should -Throw -ExpectedMessage '*ignored*'
+    }
+
+    It 'accepts a valid custom code and then fails on the missing file, not on the code' {
+        { & $script:Upload -IntuneWinPath 'C:\nope\x.intunewin' -DisplayName 'X' `
+              -ReturnCodes @(@{ Code = 1603; Type = 'failed' }) } | Should -Throw -ExpectedMessage '*not found*'
+    }
+}

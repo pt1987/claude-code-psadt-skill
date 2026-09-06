@@ -92,6 +92,11 @@ param(
     [int]$MinFreeDiskSpaceMB = 0,
     [int]$MinMemoryMB = 0,
     [ValidateSet('basedOnReturnCode','allow','suppress','force')][string]$RestartBehavior = 'basedOnReturnCode',
+    # Installer-specific return codes researched in Phase 1.3, e.g. @{ Code = 1603; Type = 'failed' }.
+    # Merged OVER the mandatory Appendix F.4 table (Get-PsadtReturnCodes.ps1); an entry whose code is
+    # already canonical overrides that row. Without this parameter a researched code could only ever be
+    # documented in the dossier and never actually reached the app.
+    [object[]]$ReturnCodes = @(),
     # installExperience.maxRunTimeInMinutes - how long the IME lets the install run before killing it.
     # The service default is 60 minutes, which is fine for ordinary installers but kills long-running ones
     # (OS in-place upgrades, large suites). 0 = do not send the field, keeping the service default and the
@@ -125,6 +130,9 @@ if ($ManifestPath) {
         $DisplayName = if ($mfUp.app.vendor) { "$($mfUp.app.vendor) $($mfUp.app.name)" } else { [string]$mfUp.app.name }
     }
     if (-not $PSBoundParameters.ContainsKey('Publisher')  -and $mfUp.app.vendor)  { $Publisher  = [string]$mfUp.app.vendor }
+    # Installer-specific codes researched in Phase 1.3 and recorded once in the manifest, so the dossier
+    # and the uploaded app cannot document different mappings.
+    if (-not $PSBoundParameters.ContainsKey('ReturnCodes') -and $mfUp.research.returnCodes) { $ReturnCodes = @($mfUp.research.returnCodes) }
     if (-not $PSBoundParameters.ContainsKey('AppVersion') -and $mfUp.app.version) { $AppVersion = [string]$mfUp.app.version }
     if (-not $PSBoundParameters.ContainsKey('Architecture') -and $mfUp.app.arch -in @('x64', 'x86', 'arm64')) {
         $Architecture = [string]$mfUp.app.arch
@@ -133,6 +141,11 @@ if ($ManifestPath) {
         throw "The manifest has no app.name and no -DisplayName was passed. Fill the identity with Set-PsadtPackageManifest.ps1."
     }
 }
+
+# The SAME canonical table the dossier renders - see Get-PsadtReturnCodes.ps1. Resolved HERE, before the
+# token is acquired and before any Graph call, so an invalid return code fails at validation time instead
+# of after authenticating against the tenant.
+$returnCodes = @(& (Join-Path $PSScriptRoot 'Get-PsadtReturnCodes.ps1') -Custom $ReturnCodes -AsGraphBody)
 
 # Use beta: the v1.0 Intune app-metadata backend (StatelessAppMetadataFEService) silently DROPS several
 # win32LobApp properties on write - most visibly displayVersion (the portal "App Version"). beta persists them.
@@ -210,15 +223,7 @@ if ($existing) { foreach ($a in $existing) { Write-Info "found: id=$($a.id)  v=$
 else { Write-Info "none found - this would be a new app." }
 
 # --- Build the win32LobApp body -------------------------------------------------------------------
-$returnCodes = @(
-    @{ returnCode = 0;     type = 'success'    }
-    @{ returnCode = 1707;  type = 'success'    }
-    @{ returnCode = 3010;  type = 'softReboot' }
-    @{ returnCode = 1641;  type = 'hardReboot' }
-    @{ returnCode = 1618;  type = 'retry'      }
-    @{ returnCode = 60001; type = 'failed'     }
-    @{ returnCode = 60008; type = 'failed'     }
-)
+# $returnCodes was resolved above, before authentication.
 # Detection: the newer Intune app-metadata backend uses the unified 'rules' collection (win32LobAppRule with a
 # ruleType), NOT the legacy 'detectionRules' - submitting detectionRules is silently ignored and the create
 # fails with "must have at least one detection rule". @odata.type MUST be first so the subtype binds.
@@ -329,6 +334,7 @@ if (-not $Execute) {
     Write-Host "  Detection   : $(if($DetectionScriptPath){"PowerShell script ($([IO.Path]::GetFileName($DetectionScriptPath)))"}else{"MSI ProductCode $MsiProductCode"})"
     Write-Host "  Content     : $fileName ($([Math]::Round($encSize/1MB,1)) MB encrypted)"
     Write-Host "  Logo        : $(if($body.largeIcon){'yes'}else{'NO - WARNING'})"
+    Write-Host "  Return codes: $($returnCodes.Count) ($(($returnCodes | ForEach-Object { "$($_.returnCode)=$($_.type)" }) -join ', '))"
     Write-Host "  Existing    : $(if($existing){ ($existing | ForEach-Object { "$($_.id) (v$($_.displayVersion))" }) -join ', ' } else { 'none' })"
     $action = if ($UpdateAppId) { "UPDATE IN PLACE app $UpdateAppId (content replaced; id/assignments kept)" }
               elseif ($existing -and $OnExisting -eq 'Abort') { "ABORT (existing app present, -OnExisting Abort)" }

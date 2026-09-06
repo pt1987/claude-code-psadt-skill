@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $script:gen = Join-Path $PSScriptRoot '..\scripts\New-PsadtReport.ps1'
     $script:out = Join-Path ([System.IO.Path]::GetTempPath()) ("psadtreport_" + [guid]::NewGuid().ToString('N') + '.html')
 }
@@ -262,5 +262,62 @@ Describe 'New-PsadtReport: the driver-trust row (0.22.0)' {
         $m | ConvertTo-Json -Depth 12 | Set-Content $script:dmf -Encoding UTF8
         & $script:gen -ManifestPath $script:dmf -OutputPath $script:dout
         (Get-Content $script:dout -Raw) | Should -Match 'Secure Boot assumed off'
+    }
+}
+
+Describe 'Return codes in the rendered dossier' {
+    BeforeEach {
+        $script:rcOut = Join-Path ([System.IO.Path]::GetTempPath()) ("psadtrc_" + [guid]::NewGuid().ToString('N') + '.html')
+    }
+    AfterEach { if (Test-Path $script:rcOut) { Remove-Item $script:rcOut -Force -ErrorAction SilentlyContinue } }
+
+    It 'renders the mandatory table in Appendix F.4 order when none is supplied' {
+        & $script:gen -Metadata @{ AppName = 'X'; AppVersion = '1' } -OutputPath $script:rcOut
+        $tbody = [regex]::Match((Get-Content $script:rcOut -Raw), '(?s)id="returncodes".*?<tbody>(.*?)</tbody>').Groups[1].Value
+        $codes = [regex]::Matches($tbody, '<code>(\d+)</code>') | ForEach-Object { [int]$_.Groups[1].Value }
+        $codes | Should -Be @(0, 1707, 3010, 1641, 1618, 60001, 60008)
+    }
+
+    It 'refuses an invalid Intune return-code type and writes no file' {
+        # The throw must precede the write: half a dossier on disk is worse than none, because it looks
+        # finished. "Ignored" is the concrete value that reached a real dossier before 0.26.0.
+        { & $script:gen -Metadata @{
+                AppName = 'X'; AppVersion = '1'
+                ReturnCodes = @(@{ Code = 5; Type = 'Ignored'; De = 'x'; En = 'x' })
+            } -OutputPath $script:rcOut } | Should -Throw
+        Test-Path $script:rcOut | Should -BeFalse
+    }
+
+    It 'cannot have a badge class injected through metadata' {
+        & $script:gen -Metadata @{
+            AppName = 'X'; AppVersion = '1'
+            ReturnCodes = @(@{ Code = 3010; Type = 'softReboot'; Cls = '" onmouseover="alert(1)'; De = 'x'; En = 'x' })
+        } -OutputPath $script:rcOut -WarningAction SilentlyContinue
+        (Get-Content $script:rcOut -Raw) | Should -Not -Match 'onmouseover'
+    }
+
+    It 'keeps data-de off the return-code cell so an injected copy button survives setLang' {
+        # setLang() assigns el.textContent to every [data-de] element, deleting its children. With the
+        # attributes on the <td> the copy button would vanish on the first DE/EN toggle - a failure that
+        # only shows on click. The bilingual span therefore lives INSIDE the cell.
+        & $script:gen -Metadata @{ AppName = 'X'; AppVersion = '1' } -OutputPath $script:rcOut
+        $tbody = [regex]::Match((Get-Content $script:rcOut -Raw), '(?s)id="returncodes".*?<tbody>(.*?)</tbody>').Groups[1].Value
+        $tbody | Should -Match '<td><span data-de='
+        $tbody | Should -Not -Match '<td data-de='
+    }
+
+    It 'merges custom codes over the mandatory table instead of replacing it' {
+        & $script:gen -Metadata @{
+            AppName = 'X'; AppVersion = '1'
+            ReturnCodes = @(@{ Code = 1603; Type = 'failed'; De = 'MSI-Fehler'; En = 'MSI error' })
+        } -OutputPath $script:rcOut
+        $html = Get-Content $script:rcOut -Raw
+        $html | Should -Match '1603'
+        $html | Should -Match '60008'      # the mandatory rows are still there
+    }
+
+    It 'shows the Graph enum token next to the portal label' {
+        & $script:gen -Metadata @{ AppName = 'X'; AppVersion = '1' } -OutputPath $script:rcOut
+        (Get-Content $script:rcOut -Raw) | Should -Match 'rc-token">softReboot<'
     }
 }

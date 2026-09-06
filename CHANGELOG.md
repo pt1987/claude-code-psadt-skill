@@ -2,6 +2,49 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.26.0 - 2026-09-06 - Return codes: one source of truth, validated, sorted, copyable
+
+### Fixed
+- **The dossier could name a return-code type Intune does not have.** `win32LobAppReturnCode.type` accepts
+  exactly `success`, `softReboot`, `hardReboot`, `retry`, `failed`. There is no `ignored` - yet "Ignored"
+  reached a real dossier, because `New-PsadtReport.ps1` rendered a caller-supplied `ReturnCodes` array
+  without validating a single field: `Label` was free text and `Cls` was interpolated RAW and UNESCAPED
+  into `class="badge $($r.Cls)"`. A dossier is a document somebody configures Intune from, so a wrong type
+  in it is a false statement nobody notices.
+  The fix is structural, not a corrected value: `Label` and `Cls` are now DERIVED from `Type` through a
+  closed switch and can no longer be supplied at all - which also closes the attribute-injection hole by
+  construction. An invalid type THROWS, and `ignored` gets its own message explaining that the concept does
+  not exist rather than a generic "unknown value".
+- **The return-code table is sorted.** By type in Appendix F.4 order, then numerically within a type - so
+  the dossier reads in the same sequence as the mandatory table it is verified against and as the portal
+  grid it is transcribed into. Previously it rendered in whatever order the caller happened to supply.
+- **Return codes are click-to-copy.** The code cell carries a copy icon and the section header a
+  "copy table" button, reusing the template's existing clipboard machinery. The bilingual span moved from
+  the `<td>` INTO the cell, because `setLang()` assigns `el.textContent` to every `[data-de]` element and
+  would silently delete an appended button on the first DE/EN toggle - a failure that only shows on click.
+  `setLang` now preserves element children as well, protecting the SYSTEM-test and assignment tables from
+  the same trap, and `addFieldCopyButtons` gained the `<thead>` guard it always needed.
+
+### Added
+- **`scripts/Get-PsadtReturnCodes.ps1`** - the canonical table, read by BOTH the dossier and the upload.
+  `-Custom` merges installer-specific codes over the mandatory rows (never replacing them: a package that
+  fails to map 60001/60008 reports its own crashes as success); `-AsGraphBody` projects to the win32LobApp
+  shape. Accepts the portal wording as well as the Graph token, and both PascalCase hashtables and the
+  camelCase objects that come out of the manifest JSON.
+- **`Invoke-IntuneWin32Upload.ps1 -ReturnCodes`** - until now the installer-specific codes that Appendix
+  F.4 tells the operator to research could only ever be *documented*; there was no way to get them into the
+  app. Resolved BEFORE the token is acquired, so a bad code fails at validation time instead of after
+  authenticating against the tenant.
+- **Manifest key `research.returnCodes`** (`{ code, type, de, en }`), read by both, so the codes are
+  written down once and the document and the app cannot disagree.
+- 31 tests (419 total), including six regression guards each verified to FAIL when its bug is reintroduced,
+  and a cross-script test that generates a dossier and a Graph body from the same input and asserts the
+  code sequences match - "report and upload agree" as a checked property rather than a coincidence.
+
+### Changed - BREAKING for callers passing a full custom table
+`-Metadata ReturnCodes` now MERGES OVER the mandatory Appendix F.4 table instead of replacing it. Pass only
+the installer-specific extras. This is deliberate: dropping 60001/60008 was never a legitimate choice.
+
 ## 0.25.2 - 2026-09-06 - No error dialog left on the desktop after a sandbox run
 
 ### Fixed

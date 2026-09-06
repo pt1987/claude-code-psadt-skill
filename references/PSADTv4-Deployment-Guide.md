@@ -1155,7 +1155,7 @@ Phase 6 is the binding gate for upload.
 | `Category` (null⇒"not preset"), `Featured` (bool), `InfoUrl`, `PrivacyUrl`, `Notes` | App Info |
 | `DescMdDe`, `DescMdEn` | description **Markdown** per language (real umlauts here) |
 | `InstallCmd`, `UninstallCmd`, `InstallBehavior`, `RestartBehaviorDe/En`, `RestartNoteDe/En`, `InstallTimeMin`, `AllowUninstall` | Program |
-| `ReturnCodes` | array of `@{ Code; Cls=b-ok/b-warn/b-neut/b-fail; Label; De; En }` (defaults to the standard table) |
+| `ReturnCodes` | INSTALLER-SPECIFIC codes only, as `@{ Code; Type; De; En }` with `Type` one of `success`/`softReboot`/`hardReboot`/`retry`/`failed`. They are MERGED OVER the mandatory F.4 table, never replace it, and an invalid type THROWS. `Cls`/`Label` are derived from `Type` and ignored if passed. |
 | `OsArch`, `MinOs`, `DiskMb`, `MemoryMb` | Requirements |
 | `RuleFormat`, `DetectScript`, `RunAs32` (bool), `SignatureCheck` (bool) | Detection |
 | `Dependencies`/`Supersedence` (+`*NoteDe/En`) | null ⇒ "none" + note |
@@ -1240,19 +1240,37 @@ Check: the first paragraph must also be readable on its own (200-character short
 
 ### F.4 Return codes (mandatory table, copy exactly)
 
-| Code | Type |
-|---:|---|
-| 0 | Success |
-| 1707 | Success |
-| 3010 | Soft reboot |
-| 1641 | Hard reboot |
-| 1618 | Retry |
-| 60001 | **Failed** |
-| 60008 | **Failed** |
-| `<installer-success-nicht-0>` | Success |
-| `<installer-known-error>` | Failed |
+**Intune accepts exactly five types.** `win32LobAppReturnCode.type` is `success`, `softReboot`,
+`hardReboot`, `retry` or `failed` - the portal's dropdown shows them as Success / Soft reboot / Hard reboot
+/ Retry / Failed. **There is no "Ignored".** Anything else is rejected by the backend, and a dossier naming
+an invalid type tells the operator to configure something the portal will not accept.
 
-Add the installer-specific codes from Phase 1.3. Every unknown exit code produces `0x80070000+code` in the error display.
+| Code | Portal label | Graph token |
+|---:|---|---|
+| 0 | Success | `success` |
+| 1707 | Success | `success` |
+| 3010 | Soft reboot | `softReboot` |
+| 1641 | Hard reboot | `hardReboot` |
+| 1618 | Retry | `retry` |
+| 60001 | **Failed** | `failed` |
+| 60008 | **Failed** | `failed` |
+
+This table is not retyped anywhere: `scripts/Get-PsadtReturnCodes.ps1` is the single source of truth, and
+BOTH the dossier (`New-PsadtReport.ps1`) and the upload (`Invoke-IntuneWin32Upload.ps1 -ReturnCodes`) read
+from it. Before 0.26.0 it existed as two independent literals that agreed only by coincidence, while the
+report rendered a caller-supplied table without validating a single field - which is how the invalid type
+"Ignored" reached a real dossier.
+
+Add the installer-specific codes from Phase 1.3 as `@{ Code = 1603; Type = 'failed'; De = '...'; En = '...' }`.
+They MERGE OVER the mandatory rows - a caller cannot drop 60001/60008, because a package that fails to map
+them reports its own crashes as success. A code that already exists is overridden, so an installer for
+which 1618 genuinely means success is expressible. Record them once in the manifest as
+`research.returnCodes` and both the dossier and the upload pick them up.
+
+Ordering is by type in the sequence above, then numerically within a type - so the dossier reads in the
+same order as this table it is checked against, and as the portal grid it is typed into.
+
+Every unknown exit code produces `0x80070000+code` in the error display.
 
 ### F.5 Requirements
 

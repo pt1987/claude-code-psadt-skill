@@ -94,6 +94,9 @@ if ($ManifestPath) {
     if ($mf.artifacts.detection) { Set-FromManifest 'DetectScript' ([IO.Path]::GetFileName([string]$mf.artifacts.detection)) }
     Set-FromManifest 'SetupFile'    $mf.results.package.setupFile
     Set-FromManifest 'DriverTrust'  $mf.driverTrust
+    # Installer-specific return codes researched in Phase 1.3. Recorded once in the manifest so the
+    # dossier and Invoke-IntuneWin32Upload.ps1 cannot document different mappings.
+    Set-FromManifest 'ReturnCodes'  $mf.research.returnCodes
 
     # The identity floor. Everything else - IntuneWin, Preflight, SystemTest - renders neutrally, because
     # "report ALWAYS" has to hold for a package that is not packed or tested yet. But a dossier that says
@@ -346,20 +349,27 @@ $descMdDe = Esc (Get-Val 'DescMdDe' "**$appName $appVersion**`n`n_Beschreibung f
 $descMdEn = Esc (Get-Val 'DescMdEn' "**$appName $appVersion**`n`n_Description to follow._")
 
 # ----------------------------------------------------------------------------- return codes
-$defaultRc = @(
-    @{ Code = '0';     Cls = 'b-ok';   Label = 'Success';     De = 'Erfolgreich'; En = 'Successful' }
-    @{ Code = '1707';  Cls = 'b-ok';   Label = 'Success';     De = 'Erfolgreich'; En = 'Successful' }
-    @{ Code = '3010';  Cls = 'b-warn'; Label = 'Soft reboot'; De = 'Neustart empfohlen'; En = 'Restart recommended' }
-    @{ Code = '1641';  Cls = 'b-warn'; Label = 'Hard reboot'; De = 'Neustart wird ausgel&ouml;st'; En = 'Restart is triggered' }
-    @{ Code = '1618';  Cls = 'b-neut'; Label = 'Retry';       De = 'Anderer Installer l&auml;uft, erneut versuchen'; En = 'Another installer running, retry' }
-    @{ Code = '60001'; Cls = 'b-fail'; Label = 'Failed';      De = 'Laufzeitfehler in Install-ADTDeployment'; En = 'Runtime error in Install-ADTDeployment' }
-    @{ Code = '60008'; Cls = 'b-fail'; Label = 'Failed';      De = 'Init/Import-Module fehlgeschlagen'; En = 'Init/Import-Module failed' }
-)
-$rc = Get-Val 'ReturnCodes' $defaultRc
-$rcRows = foreach ($r in $rc) {
-    "            <tr><td><code>$(Esc $r.Code)</code></td><td><span class=`"badge $($r.Cls)`">$(Esc $r.Label)</span></td><td data-de=`"$(AttrHtml $r.De)`" data-en=`"$(AttrHtml $r.En)`">$($r.De)</td></tr>"
-}
-$rcRows = $rcRows -join "`n"
+# One source of truth, shared with Invoke-IntuneWin32Upload.ps1 - see Get-PsadtReturnCodes.ps1. Two
+# hand-maintained literals that happen to agree are drift waiting to happen, and a dossier promising a
+# mapping the uploaded app does not carry is worse than no dossier at all.
+#
+# NOTE the semantics: -Metadata ReturnCodes MERGES OVER the mandatory Appendix F.4 table, it does not
+# replace it. A package that fails to map 60001/60008 to Failed reports its own crashes as success, so
+# dropping those rows is not an option a caller gets to take. An invalid type throws there, by design.
+$rcCustom = @(Get-Val 'ReturnCodes' @())
+$rc = @(& (Join-Path $PSScriptRoot 'Get-PsadtReturnCodes.ps1') -Custom $rcCustom)
+$rcRows = @(foreach ($r in $rc) {
+    # $r.Cls is interpolated raw and that is SAFE here, but only because Get-PsadtReturnCodes derives it
+    # from a closed switch. Do NOT "restore" it to a metadata field - it lands inside a class attribute.
+    #
+    # data-de/data-en sit on an inner <span>, never on the <td>: setLang() in the template assigns
+    # el.textContent to every [data-de] element, which deletes that element's children. With the
+    # attributes on the cell, the injected copy button would vanish on the first DE/EN toggle - a failure
+    # that shows up on click, not on load, and therefore survives a screenshot review.
+    "            <tr><td><code>$(Esc $r.Code)</code></td>" +
+    "<td><span class=`"badge $($r.Cls)`">$(Esc $r.Label)</span> <span class=`"rc-token`">$(Esc $r.Type)</span></td>" +
+    "<td><span data-de=`"$(AttrHtml $r.De)`" data-en=`"$(AttrHtml $r.En)`">$($r.De)</span></td></tr>"
+}) -join "`n"
 
 # ----------------------------------------------------------------------------- assignments
 $asg = Get-Val 'Assignments' @()

@@ -369,6 +369,21 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.26.0 - 06.09.2026
+- **Fixed: the dossier could name a return-code type Intune does not have.** Graph accepts exactly
+  `success`, `softReboot`, `hardReboot`, `retry`, `failed` — there is no `ignored`, yet "Ignored" reached a
+  real dossier because the report rendered a caller-supplied table without validating anything (`Label` was
+  free text, `Cls` was interpolated raw into a `class` attribute). `Label` and `Cls` are now derived from
+  `Type` through a closed switch and cannot be supplied at all; an invalid type throws.
+- **Return codes are sorted and copyable.** Sorted by type in Appendix F.4 order, then numerically — the
+  order the table is verified against and typed into the portal. Each code cell has a copy icon and the
+  section a "copy table" button.
+- **New `Get-PsadtReturnCodes.ps1`: one source of truth for the dossier AND the upload.** Previously two
+  independent literals that agreed by coincidence. `Invoke-IntuneWin32Upload.ps1` gained `-ReturnCodes`, so
+  installer-specific codes finally reach the app instead of only the document, and a new manifest key
+  `research.returnCodes` records them once for both.
+- 419 tests; six new regression guards, each verified to fail on its reintroduced bug.
+
 ### 0.25.2 - 06.09.2026
 - **Fixed: a sandbox run left an error dialog on the desktop.** The guest shuts itself down at the end, the
   RDP-style client loses its session and shows a connection-lost box. The host now disposes of the viewer as
