@@ -228,3 +228,31 @@ Describe 'Invoke-PsadtSandboxTest' {
         }
     }
 }
+
+Describe 'Invoke-PsadtSandboxTest array parameters' {
+    # Same 2026-09-06 binder trap as Invoke-IntuneAppAssignment, but with a nastier failure mode: with
+    # "-PathsAbsentAfterInstall a,b" the -File binder passes ONE element, so the second path is never
+    # asserted and the run still reports GREEN. A silent loss of coverage beats an error every time.
+    BeforeAll {
+        $src = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\Invoke-PsadtSandboxTest.ps1')).ProviderPath
+        $raw = Get-Content -LiteralPath $src -Raw
+        $tokens = $null
+        [System.Management.Automation.Language.Parser]::ParseInput($raw, [ref]$tokens, [ref]$null) | Out-Null
+        $b = [System.Text.StringBuilder]::new($raw)
+        foreach ($t in @($tokens | Where-Object { $_.Kind -eq 'Comment' } | Sort-Object { $_.Extent.StartOffset } -Descending)) {
+            $len = $t.Extent.EndOffset - $t.Extent.StartOffset
+            [void]$b.Remove($t.Extent.StartOffset, $len); [void]$b.Insert($t.Extent.StartOffset, (' ' * $len))
+        }
+        $script:SbxCode2 = $b.ToString()
+    }
+
+    It 'expands comma-separated values for every -Paths* parameter' {
+        foreach ($p in 'PathsPresentAfterInstall', 'PathsAbsentAfterInstall', 'PathsAbsentAfterUninstall') {
+            $script:SbxCode2 | Should -Match "\`$$p = Expand-CommaSeparated \`$$p"
+        }
+    }
+
+    It 'defines the expansion helper' {
+        $script:SbxCode2 | Should -Match 'function Expand-CommaSeparated'
+    }
+}

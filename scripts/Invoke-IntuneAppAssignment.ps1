@@ -41,7 +41,12 @@ param(
     [string]$AppVendor = '',
     [string]$AppVersion = '',
     [ValidateSet('x64', 'x86', 'arm64')][string]$AppArch = 'x64',
-    [ValidateSet('required', 'available', 'uninstall')][string[]]$Intents,
+    # Deliberately NOT [ValidateSet]: that validates at BIND time, and `pwsh script.ps1 -Intents a,b` (the
+    # -File form, which is what a bare `pwsh scripts/...ps1` invocation uses) hands the whole string over as
+    # ONE element. The caller then gets "the argument 'required,available,uninstall' does not belong to the
+    # set" - an error about a value they never typed. Split and validate in the body instead, where a
+    # comma-separated list can simply be accepted.
+    [string[]]$Intents,
     [switch]$Execute,
     [string]$GraphToken,
     [string]$SkillRoot
@@ -77,8 +82,20 @@ foreach ($role in 'Group.Create', 'GroupMember.Read.All') {
 }
 
 # --- Intents -------------------------------------------------------------------------------------
-$configured = @('required', 'available', 'uninstall') | Where-Object { $naming.$_ }
-$targetIntents = if ($Intents) { @($Intents | Where-Object { $configured -contains $_ }) } else { $configured }
+$validIntents = @('required', 'available', 'uninstall')
+
+# Accept both real arrays (@('required','available'), from -Command or a dot-source) and the single
+# comma-separated string that the -File binder produces. Trailing/leading spaces are tolerated because
+# "-Intents required, available" is what the documentation used to show.
+$requestedIntents = @($Intents | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
+
+$unknown = @($requestedIntents | Where-Object { $validIntents -notcontains $_ })
+if ($unknown.Count -gt 0) {
+    throw "Unknown intent(s): $($unknown -join ', '). Valid values are: $($validIntents -join ', ')."
+}
+
+$configured = $validIntents | Where-Object { $naming.$_ }
+$targetIntents = if ($requestedIntents.Count -gt 0) { @($requestedIntents | Where-Object { $configured -contains $_ }) } else { $configured }
 if (-not $targetIntents) { throw "No intents to process (no matching naming template in config.intune.groups.naming)." }
 
 function Resolve-GroupName([string]$tmpl) {

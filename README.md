@@ -369,6 +369,13 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.25.1 - 06.09.2026
+- **Fixed: array parameters broke under the `-File` binder.** `pwsh script.ps1 -Intents a,b` passes the
+  whole string as ONE element, so `Invoke-IntuneAppAssignment.ps1` rejected a perfectly valid comma-separated
+  intent list with a ValidateSet error naming a value nobody typed. It now splits the list itself and still
+  rejects a real typo by name. `Invoke-PsadtSandboxTest.ps1 -Paths*` had the same trap with a worse outcome —
+  only the first path was asserted and the run still reported GREEN. Six regression tests; suite at 382.
+
 ### 0.25.0 - 05.09.2026
 - **New: `Get-PsadtMsiFacts.ps1` reads an MSI in one pass** — identity, signature, SHA256, features with
   component counts, *decoded* upgrade flags, shortcuts, directories, file versions, registry rows and the

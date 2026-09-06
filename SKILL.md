@@ -296,6 +296,8 @@ Uses `/beta`. Details + Graph gotchas: guide Phase 9 / Appendix H.
 **Phase 10 - Group assignment (opt-in).** Only when the user chose it at Gate 2 AND `intune.groups.enabled`.
 ALWAYS dry-run first (read-only) → show the planned group names + actions → confirm → `-Execute`.
 `Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName ... -AppVendor ... -AppVersion ... -Intents required,available`
+(comma-separated is fine: array parameters in this skill split the list themselves, because `pwsh
+script.ps1 -Intents a,b` uses the `-File` binder, which passes `a,b` as ONE element - guide App. M.4)
 creates/reuses Entra security groups by the config naming scheme (`intune.groups.naming`, version-INDEPENDENT by
 default so a new version reuses the same groups; `%version%` is an opt-in that breaks that) and assigns the app
 (intents required/available/uninstall). Idempotent; never deletes a group or another app's assignment;

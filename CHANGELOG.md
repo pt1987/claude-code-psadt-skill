@@ -2,6 +2,31 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.25.1 - 2026-09-06 - Array parameters survive the `-File` binder
+
+### Fixed
+- **`-Intents required,available,uninstall` failed at bind time.** `pwsh script.ps1 -Intents a,b` uses the
+  `-File` binder, which hands the whole string over as ONE array element. The `[ValidateSet]` on
+  `Invoke-IntuneAppAssignment.ps1 -Intents` then rejected it with *"the argument
+  'required,available,uninstall' does not belong to the set"* - an error naming a value the caller never
+  typed. The parameter now carries no ValidateSet, splits the list itself, trims and lower-cases the parts,
+  and still rejects a genuinely unknown intent BY NAME (`Unknown intent(s): bogus. Valid values are: ...`).
+  Hit while assigning a real app in a live tenant; the trap is the one already recorded in Appendix G for
+  `[int[]]` parameters, so the documented workaround existed and the affected script did not apply it.
+- **`Invoke-PsadtSandboxTest.ps1 -Paths*` had the same trap with a worse failure mode.** `-PathsAbsentAfterInstall a,b`
+  asserted only `a` and still reported GREEN - a silent loss of coverage rather than an error. All three
+  `-Paths*` parameters now expand comma-separated values.
+
+### Changed
+- Guide Appendix M.4 and SKILL.md Phase 10 state the binder rule at the invocation, with the real-array
+  `-Command` form for values that genuinely contain a comma.
+- Six regression tests added (4 on the intents parameter, 2 on the sandbox paths). Suite: 382 passed.
+
+### Notes
+Verified against the exact invocation that failed: the `-File` form now resolves all three intents, the
+`-Command` array form still works, and `-Intents required,bogus` is rejected with a message that names the
+offending value and lists the valid ones.
+
 ## 0.25.0 - 2026-09-05 - One MSI probe instead of eight, and the sandbox stops leaving litter
 
 ### Added

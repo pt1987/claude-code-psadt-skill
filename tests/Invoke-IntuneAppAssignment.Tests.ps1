@@ -51,3 +51,39 @@ Describe 'intune.groups not configured' {
         finally { Remove-TempSkillRoot $tmp }
     }
 }
+
+Describe 'Intents parameter binding' {
+    # Regression guard for 2026-09-06: `pwsh script.ps1 -Intents required,available,uninstall` uses the
+    # -File binder, which passes the whole string as ONE array element. With a [ValidateSet] on the
+    # parameter that fails at BIND time with "the argument 'required,available,uninstall' does not belong
+    # to the set" - an error naming a value the caller never typed and cannot fix without knowing why.
+    BeforeAll {
+        $raw = Get-Content -LiteralPath $script:AssignScript -Raw
+        $tokens = $null
+        [System.Management.Automation.Language.Parser]::ParseInput($raw, [ref]$tokens, [ref]$null) | Out-Null
+        $b = [System.Text.StringBuilder]::new($raw)
+        foreach ($t in @($tokens | Where-Object { $_.Kind -eq 'Comment' } | Sort-Object { $_.Extent.StartOffset } -Descending)) {
+            $len = $t.Extent.EndOffset - $t.Extent.StartOffset
+            [void]$b.Remove($t.Extent.StartOffset, $len); [void]$b.Insert($t.Extent.StartOffset, (' ' * $len))
+        }
+        $script:AssignCode = $b.ToString()
+    }
+
+    It 'does not put a ValidateSet on -Intents' {
+        $script:AssignCode | Should -Not -Match '\[ValidateSet\([^)]*\)\]\[string\[\]\]\$Intents'
+    }
+
+    It 'splits a comma-separated value instead of treating it as one intent' {
+        $script:AssignCode | Should -Match '\$Intents \| ForEach-Object \{ \$_ -split '','' \}'
+    }
+
+    It 'still rejects a genuinely unknown intent, by name' {
+        $script:AssignCode | Should -Match 'Unknown intent'
+        $script:AssignCode | Should -Match '\$validIntents -notcontains \$_'
+    }
+
+    It 'normalises case and surrounding spaces' {
+        # "-Intents required, available" (with a space) was what the documentation used to show.
+        $script:AssignCode | Should -Match '\.Trim\(\)\.ToLowerInvariant\(\)'
+    }
+}

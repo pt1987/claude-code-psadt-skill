@@ -2078,11 +2078,21 @@ Always dry-run first (read-only), confirm the planned group names + actions, the
 ```
 # dry run
 pwsh scripts/Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName '<App>' -AppVendor '<Vendor>' `
-    -AppVersion '<x.y.z>' -AppArch x64 -Intents required, available
+    -AppVersion '<x.y.z>' -AppArch x64 -Intents required,available
 # execute
 pwsh scripts/Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName '<App>' -AppVendor '<Vendor>' `
-    -AppVersion '<x.y.z>' -AppArch x64 -Intents required, available -Execute
+    -AppVersion '<x.y.z>' -AppArch x64 -Intents required,available -Execute
 ```
+
+> **Array parameters and the `-File` binder (bit us on 2026-09-06).** `pwsh script.ps1 -Intents a,b` uses
+> `-File` semantics, and that binder passes `a,b` as a SINGLE array element - it does not split on commas.
+> `-Intents` therefore no longer carries a `[ValidateSet]` (which fires at bind time and produced an error
+> naming a value the caller never typed) and splits the list itself, so the line above works as written. The
+> same applies to `-Paths*` on `Invoke-PsadtSandboxTest.ps1`, which would otherwise silently assert only the
+> first path and still report GREEN. When a value genuinely contains a comma, pass a real array instead:
+> ```powershell
+> pwsh -Command "& ./scripts/Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName '<App>' -Intents @('required','available')"
+> ```
 
 Per intent the script resolves the group by `displayName` (directory read uses `ConsistencyLevel: eventual`)
 and then:
