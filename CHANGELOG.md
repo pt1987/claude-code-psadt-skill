@@ -2,6 +2,32 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.26.1 - 2026-09-06 - Click the row to copy; the template's JavaScript is now tested
+
+### Fixed
+- **A syntax error in the template silently disabled the ENTIRE dossier script.** A patch turned a `
+`
+  inside a JS string literal into a real newline. JavaScript discards the whole `<script>` block on a parse
+  error, so the language toggle, every copy button and the condensing sticky header stopped working at
+  once - and the document still looked finished. Every one of the 419 tests stayed green, because they
+  assert on rendered HTML strings and never check that the script in it loads.
+- **`tests/Report-Template.Tests.ps1`** now guards exactly that: `node --check` on the extracted script
+  block (skipped where node is absent), a node-free quote-balance check that catches this specific
+  breakage, an assertion that every interactive feature is still wired at boot, and one that the
+  sticky-header logic survives. Verified by reintroducing the bug: two guards fail.
+
+### Changed
+- **Every table copies by clicking the row.** One interaction for the whole document, replacing the 24px
+  hover icon that was a poor target for the one value each table exists to hand over. Key/value tables
+  give the VALUE, return codes give the CODE, assignments give the GROUP NAME, the SYSTEM-test table gives
+  the whole row tab-separated. The row flashes green as confirmation.
+  A click on a row's own interactive elements still works - the detection script stays foldable - and a
+  text selection is never hijacked by a copy.
+  The Markdown description keeps its own "copy" button, and Return Codes keep "copy table".
+- **The Graph token moved out of sight into `data-rc-type`.** Printed next to the portal label it read as
+  a duplicated word ("Soft reboot softReboot") rather than as two audiences; "copy table" still emits the
+  API spelling.
+
 ## 0.26.0 - 2026-09-06 - Return codes: one source of truth, validated, sorted, copyable
 
 ### Fixed

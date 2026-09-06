@@ -369,6 +369,19 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.26.1 - 06.09.2026
+- **Fixed: a syntax error in the template silently killed the whole dossier script.** A `
+` inside a JS
+  string literal became a real newline; JavaScript then discards the entire `<script>` block, so the
+  language toggle, all copy buttons and the condensing sticky header died at once — while all 419 tests
+  stayed green, because they only assert on rendered HTML. `tests/Report-Template.Tests.ps1` now runs
+  `node --check` on the script block plus a node-free quote-balance check, both proven against the
+  reintroduced bug.
+- **Changed: every table copies by clicking the row**, replacing the hover icon. Key/value tables give the
+  value, return codes the code, assignments the group name, the SYSTEM-test table the whole row. Clicks on
+  a row's own controls (the foldable detection script) and text selections are left alone. The Markdown
+  description keeps its own copy button.
+
 ### 0.26.0 - 06.09.2026
 - **Fixed: the dossier could name a return-code type Intune does not have.** Graph accepts exactly
   `success`, `softReboot`, `hardReboot`, `retry`, `failed` — there is no `ignored`, yet "Ignored" reached a

@@ -316,8 +316,12 @@ Describe 'Return codes in the rendered dossier' {
         $html | Should -Match '60008'      # the mandatory rows are still there
     }
 
-    It 'shows the Graph enum token next to the portal label' {
+    It 'carries the Graph token as a row attribute rather than printing it' {
+        # Printed next to the portal label it reads as a duplicated word ("Soft reboot softReboot"), but
+        # "copy table" still needs the API spelling - so it is carried, not displayed.
         & $script:gen -Metadata @{ AppName = 'X'; AppVersion = '1' } -OutputPath $script:rcOut
-        (Get-Content $script:rcOut -Raw) | Should -Match 'rc-token">softReboot<'
+        $html = Get-Content $script:rcOut -Raw
+        $html | Should -Match '<tr data-rc-type="softReboot">'
+        $html | Should -Not -Match 'rc-token'
     }
 }

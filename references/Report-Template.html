@@ -173,9 +173,7 @@
   .b-fail { color: var(--fail); background: var(--fail-bg); } .b-neut { color: var(--neutral); background: var(--neutral-bg); }
   .b-ok::before{background:var(--ok)} .b-warn::before{background:var(--warn)} .b-fail::before{background:var(--fail)} .b-neut::before{background:var(--neutral)}
   .b-info { color: var(--accent-dark); background: var(--accent-soft); } .b-info::before{background:var(--accent)}
-  /* The Graph enum token next to the portal label: the portal shows "Soft reboot", the API wants
-     "softReboot", and the dossier serves both readers. */
-  .rc-token { font-family: var(--mono); font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+
 
   /* ---------- Description preview / markdown ---------- */
   .desc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -189,12 +187,12 @@
   pre.md { margin: 0; padding: 14px 16px; font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: pre-wrap; line-height: 1.55; background: #fcfcfc; max-height: 460px; overflow: auto; }
   .copy-btn { font-family: var(--font); font-size: 11px; font-weight: 600; color: var(--accent-dark); background: var(--accent-soft); border: 1px solid #CFE7DD; border-radius: 5px; padding: 2px 9px; cursor: pointer; }
   .copy-btn.copied { color: var(--ok); background: var(--ok-bg); border-color: var(--ok); }
-  td.cpv { position: relative; padding-right: 40px; }
-  .copy-ic { position: absolute; right: 8px; top: 6px; width: 24px; height: 24px; display: inline-grid; place-items: center; padding: 0; border: 1px solid var(--line-soft); background: #fff; color: var(--ink-3); border-radius: 5px; cursor: pointer; opacity: .4; transition: opacity .12s, background .12s, color .12s, border-color .12s; }
-  tr:hover .copy-ic { opacity: 1; }
-  .copy-ic:hover { background: var(--accent-soft); color: var(--accent-dark); border-color: #CFE7DD; }
-  .copy-ic.copied { opacity: 1; background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
-  .copy-ic svg { display: block; }
+  /* Every table row copies on click - one interaction for the whole document, and a far better target
+     than a 24px hover icon. The class is applied by JS, so a table with no handler never looks clickable. */
+  tr.rowcopy { cursor: pointer; transition: background .12s; }
+  tr.rowcopy:hover { background: var(--accent-soft); }
+  tr.rowcopy.rowcopied { background: var(--ok-bg); }
+  tr.rowcopy.rowcopied code { color: var(--ok); }
 
   /* ---------- Hooks ---------- */
   .hooks { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
@@ -232,8 +230,7 @@
   @media print {
     body { background: #fff; font-size: 11px; }
     .hero { background: var(--accent-dark) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    nav.toc, .copy-btn, .copy-ic, .lang-switch { display: none; }
-    td.cpv { padding-right: 12px; }
+    nav.toc, .copy-btn, .lang-switch { display: none; }
     .wrap { grid-template-columns: 1fr; padding: 12px; }
     section.card { break-inside: avoid; box-shadow: none; }
   }
@@ -670,17 +667,14 @@
     }
     flashBtn(btn);
   }
+  // Only the two text buttons (markdown source, copy table) flash. A row copy confirms itself by
+  // flashing the ROW, so copyText is called with a null button there.
   function flashBtn(btn) {
     if (!btn) return;
-    if (btn.classList.contains('copy-ic')) {
-      btn.classList.add('copied');
-      setTimeout(function () { btn.classList.remove('copied'); }, 1100);
-    } else {
-      var prev = btn.textContent;
-      btn.textContent = (document.documentElement.lang === 'en') ? 'copied!' : 'kopiert!';
-      btn.classList.add('copied');
-      setTimeout(function () { btn.textContent = prev; btn.classList.remove('copied'); }, 1100);
-    }
+    var prev = btn.textContent;
+    btn.textContent = (document.documentElement.lang === 'en') ? 'copied!' : 'kopiert!';
+    btn.classList.add('copied');
+    setTimeout(function () { btn.textContent = prev; btn.classList.remove('copied'); }, 1100);
   }
   function copyMd(btn) {
     var lang = (document.documentElement.lang === 'en') ? 'en' : 'de';
@@ -688,51 +682,57 @@
     if (el) copyText(el.textContent, btn);
   }
 
-  // ---- Per-field copy buttons on every Intune value cell. ----
-  // The value cell may hold <code>, badges or bilingual spans; we copy the visible text
-  // (current language), recomputed at click time so it follows the DE/EN toggle.
+  // ---- Copy by clicking a table row. ----
+  // The value cell may hold <code>, badges or bilingual spans; the visible text is recomputed at click
+  // time so it follows the DE/EN toggle.
   function cellText(cell) {
-    var clone = cell.cloneNode(true);
-    clone.querySelectorAll('.copy-ic').forEach(function (b) { b.remove(); });
-    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+    return (cell.textContent || '').replace(/\s+/g, ' ').trim();
   }
-  function addFieldCopyButtons() {
-    var icon = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-    // Which cell of a row is worth copying. Everywhere else it is the VALUE cell (the last one); in the
-    // return-code table it is the CODE (the first), because that is the value transcribed into the
-    // Intune portal's return-code grid.
-    var COPY_SECTIONS = [
-      { id: 'appinfo', cell: 'last' },
-      { id: 'program', cell: 'last' },
-      { id: 'requirements', cell: 'last' },
-      { id: 'detection', cell: 'last' },
-      { id: 'deps', cell: 'last' },
-      { id: 'returncodes', cell: 'first' }
-    ];
-    COPY_SECTIONS.forEach(function (spec) {
+
+  // What a row hands over depends on what the table is for:
+  //   'value' key/value tables            -> the value cell (the last one)
+  //   'first' identifying cell            -> a return code, a group name
+  //   'row'   multi-column, informational -> the whole row, tab separated
+  var COPY_ROWS = [
+    { id: 'appinfo', mode: 'value' },
+    { id: 'program', mode: 'value' },
+    { id: 'requirements', mode: 'value' },
+    { id: 'detection', mode: 'value' },
+    { id: 'deps', mode: 'value' },
+    { id: 'logo', mode: 'value' },
+    { id: 'returncodes', mode: 'first' },
+    { id: 'assign', mode: 'first' },
+    { id: 'systemtest', mode: 'row' }
+  ];
+
+  function rowCopyValue(tr, mode) {
+    var cells = tr.children;
+    if (!cells.length) return '';
+    if (mode === 'first') return cellText(cells[0]);
+    if (mode === 'row') return Array.prototype.map.call(cells, cellText).join('\t');
+    return cellText(cells[cells.length - 1]);
+  }
+
+  function addRowCopy() {
+    COPY_ROWS.forEach(function (spec) {
       var sec = document.getElementById(spec.id);
       if (!sec) return;
       sec.querySelectorAll('table tr').forEach(function (tr) {
-        // 'table tr' matches the header row too. Harmless while every whitelisted section used the LAST
-        // cell (a <th> with no text worth copying), but the return-code header's first cell says "Code".
-        if (tr.parentNode && tr.parentNode.tagName === 'THEAD') return;
-        var tds = tr.children;
-        if (tds.length < 2) return;
-        var val = (spec.cell === 'first') ? tds[0] : tds[tds.length - 1];
-        if (val.tagName === 'TH') return;               // belt and braces
-        if (val.classList.contains('k')) return;        // skip label cells
-        if (!cellText(val)) return;                      // skip empty values
-        val.classList.add('cpv');
-        var b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'copy-ic';
-        b.innerHTML = icon;
-        b.title = (document.documentElement.lang === 'en') ? 'copy value' : 'Wert kopieren';
-        b.addEventListener('click', function (e) {
-          e.preventDefault();
-          copyText(cellText(val), b);
+        if (tr.parentNode && tr.parentNode.tagName === 'THEAD') return;   // 'table tr' matches the header too
+        if (!rowCopyValue(tr, spec.mode)) return;                          // nothing worth copying
+        tr.classList.add('rowcopy');
+        tr.title = (document.documentElement.lang === 'en') ? 'click to copy' : 'Klicken zum Kopieren';
+        tr.addEventListener('click', function (e) {
+          // Leave the row's own interactive elements alone - the detection script sits behind a
+          // <summary>, and swallowing that click would make the fold impossible to open.
+          if (e.target.closest && e.target.closest('summary, details, a, button, input')) return;
+          // Do not hijack a text selection: if the user was dragging to select, leave the clipboard be.
+          var sel = window.getSelection ? String(window.getSelection()) : '';
+          if (sel && sel.length > 1) return;
+          copyText(rowCopyValue(tr, spec.mode), null);
+          tr.classList.add('rowcopied');
+          setTimeout(function () { tr.classList.remove('rowcopied'); }, 900);
         });
-        val.appendChild(b);
       });
     });
   }
@@ -757,22 +757,20 @@
   })();
 
   // Copies the whole table as "code<TAB>type" lines - the Graph token, not the display label, so the
-  // result can be pasted straight into a script or a ticket.
+  // result can be pasted straight into a script or a ticket. The token lives in data-rc-type because
+  // printing it next to the label reads as a duplicated word.
   function copyReturnCodes(btn) {
-    var rows = document.querySelectorAll('#returncodes tbody tr');
     var lines = [];
-    rows.forEach(function (tr) {
+    document.querySelectorAll('#returncodes tbody tr').forEach(function (tr) {
       var code = (tr.children[0].textContent || '').trim();
-      var token = tr.querySelector('.rc-token');
-      lines.push(code + '	' + (token ? token.textContent.trim() : ''));
+      lines.push(code + '\t' + (tr.getAttribute('data-rc-type') || ''));
     });
-    if (lines.length) copyText(lines.join('
-'), btn);
+    if (lines.length) copyText(lines.join('\n'), btn);
   }
 
   renderPreviews();
   setLang(document.documentElement.lang === 'en' ? 'en' : 'de');
-  addFieldCopyButtons();
+  addRowCopy();
 </script>
 
 </body>

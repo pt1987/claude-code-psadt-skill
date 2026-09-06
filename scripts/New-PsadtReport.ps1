@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Generate the combined PSADT package report (Intune dossier + technical package report)
@@ -366,8 +366,11 @@ $rcRows = @(foreach ($r in $rc) {
     # el.textContent to every [data-de] element, which deletes that element's children. With the
     # attributes on the cell, the injected copy button would vanish on the first DE/EN toggle - a failure
     # that shows up on click, not on load, and therefore survives a screenshot review.
-    "            <tr><td><code>$(Esc $r.Code)</code></td>" +
-    "<td><span class=`"badge $($r.Cls)`">$(Esc $r.Label)</span> <span class=`"rc-token`">$(Esc $r.Type)</span></td>" +
+    # The Graph token (softReboot) rides along as a data attribute instead of being printed next to the
+    # portal label (Soft reboot). Shown side by side it reads as a duplicated word rather than as two
+    # audiences, but "copy table" still needs the API spelling - so it is carried, not displayed.
+    "            <tr data-rc-type=`"$(Esc $r.Type)`"><td><code>$(Esc $r.Code)</code></td>" +
+    "<td><span class=`"badge $($r.Cls)`">$(Esc $r.Label)</span></td>" +
     "<td><span data-de=`"$(AttrHtml $r.De)`" data-en=`"$(AttrHtml $r.En)`">$($r.De)</span></td></tr>"
 }) -join "`n"
 
