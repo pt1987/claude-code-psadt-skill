@@ -369,6 +369,14 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.26.7 - 08.09.2026
+- **Fixed: the control plane did not know MSIX exists.** L.8/L.9 landed in 0.26.5, but Gate 1's package-type list
+  never mentioned MSIX — so a `.msix` fell through to "native installer (default)", the one route that is wrong for
+  it, and nothing pointed at the new appendix. Gate 1 now carries **MSIX/AppX** with the decision attached: Intune
+  takes it **natively as a line-of-business app**, so the default is to use that and *not* build a PSADT package;
+  the wrapper is the exception, and L.8 is read first when it is used.
+- **Added `tests/SKILL.Tests.ps1`**, a coherence guard: every appendix SKILL.md points at must exist, and the Gate 1
+  decision must actually route MSIX. Research that the router cannot reach is dead weight — now a test failure.
 ### 0.26.6 - 08.09.2026
 - **Fixed: the sandbox host timeout force-killed the viewer, then told you to close the window.** A timed-out run
   was torn down like a finished one. That **orphans `vmmemWindowsSandbox`** — the Hyper-V compute service owns it,

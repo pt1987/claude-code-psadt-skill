@@ -2,6 +2,32 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.26.7 - 2026-09-08 - The control plane did not know MSIX exists
+
+### Fixed
+- **SKILL.md never mentioned MSIX, so 0.26.5's research was unreachable.** Appendix L gained L.8 (MSIX/AppX) and
+  L.9 (App-V) two releases ago, but the Gate 1 package-type decision still listed only native installer / WinGet /
+  script-only / browser-extension / windows-features / driver. A `.msix` therefore fell through to "native
+  installer (default)" - the one route that is wrong for it - and nothing pointed at L.8. Content nothing routes to
+  is not documentation.
+
+  Gate 1 now carries **MSIX/AppX** as its own package type with the decision attached: **Intune takes a `.msix`
+  natively as a line-of-business app** (no switches, no detection rule, no `.intunewin`, cap 8 GB), so the DEFAULT
+  is to use that and NOT build a PSADT package. The wrapper is offered only for what the native type cannot do -
+  closing processes, removing a legacy MSI/EXE of the same product, importing the signing certificate (App. N),
+  per-machine config, dependency packages, or a payload over 8 GB - and if it IS wrapped, L.8 is to be read first,
+  because under SYSTEM `Add-AppxPackage` registers the app for the SYSTEM account and still reports success.
+
+### Added
+- **`tests/SKILL.Tests.ps1` - a coherence guard for the control plane**, because this drift is structural rather
+  than a one-off. Two halves:
+  - every `App. <letter>` / `Appendix <letter>` referenced in SKILL.md must exist as a heading in the guide
+    (catches a pointer to an appendix nobody wrote);
+  - the Gate 1 decision must know MSIX, route it to L.8, and state the native-LOB default (catches research that
+    lands in the guide while the router stays blind to it).
+
+  RED first: three of the four cases failed against 0.26.6. The appendix cross-reference was already green and is
+  a regression guard, not a fix.
 ## 0.26.6 - 2026-09-08 - The sandbox timeout killed the window it then told you to close
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "psadt-deploy-skill",
-  "version": "0.26.6",
+  "version": "0.26.7",
   "description": "Installer for the psadt-deploy Claude Code skill: build, test and deploy PSADT v4.x Intune Win32 packages.",
   "keywords": [
     "psadt",

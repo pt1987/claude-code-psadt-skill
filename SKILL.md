@@ -57,7 +57,16 @@ researched defaults; recommended option first.
    built by `scripts/New-BrowserExtensionPackage.ps1`) · **windows-features** (Enable-WindowsOptionalFeature /
    Add-WindowsCapability, App. P, built by `scripts/New-WindowsFeaturePackage.ps1`) · **driver** (pnputil
    staging, App. Q, built by `scripts/New-DriverPackage.ps1` - classify FIRST with
-   `Get-DriverSignatureInfo.ps1`; unsigned = no package).
+   `Get-DriverSignatureInfo.ps1`; unsigned = no package) · **MSIX/AppX**
+   (`.msix`/`.msixbundle`/`.appx` - **App. L.8**).
+   > **A `.msix` is NOT the "native installer" default.** Intune takes it natively as a line-of-business
+   > app (no switches, no detection rule, no `.intunewin`; cap 8 GB), so the DEFAULT answer is to use that
+   > and NOT build a PSADT package. Offer the PSADT wrapper only for what the native type cannot do -
+   > closing processes, removing a legacy MSI/EXE of the same product, importing the signing certificate
+   > (App. N), per-machine config, shipping dependency packages, or a payload above 8 GB. If it IS wrapped,
+   > read **App. L.8** first: under SYSTEM `Add-AppxPackage` registers the app for the SYSTEM account and
+   > still reports success, `Get-AppxPackage` is the wrong detection cmdlet, and de-provisioning does not
+   > remove the app from existing users.
 2. **Deployment semantics** - target audience (Required / Available / both, + AAD groups), uninstall "what
    goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641). Pre-select defaults from
    the installer type. Group assignment is **opt-in**: only when the user wants it here do you create/assign
