@@ -11,8 +11,8 @@
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#9fe870" />
     <link rel="icon" href="/claude-code-psadt-skill/favicon.svg" type="image/svg+xml" />
-    <script type="module" crossorigin src="/claude-code-psadt-skill/assets/index-C3Ei-cxB.js"></script>
-    <link rel="stylesheet" crossorigin href="/claude-code-psadt-skill/assets/index-DAXGVwI3.css">
+    <script type="module" crossorigin src="/claude-code-psadt-skill/assets/index-KSpBuMav.js"></script>
+    <link rel="stylesheet" crossorigin href="/claude-code-psadt-skill/assets/index-JiV6l61u.css">
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -158,18 +158,6 @@
         <dd class="stat__value display-md">14</dd>
         <dd class="stat__note">identified and switch-mapped — two are routed away from PSADT, not wrapped</dd>
       </div></dl>
-          <h3 class="sr-only">Measured runs</h3>
-          <div class="measure-grid">
-      <div class="card card--sage measure" data-reveal data-reveal-delay="0">
-        <p class="measure__value display-md">13:45</p>
-        <p class="measure__what">PuTTY 0.85, intake to verified .intunewin</p>
-        <p class="measure__detail">one measured end-to-end run, wall clock, model time included</p>
-      </div>
-      <div class="card card--sage measure" data-reveal data-reveal-delay="60">
-        <p class="measure__value display-md">5:58</p>
-        <p class="measure__what">Notepad++ 8.9.8 x64, Windows Sandbox SYSTEM test</p>
-        <p class="measure__detail">one measured run, GREEN, ten recorded steps</p>
-      </div></div>
         </div>
       </section>
 
@@ -707,10 +695,6 @@
         <p class="limit__body">Every number on this page was verified against the repository at that version. Counts drift; the linked source is authoritative, not this page.</p>
       </div>
       <div class="limit" data-reveal>
-        <h3 class="limit__title">The timings are single runs</h3>
-        <p class="limit__body">Not benchmarks. One machine, one app, one run each — and the end-to-end figure includes model thinking time, which depends on the model and the network.</p>
-      </div>
-      <div class="limit" data-reveal>
         <h3 class="limit__title">Windows Sandbox has prerequisites</h3>
         <p class="limit__body">Windows Pro, Enterprise or Education with virtualisation available. Enabling the Containers-DisposableClientVM feature needs elevation and one restart — after that, a test run needs neither.</p>
       </div>
@@ -735,6 +719,7 @@
           <h2 class="display-md section__title" id="start-title">One command</h2>
           <div class="start-grid">
       <div class="start__block">
+        <p class="eyebrow">Run this once</p>
         <div class="mono-inset">
           <span class="mono-inset__prompt mono" aria-hidden="true">PS&gt;</span>
           <code class="mono" id="install-cmd">npx psadt-deploy-skill</code>
