@@ -35,6 +35,16 @@ $today = (Get-Item $PSCommandPath).LastWriteTime.ToString('yyyy-MM-dd')  # avoid
 
 # Escape a value for embedding inside a single-quoted PowerShell literal (double internal quotes).
 function Get-SqEscaped([string]$s) { ($s -replace "'", "''") }
+function Expand-CommaSeparated([string[]]$Values) {
+    # `pwsh scripts/New-MsiPackage.ps1 -ProcessesToClose a,b` uses the -File binder, and that binder
+    # passes "a,b" as ONE element - it does not split on commas. Left alone, the scaffold gets
+    # AppProcessesToClose = @('a,b') - one process name that matches nothing. Show-ADTInstallationWelcome
+    # -CloseProcesses then closes NOTHING and still reports success, so the install runs against a
+    # running application. A silent loss beats an error every time; 0.25.1 fixed the other five scripts
+    # and missed this one. A process name cannot contain a comma, so the split is unambiguous here.
+    if (-not $Values) { return @() }
+    return @($Values | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
 # Reject a value that contains a template placeholder - it would corrupt the .Replace() templating.
 function Assert-NoTokenLeak([string]$value, [string]$paramName) {
     if ($value -match '__[A-Z0-9_]+__') { throw "Parameter '$paramName' must not contain a template placeholder sequence ('$($Matches[0])')." }
@@ -51,6 +61,7 @@ if (Test-Path $pkg) { Remove-Item $pkg -Recurse -Force }
 New-ADTTemplate -Destination $PackageRoot -Name $Name -Force | Out-Null
 
 # 2) Process list literal (single-quote-escaped so a name with an apostrophe cannot break the literal)
+$ProcessesToClose = Expand-CommaSeparated $ProcessesToClose
 $procLiteral = if ($ProcessesToClose.Count -gt 0) { "@(" + (($ProcessesToClose | ForEach-Object { "'$(Get-SqEscaped $_)'" }) -join ', ') + ")" } else { "@()" }
 
 # 3) Build the customized script

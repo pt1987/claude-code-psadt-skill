@@ -369,6 +369,17 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.26.2 - 08.09.2026
+- **Fixed: a WHQL driver pack turned the pre-flight red.** `Get-DriverSignatureInfo.ps1` did not strip the
+  inline comment that WHQL packs write after `CatalogFile=` (`; for WHQL certified`), so the catalog never
+  resolved and validly signed drivers classified as `Unsigned` — 6 of 70 INF in a Dell WinPE set, all of
+  whose catalogs were Authenticode-valid and Microsoft-signed. An unquoted `;` now ends the value.
+- **Fixed: `New-MsiPackage.ps1` was the sixth script with the `-File` binder trap.** `-ProcessesToClose
+  'a','b'` arrived as one element, so the scaffold closed no processes at all — silently, while reporting
+  success. 0.25.1 had fixed the other five and missed the generator.
+- **Documented: seven findings from a three-package dependency chain** (Appendix G) and four new
+  anti-patterns (Appendix B), including `msiexec /a` against bundled payload, the `-Include` trap, 8.3
+  short names in path comparisons, and what a service's `%TEMP%` really is on Windows 11.
 ### 0.26.1 - 06.09.2026
 - **Fixed: a syntax error in the template silently killed the whole dossier script.** A `
 ` inside a JS

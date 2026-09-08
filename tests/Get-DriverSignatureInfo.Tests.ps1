@@ -92,6 +92,27 @@ Describe 'Get-DriverSignatureInfo: INF parsing' {
         @($r.Drivers)[0].CatalogFile | Should -Be 'mxdriver.cat'
     }
 
+    It 'strips an inline ; comment after CatalogFile - WHQL packs write them constantly' {
+        # Realtek/Intel driver packs ship 'CatalogFile=foo.cat   ; for WHQL certified'. Keeping the
+        # comment makes the catalog path unresolvable, and a validly signed driver then classifies as
+        # Unsigned - turning a whole package RED for no reason. Seen on the Dell WinPE A09 pack.
+        $script:dir = New-DriverDir -CatalogLine 'CatalogFile=mxdriver.cat   ; for WHQL certified'
+        Mock -CommandName Get-AuthenticodeSignature -MockWith { New-FakeSignature 'Valid' 'whql' }
+
+        $r = & $script:Classify -Path $script:dir
+        $d = @($r.Drivers)[0]
+        $d.CatalogFile    | Should -Be 'mxdriver.cat'
+        $d.Classification | Should -Be 'MicrosoftSigned'
+        $r.Overall        | Should -Be 'GREEN'
+    }
+
+    It 'keeps a semicolon that sits inside a quoted value' {
+        $script:dir = New-DriverDir -CatalogLine 'CatalogFile="odd;name.cat"'
+        Mock -CommandName Get-AuthenticodeSignature -MockWith { New-FakeSignature 'Valid' 'whql' }
+        @($r = & $script:Classify -Path $script:dir)
+        @($r.Drivers)[0].CatalogFile | Should -Be 'odd;name.cat'
+    }
+
     It 'checks the .cat, NOT the .sys - a dual-signed .sys reports only its primary signature' {
         $script:dir = New-DriverDir
         Mock -CommandName Get-AuthenticodeSignature -MockWith { New-FakeSignature 'Valid' 'whql' }

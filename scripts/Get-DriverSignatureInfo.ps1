@@ -77,7 +77,18 @@ function Get-InfValue([string[]]$Lines, [string]$Key) {
     foreach ($line in $Lines) {
         $t = $line.Trim()
         if ($t -match "^$([regex]::Escape($Key))\s*=\s*(.+)$") {
-            return $Matches[1].Trim().Trim('"')
+            $v = $Matches[1].Trim()
+            # In INF syntax ';' starts a comment anywhere on a line, and WHQL packs use that constantly
+            # ('CatalogFile=foo.cat   ; for WHQL certified'). Without stripping it the catalog path never
+            # resolves and a validly signed driver is misreported as Unsigned - which turns the whole
+            # pre-flight RED for a package that is perfectly fine. A ';' inside a quoted value is part of
+            # the value, so only an UNQUOTED ';' ends it.
+            $inQuote = $false
+            for ($i = 0; $i -lt $v.Length; $i++) {
+                if ($v[$i] -eq '"') { $inQuote = -not $inQuote }
+                elseif ($v[$i] -eq ';' -and -not $inQuote) { $v = $v.Substring(0, $i); break }
+            }
+            return $v.Trim().Trim('"')
         }
     }
     return $null

@@ -2,6 +2,39 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.26.2 - 2026-09-08 - A WHQL driver pack no longer turns the pre-flight red; the generator survives the -File binder
+
+### Fixed
+- **`Get-DriverSignatureInfo.ps1` reported validly signed WHQL drivers as `Unsigned`.** `Get-InfValue`
+  captured everything after `=` to end of line, and WHQL packs routinely write
+  `CatalogFile=foo.cat   ; for WHQL certified`. In INF syntax `;` starts a comment, so the catalog path
+  never resolved, the driver classified `Unsigned`, and the whole pre-flight went **RED for a perfectly
+  signed pack** - 6 of 70 INF in a Dell WinPE driver set, whose catalogs were all Authenticode-`Valid`
+  and signed by `CN=Microsoft Windows Hardware Compatibility Publisher`. An unquoted `;` now ends the
+  value; a `;` inside a quoted value is preserved. Two Pester cases guard both, proven against the
+  reintroduced bug.
+- **`New-MsiPackage.ps1` was the sixth script with the `-File` binder trap.** 0.25.1 fixed five scripts
+  and missed the generator. `-ProcessesToClose 'a','b'` arrives as ONE element, so the scaffold got
+  `AppProcessesToClose = @('''a'',''b''')` - a single nonsense process name.
+  `Show-ADTInstallationWelcome -CloseProcesses` then closes NOTHING and still reports success, so the
+  install proceeds against a running application. Now expanded via `Expand-CommaSeparated`, like the
+  other five, with three tests including one that asserts the expansion happens BEFORE the literal is
+  built.
+
+### Documentation
+- **Appendix G gains the 2026-09-08 entry** (BootForge + Windows ADK + WinPE add-on, three packages in
+  one dependency chain): the two bugs above, plus five findings that are limitations rather than defects -
+  the sandbox harness cannot test a heavy package at all (`ActionTimeoutSeconds` caps at 3600, and after
+  a timeout the following steps are artifacts, not results); a package with a hard prerequisite is not
+  sandbox-testable; the SYSTEM test validates the package FOLDER, never the `.intunewin`; aborting a run
+  from the host orphans the VM worker with no recovery path; a LocalSystem service's `%TEMP%` is
+  `C:\Windows\SystemTemp`, not what the machine environment says; and `C:\ProgramData\<App>` subfolders
+  inherit `Users: Write`, so creating one is not the same as owning it.
+- **Appendix B gains four anti-patterns**, each of which cost real time: `msiexec /a` against a file
+  inside a package payload (it rewrites the source MSI - `0x80091007` on the next install); `-Include`
+  with `-LiteralPath -Recurse` (silently ignored, returns every file); comparing paths by string prefix
+  when one side may be an 8.3 short name (`Resolve-Path` does not expand it); and reading a stack trace's
+  PDB path as evidence about the source tree instead of comparing mtimes.
 ## 0.26.1 - 2026-09-06 - Click the row to copy; the template's JavaScript is now tested
 
 ### Fixed

@@ -960,6 +960,22 @@ AppWorkload.log sequence:
 15. **Shipping a driver/cert as a note instead of a deliverable**. If the installer stages a driver via dpinst,
     classify it (`Get-DriverSignatureInfo.ps1`) and make the trust decision a real artifact - a cert policy or
     a package import - instead of mentioning it in the dossier. Full decision tree: **Appendix Q**.
+16. **`msiexec /a` against a file that lives INSIDE a package payload**. An administrative install, and
+    especially one with `/p <msp>`, REWRITES the source MSI. Doing that to a bundled installer silently
+    corrupts the package: the next install fails with `0x80091007` (`CRYPT_E_HASH_VALUE`) because the file no
+    longer matches the hash its bundle validates it against. Copy the MSI out to a scratch folder first. Cost
+    a 1.9 GB repackage plus a wasted sandbox run on 2026-09-08 (Appendix G).
+17. **`-Include` together with `-LiteralPath -Recurse`**. PowerShell silently IGNORES the filter and returns
+    EVERY file, so a count or a copy check reports a number that looks plausible and is wrong (281 "INF" for
+    a tree holding 70). Use `-Filter '*.inf'`. There is no error and no warning - only a wrong answer.
+18. **Comparing paths by string prefix when either side may be an 8.3 short name**. `%TEMP%` frequently
+    resolves to `C:\Users\PATRIC~1\...` while a child process reports `C:\Users\PatrickTaubert\...`; a
+    `StartsWith`/`-like` comparison of the two fails on the same directory. `Resolve-Path` does NOT expand
+    the short form. Compare directory identity (`Directory.GetParent(x).Name`) instead of full-path strings.
+19. **Trusting a stack trace's source PATH to identify the source TREE**. A PDB records where the build ran,
+    not where the code lives now. Comparing the source file's mtime against the binary's mtime settles it in
+    seconds - guessing from the path produced a wrong "the source differs" conclusion and a retracted
+    analysis on 2026-09-08.
 
 ---
 
@@ -1547,6 +1563,64 @@ Package-specific findings worth generalising:
   `HKCU\Software\SimonTatham\PuTTY`. Purging them on uninstall would make a genuine man-in-the-middle
   warning indistinguishable from a normal first-connection prompt. "Clean uninstall" never means deleting
   a user's trust store.
+
+### 2026-09-08 - BootForge + Windows ADK + WinPE add-on (three packages, one dependency chain)
+
+An in-house MSI whose service builds bootable USB media. Two of the three packages are Microsoft kits
+bundled as offline layouts (1.8 / 1.9 GB). What this project taught, in order of how much time it cost.
+
+**1. `Get-DriverSignatureInfo.ps1` reported valid WHQL drivers as Unsigned - FIXED in 0.26.2.**
+`Get-InfValue` captured everything after `=` to end of line. WHQL packs routinely write
+`CatalogFile=foo.cat   ; for WHQL certified`, and `;` starts a comment in INF syntax. The catalog path
+therefore never resolved, the driver classified `Unsigned`, and the pre-flight went **RED for a perfectly
+signed pack** (6 of 70 INF in a Dell WinPE set). Verified: all six catalogs were Authenticode-`Valid`,
+signed by `CN=Microsoft Windows Hardware Compatibility Publisher`. An unquoted `;` now ends the value;
+two Pester cases guard it. **General lesson**: any INF field can carry a trailing comment.
+
+**2. `New-MsiPackage.ps1` was the sixth script with the `-File` binder trap - FIXED in 0.26.2.**
+0.25.1 fixed five scripts and missed the generator. `-ProcessesToClose 'a','b'` arrived as ONE element,
+so the scaffold got `AppProcessesToClose = @('''a'',''b''')` - a single nonsense name.
+`Show-ADTInstallationWelcome -CloseProcesses` then closes NOTHING and reports success, so the install
+runs against a running application. **General lesson**: when a whole-class fix lands, grep for `[string[]]`
+across every script instead of fixing the reported call sites.
+
+**3. The sandbox harness cannot test a heavy package at all.** `ActionTimeoutSeconds` is capped at 3600 and
+`TotalTimeoutMinutes` at 180. A single ADK install (~30 MSI + 9 MSP out of a 1.9 GB payload) exceeds the
+per-action ceiling. Worse, once an action times out the harness moves on while msiexec is still running
+inside the VM: the next action gets `1618` (ERROR_INSTALL_ALREADY_RUNNING), the final detection still finds
+the product, and the verdict is RED - none of which says anything about the package. Install and Uninstall
+had both returned 0. **General lesson**: after a timeout the remaining steps are artifacts, not results;
+report them as "not evaluated" and judge the package on the steps that actually ran.
+
+**4. A package with a hard prerequisite is not sandbox-testable.** The WinPE add-on refuses to install
+without the ADK, so in a fresh sandbox it aborts on its own precondition check - a run there confirms the
+precondition, never the installation. Such packages need a DEV VM with the dependency pre-installed. Say
+"not tested" in the dossier rather than shipping a green verdict that measured nothing.
+
+**5. The SYSTEM test validates the package FOLDER, not the `.intunewin`.** The harness maps the folder into
+the VM. The artifact that ships is therefore never the artifact tested. They match only if nothing was
+edited after packaging - worth verifying explicitly (compare the newest file mtime under the package
+against the `.intunewin` mtime) before an upload.
+
+**6. Aborting a sandbox run from the host orphans the VM worker.** The design is correct - the GUEST shuts
+itself down, which is what releases the mapped folder - but there is no recovery path when a run is killed
+from outside. `vmmemWindowsSandbox` then holds the work folder (measured: ~200 s) and the next run THROWS
+instead of waiting. The message names the cause precisely; the remaining manual step is the wait.
+
+**7. Service `%TEMP%` is not what the registry says.** On Windows 11 a LocalSystem service gets
+`C:\Windows\SystemTemp`, while `HKLM\...\Session Manager\Environment` still reads `C:\WINDOWS\TEMP`. Both
+`...\BootForge` folders existed; the failing call named the registry one, the actual work happened in the
+other. **General lesson**: never infer a service's temp directory from the machine environment - and never
+let privileged code write scripts to a fixed path under it. `C:\Windows\Temp` grants `Users`
+CreateFiles/AppendData, so a predictable path there is user-controllable.
+
+**8. `C:\ProgramData\<App>` subfolders are user-writable by default.** Creating them (from a package or
+from the service) inherits `Users: Write` from `C:\ProgramData`. Measured on a live machine: the folder
+holding a finished 562 MB WinPE boot image and the one caching a baked 7.6 GB install.wim were both
+writable by any standard user - content that lands on every USB stick produced afterwards. **General
+lesson**: creating a ProgramData folder is not the same as owning it. Harden every folder a privileged
+service reads from or writes to, and do it in the SERVICE as well - a package-only hardening is skipped
+entirely whenever the service creates the folder first.
 
 ---
 

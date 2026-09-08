@@ -84,3 +84,37 @@ Describe 'New-MsiPackage: the template Replace chain is unbroken' {
         $chainAt | Should -BeGreaterThan $stemAt
     }
 }
+
+Describe 'New-MsiPackage array parameters (0.26.2)' {
+    # The 2026-09-06 binder trap, third occurrence - and the generator was missed when 0.25.1 fixed the
+    # other five scripts. With "-ProcessesToClose 'a','b'" the -File binder hands over ONE element, so the
+    # scaffold ends up with AppProcessesToClose = @('''a'',''b''') - a single nonsense process name.
+    # Show-ADTInstallationWelcome -CloseProcesses then closes NOTHING and reports success: the install
+    # proceeds against a running application. Observed while packaging BootForge on 2026-09-08.
+    BeforeAll {
+        $raw = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\scripts\New-MsiPackage.ps1') -Raw
+        $tokens = $null
+        [System.Management.Automation.Language.Parser]::ParseInput($raw, [ref]$tokens, [ref]$null) | Out-Null
+        $b = [System.Text.StringBuilder]::new($raw)
+        foreach ($t in @($tokens | Where-Object { $_.Kind -eq 'Comment' } | Sort-Object { $_.Extent.StartOffset } -Descending)) {
+            $len = $t.Extent.EndOffset - $t.Extent.StartOffset
+            [void]$b.Remove($t.Extent.StartOffset, $len); [void]$b.Insert($t.Extent.StartOffset, (' ' * $len))
+        }
+        $script:MsiCode = $b.ToString()
+    }
+
+    It 'defines the expansion helper' {
+        $script:MsiCode | Should -Match 'function Expand-CommaSeparated'
+    }
+
+    It 'expands comma-separated values for -ProcessesToClose' {
+        $script:MsiCode | Should -Match '\$ProcessesToClose = Expand-CommaSeparated \$ProcessesToClose'
+    }
+
+    It 'expands BEFORE the literal is built - otherwise the split is pointless' {
+        $expandAt = $script:MsiCode.IndexOf('$ProcessesToClose = Expand-CommaSeparated')
+        $literalAt = $script:MsiCode.IndexOf('$procLiteral =')
+        $expandAt  | Should -BeGreaterThan 0
+        $literalAt | Should -BeGreaterThan $expandAt
+    }
+}
