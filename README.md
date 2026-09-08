@@ -369,6 +369,15 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.26.3 - 08.09.2026
+- **Appendix L gains three sections**, researched against vendor documentation instead of written from
+  memory: **MSP patches** (the full `/p` matrix, why `/i` and `/p` never combine, and that exit 1642 means
+  *either* "not installed" *or* "wrong patch revision" — so it must not be treated as a blanket success),
+  **WiX Burn bundles** (BundleProviderKey rather than a ProductCode for detection; `/layout` is a Burn
+  action but the bootstrapper decides whether it can be narrowed — the ADK refuses, so an offline layout is
+  always the whole kit), and **Advanced Installer projects** (the `.aip` CLI, a fresh ProductCode per build
+  changing the package identity every time, and the undocumented behaviour that relative paths resolve
+  against the .aip's own location — moving a project between drives breaks it silently).
 ### 0.26.2 - 08.09.2026
 - **Fixed: a WHQL driver pack turned the pre-flight red.** `Get-DriverSignatureInfo.ps1` did not strip the
   inline comment that WHQL packs write after `CatalogFile=` (`; for WHQL certified`), so the catalog never

@@ -2,6 +2,30 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.26.3 - 2026-09-08 - Appendix L grows three sections it should always have had
+
+### Documentation
+- **L.4 MSP patches**, verified against Microsoft Learn rather than memory. The full option matrix
+  (`/p` on an installed product, `/p` + `/a` on an administrative image, `PATCH=` during an install,
+  `/n` for one instance), the rule that `/i` and `/p` may never be combined - patching an administrative
+  install being the single documented exception - and that the `PATCH` property is silently overwritten
+  when `/p` is used. Two findings that change how patch results should be read:
+  - **1642 is ambiguous.** Microsoft's own wording is "the program to be upgraded may be missing, **or the
+    upgrade patch may update a different version of the program**". Treating it as a blanket success hides a
+    wrong patch revision. Expected and harmless for a feature-scoped bundle; a real defect anywhere else.
+  - **`/l*` is not `/l*v`.** The `*` wildcard covers everything EXCEPT `v` and `x`. On the ADK's 172 MB DISM
+    patch, verbose logging costs more wall-clock than the patching itself.
+- **L.5 WiX Burn bundles**: the built-in action and display switches, why a single ProductCode is the wrong
+  detection key (BundleProviderKey instead), and the part that is easy to get backwards - `/layout` is a
+  Burn action, but whether it can be narrowed is decided by the bundle's Bootstrapper Application. The
+  Windows ADK's BA refuses `/features` together with `/layout` outright, so an offline layout is always the
+  whole kit (measured: 1473 MB ADK, 1894 MB WinPE add-on).
+- **L.6 Advanced Installer projects**: the `.aip` CLI (`/build`, `/rebuild`, `/edit /SetVersion`,
+  `/edit /SetProductCode`, `/execute`), the consequence of a fresh ProductCode per build - the package
+  identity changes every time, so the launcher's `-ProductCode`, the detection script and the manifest must
+  be re-derived from a fresh `Get-PsadtMsiFacts.ps1` probe - and one behaviour the vendor does not document
+  at all: **relative paths in an `.aip` resolve against the .aip's own location**. Moving a project between
+  drives silently breaks every relative reference ("Resources referred by the project are missing").
 ## 0.26.2 - 2026-09-08 - A WHQL driver pack no longer turns the pre-flight red; the generator survives the -File binder
 
 ### Fixed

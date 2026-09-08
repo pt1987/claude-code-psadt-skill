@@ -2075,6 +2075,74 @@ the natural detection rule.
 > find nothing, report success, and remove nothing. Use a tolerant regex - `-match 'Aperio.*Programming
 > Application'` - and apply the same in the detection script's registry match.
 
+### L.4 MSP patches (verified against Microsoft Learn, 2026-09-08)
+
+Servicing packs, ADK patches and vendor hotfixes arrive as `.msp`. The rules are narrow and easy to get wrong.
+
+| Task | Command | Note |
+|---|---|---|
+| Patch an INSTALLED product | `msiexec /p patch.msp /qn /norestart` | several patches: `patch1.msp;patch2.msp` |
+| Patch an ADMINISTRATIVE IMAGE | `msiexec /p patch.msp /a product.msi /qn` | the ONE documented case where `/p` and `/a` combine |
+| Patch during an install | `msiexec /i product.msi PATCH=patch.msp /qn` | `/i` and `/p` may NOT be combined |
+| Patch one instance | `msiexec /p patch.msp /n {ProductCode} /qn` | multi-instance products |
+
+- **`/i` and `/p` are mutually exclusive.** Microsoft states every option pair (`/i /x /f /j /a /p /y /z`) must not be
+  combined, "the one exception ... is that patching an administrative installation requires using both /p and /a".
+- **The `PATCH` property is IGNORED when `/p` is used** - it is overwritten, silently.
+- **Extracting patched payload without installing anything**: `msiexec /a <msi> /p <msp> /qn TARGETDIR=<dir>`
+  produces a patched administrative image you can copy files out of. **But see Appendix B #16** - an
+  administrative install REWRITES the source MSI, so never point it at a file inside a package payload.
+- **Exit 1642 is ambiguous - do not blanket-treat it as success.** Microsoft's text: "the program to be
+  upgraded may be missing, **or the upgrade patch may update a different version of the program**". For a
+  feature-scoped install (patching a bundle where only some sub-MSIs exist) 1642 is expected and harmless.
+  For a patch that SHOULD apply, the same 1642 means a version/track mismatch - the wrong patch revision.
+  Log which patch returned it instead of swallowing the code.
+- **Logging flags, precisely**: `*` is a wildcard for everything **except** `v` and `x`. So `/l*` is the full
+  log without verbose; `/l*v` adds verbose and `/l*vx` adds debug output. On a large MSP (the ADK's DISM
+  patch is 172 MB) `/l*v` costs more wall-clock than the patching itself - prefer `/l*` unless diagnosing.
+
+### L.5 WiX Burn bundles (the `.exe` that wraps MSIs)
+
+Built-in actions: `/install` (default) `/uninstall` `/modify` `/repair` `/layout [path]` `/help`.
+Display: `/full` (default) `/passive` `/quiet` (`/silent`, `/s`) `/none`. Plus `/norestart` and `/log <file>`.
+
+- **Detection**: a Burn bundle registers under its **BundleProviderKey**, not a ProductCode. A single
+  ProductCode is unreliable - the bundle installs several MSIs, each with its own. Detect on a file version
+  the bundle delivers, or on the bundle's own ARP entry.
+- **`/layout` downloads the payload for offline use** - but whether it can be narrowed is decided by the
+  bundle's Bootstrapper Application, not by Burn. The Windows ADK's managed BA refuses it outright:
+  `adksetup.exe /quiet /layout <dir> /features OptionId.DeploymentTools` fails with *"Selecting Windows
+  Assessment and Deployment Kit features for download is not allowed. Don't specify /features argument to
+  download all features."* Feature selection happens at INSTALL time; the layout is always the whole kit
+  (measured 2026-09-08: ADK 1473 MB, WinPE add-on 1894 MB). Budget package size accordingly.
+- **A bundle's own switches are additive to the BA's.** `/features`, `/installpath`, `/ceip off` on the ADK
+  are BA parameters - read the vendor's documentation, do not assume them from Burn.
+
+### L.6 Advanced Installer projects (`.aip`)
+
+Relevant whenever the MSI is built in-house rather than shipped by a vendor.
+
+| Task | Command |
+|---|---|
+| Build | `AdvancedInstaller.com /build <project.aip> [-buildslist <names>]` |
+| Clean rebuild | `AdvancedInstaller.com /rebuild <project.aip>` |
+| Set version | `AdvancedInstaller.com /edit <project.aip> /SetVersion <x.y.z>` |
+| Set ProductCode | `AdvancedInstaller.com /edit <project.aip> /SetProductCode -langid 1033 -guid {GUID}` |
+| Batch of edits | `AdvancedInstaller.com /execute <project.aip> <commands.txt>` (file must start with `;aic`) |
+
+- **A new ProductCode per build is the norm for these projects**, with a fixed UpgradeCode. That yields a real
+  major upgrade instead of a reinstall - and it means **the package identity changes on every build**: the
+  launcher's `-ProductCode` for Uninstall/Repair, the detection script and the manifest all have to follow.
+  Re-probe with `Get-PsadtMsiFacts.ps1` after every rebuild rather than trusting the previous values.
+- **Relative paths in the `.aip` resolve against the .aip's own location, and this is NOT documented.**
+  Measured 2026-09-08: a project referencing its build output as `..\..\Users\<name>\AppData\Local\Temp\...`
+  worked while the project sat on `C:\`, and broke the moment the project tree moved to `F:\` - Advanced
+  Installer then looked for `F:\Users\...` and failed with *"Resources referred by the project are missing"*.
+  Moving an `.aip` between drives silently breaks every relative reference. Make such paths absolute.
+- **The vendor's own build script may patch the MSI after the build** (a custom action to stop a service
+  before `InstallValidate`, for example). Read it before assuming the produced MSI is what the `.aip`
+  describes - and re-read the MSI tables rather than the project file.
+
 ---
 
 ## Appendix M: Group assignment (opt-in) - config-driven Entra groups + win32LobApp assignment
