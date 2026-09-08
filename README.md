@@ -369,6 +369,14 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.26.4 - 08.09.2026
+- **L.7, new: Inno Setup and NSIS**, verified against vendor documentation. `/VERYSILENT` **reboots the
+  machine by itself** when a restart is needed — so `/NORESTART` is mandatory, and `/RESTARTEXITCODE=3010`
+  turns the fact into the code Intune already understands. And `Uninstall.exe /S` in NSIS **returns before
+  the uninstall has finished** (it copies itself to temp and detaches), so any verification afterwards races
+  it — `_?=<installdir>` makes it synchronous, must be last, must not be quoted.
+- **Advanced Installer wired into L.1 and L.2**, not just the new L.6 — with a measured fingerprint
+  (`AI_*` custom actions, `aicustact.dll`, `OLDPRODUCTS;AI_NEWERPRODUCTFOUND`).
 ### 0.26.3 - 08.09.2026
 - **Appendix L gains three sections**, researched against vendor documentation instead of written from
   memory: **MSP patches** (the full `/p` matrix, why `/i` and `/p` never combine, and that exit 1642 means

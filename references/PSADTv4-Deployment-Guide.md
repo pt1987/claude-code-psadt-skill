@@ -2035,6 +2035,11 @@ the natural detection rule.
   language-selection dialog and hangs; the unattended switch is **`-q`**, and it needs elevation (a
   `RequestPrivilegesAction`) or it stalls waiting for it.
 - **WiX Burn bundle:** EXE strings `WixBundle` / `.wixburn`; has a `BundleProviderKey`.
+- **Advanced Installer:** the MSI's `CustomAction` table is full of `AI_*` rows (`AI_SET_ADMIN`,
+  `AI_DOWNGRADE`, `AI_PREPARE_UPGRADE`, `AI_RESOLVE_KNOWN_FOLDERS`, `SET_APPDIR`) and references
+  `aicustact.dll`; `SecureCustomProperties` carries `OLDPRODUCTS;AI_NEWERPRODUCTFOUND`. Measured on a
+  real package 2026-09-08. Underneath it is a plain MSI - treat it as MSI for install/uninstall/detection
+  and see **L.6** for the project-side traps.
 - **MSI:** a `.msi` (or an EXE that strings-shows `Windows Installer` / extracts an MSI).
 - **Squirrel:** `Update.exe` + `*.nupkg`; per-user `%LocalAppData%\<App>`.
 - **MSIX/AppX:** `.msix` / `.appx` / `.msixbundle`.
@@ -2054,8 +2059,9 @@ the natural detection rule.
 | **MSI-wrapped EXE** | vendor flag, often `/s /v"/qn /norestart"` | extracted MSI ProductCode | `/v"/norestart"` | `/v"/l*v log"` | ProductCode | prefer extracting the MSI (`/a` admin install or `setup.exe /extract`) |
 | **InstallShield (Basic MSI)** | `setup.exe /s /v"/qn"` | ProductCode | `/v"/norestart"` | `/v"/l*v log"` | ProductCode | |
 | **InstallShield (InstallScript)** | `setup.exe /s /f1"setup.iss"` | `setup.exe /s /x /f1"uninstall.iss"` | (ISS-driven) | `/f2"log"` | registry / file | record the `.iss` with `setup.exe /r /f1"setup.iss"` |
-| **Inno Setup** | `setup.exe /VERYSILENT /SUPPRESSMSGBOXES /SP-` | `unins000.exe /VERYSILENT` | `/NORESTART` | `/LOG="log"` | QuietUninstallString / registry | `/SILENT` shows a progress bar, `/VERYSILENT` none |
-| **NSIS** | `setup.exe /S` | `Uninstall.exe /S` | (installer-specific) | `/D=path` (last arg, unquoted) | registry / file | `/S` is case-SENSITIVE |
+| **Inno Setup** | `setup.exe /VERYSILENT /SUPPRESSMSGBOXES /SP- /NORESTART` | `unins000.exe /VERYSILENT /NORESTART` | `/NORESTART` (**mandatory**, see L.7) | `/LOG="log"` | QuietUninstallString / registry | `/SILENT` shows a progress bar, `/VERYSILENT` none; `/SUPPRESSMSGBOXES` only works WITH one of them |
+| **NSIS** | `setup.exe /S` | `Uninstall.exe /S _?=<installdir>` (see L.7) | (installer-specific) | `/D=path` (last arg, unquoted) | registry / file | `/S` is case-SENSITIVE; a bare `Uninstall.exe /S` returns BEFORE it is done |
+| **Advanced Installer** | `msiexec /i pkg.msi /qn` | `msiexec /x {ProductCode} /qn` | `/norestart` | `/l*v "log"` | MSI ProductCode | plain MSI underneath; a fresh ProductCode per build is typical - re-probe every time (**L.6**) |
 | **WiX Burn bundle** | `bundle.exe /quiet /norestart` | `bundle.exe /uninstall /quiet` | `/norestart` | `/log "log"` | registry (BundleProviderKey) / file version | wraps MSIs; a single ProductCode is unreliable |
 | **Squirrel (Electron)** | `Setup.exe --silent` | `%LocalAppData%\<App>\Update.exe --uninstall -s` | n/a | n/a | file version under `%LocalAppData%` | usually PER-USER; a System/Win32 install needs care |
 | **MSIX / AppX** | provisioning (`Add-AppxProvisionedPackage`) | `Remove-AppxPackage` | n/a | n/a | package name / version | different model; not a classic Win32 installer |
@@ -2142,6 +2148,48 @@ Relevant whenever the MSI is built in-house rather than shipped by a vendor.
 - **The vendor's own build script may patch the MSI after the build** (a custom action to stop a service
   before `InstallValidate`, for example). Read it before assuming the produced MSI is what the `.aip`
   describes - and re-read the MSI tables rather than the project file.
+
+### L.7 Inno Setup and NSIS - the two traps the switch table cannot hold
+
+Verified against the vendor documentation 2026-09-08 (jrsoftware.org, nsis.sourceforge.io). Both engines are
+open source, extremely common, and each has one behaviour that silently breaks an Intune package.
+
+**Inno Setup: `/VERYSILENT` REBOOTS THE MACHINE BY ITSELF.** The documentation is explicit - with
+`/VERYSILENT`, "if a restart is needed, it reboots automatically rather than prompting". Under Intune that
+is a SYSTEM-context reboot with no warning to the signed-in user, mid-workday. **Always pass `/NORESTART`
+alongside it.** Then use the lever that makes this properly manageable:
+
+- **`/RESTARTEXITCODE=<code>`** makes Setup return a code of your choosing when a restart is required.
+  Combine `/NORESTART /RESTARTEXITCODE=3010` and Inno reports exactly what Intune already understands as
+  "soft reboot" - instead of either rebooting on its own or hiding the fact that it needed one.
+- `/SUPPRESSMSGBOXES` is ignored unless `/SILENT` or `/VERYSILENT` is also present.
+- `/SP-` only suppresses the "This will install..." startup prompt - it is not a silent switch.
+- `/CLOSEAPPLICATIONS` / `/FORCECLOSEAPPLICATIONS` drive Inno's own restart-manager handling. PSADT already
+  closes processes via `Show-ADTInstallationWelcome -CloseProcesses`; adding
+  `/NOCLOSEAPPLICATIONS` keeps the two from fighting over the same files.
+- `/LOADINF` / `/SAVEINF` record and replay wizard answers - the Inno equivalent of an InstallShield `.iss`,
+  and the clean way to capture a complex option set once instead of guessing `/COMPONENTS` strings.
+- `/COMPONENTS` / `/TASKS` take comma-separated names, `*` includes children, `!` deselects. `/MERGETASKS`
+  adds to the defaults instead of replacing them.
+
+**NSIS: `Uninstall.exe /S` returns BEFORE the uninstall has finished.** By default the uninstaller copies
+itself to a temp directory and re-launches from there so it can delete its own install folder - the process
+you started exits immediately. A Post-Uninstall step that then verifies the folder is gone, or the session
+closing, races a still-running uninstall. The documented fix:
+
+```
+Uninstall.exe /S _?=C:\Program Files\<App>
+```
+
+`_?=` sets the install directory AND suppresses the copy-to-temp, so the process runs to completion
+synchronously. Like `/D`, it must be the LAST parameter and must not be quoted - even when the path contains
+spaces. Note the side effect: because it no longer relocates itself, `Uninstall.exe` remains on disk and
+must be removed by the package afterwards.
+
+- **`/D=<path>` must be last and unquoted**, absolute only - quoting it is the usual reason a "silent"
+  NSIS install lands in the default directory anyway.
+- **`/NCRC`** skips the CRC check, unless the script used `CRCCheck force` - in which case the flag is
+  ignored rather than honoured.
 
 ---
 

@@ -2,6 +2,36 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.26.4 - 2026-09-08 - Inno Setup reboots by itself, an NSIS uninstall returns too early
+
+### Documentation
+- **L.7, new: the two open-source engines each hide one packaging-breaking behaviour.** Both verified
+  against the vendor documentation rather than written from memory - the switch table had one line each,
+  and neither line carried the part that matters.
+  - **Inno Setup `/VERYSILENT` reboots the machine on its own** when a restart is required, without
+    prompting. Under Intune that is an unannounced SYSTEM-context reboot mid-workday. `/NORESTART` is
+    therefore mandatory, not optional - and `/RESTARTEXITCODE=3010` turns "a restart was needed" into
+    exactly the code Intune already reads as a soft reboot, instead of the installer either rebooting or
+    hiding the fact. Also recorded: `/SUPPRESSMSGBOXES` is ignored without `/SILENT` or `/VERYSILENT`,
+    `/SP-` only suppresses the startup prompt and is not a silent switch, `/NOCLOSEAPPLICATIONS` keeps Inno's
+    restart manager from fighting PSADT's own `-CloseProcesses`, and `/LOADINF` / `/SAVEINF` capture a
+    complex option set the way an InstallShield `.iss` does.
+  - **`Uninstall.exe /S` in NSIS returns BEFORE the uninstall has finished.** The uninstaller copies itself
+    to temp and re-launches so it can delete its own folder, so the process you started exits immediately -
+    and any Post-Uninstall verification races a still-running uninstall. The documented fix is the
+    `_?=<installdir>` parameter, which suppresses the copy and makes the run synchronous; it must be LAST
+    and unquoted even with spaces in the path, and it leaves `Uninstall.exe` behind for the package to
+    remove. Also: `/D=` must be last and unquoted (quoting it is the usual reason a "silent" install still
+    lands in the default directory), and `/NCRC` is ignored rather than honoured when the script used
+    `CRCCheck force`.
+
+### Changed
+- **Advanced Installer is now in L.1 and L.2, not only in L.6.** 0.26.3 added the project-side section but
+  never wired the engine into the identification list or the switch table. The fingerprint is measured, not
+  guessed: an `AI_*`-heavy `CustomAction` table referencing `aicustact.dll`, with
+  `SecureCustomProperties = OLDPRODUCTS;AI_NEWERPRODUCTFOUND`.
+- **The Inno Setup and NSIS rows in L.2 now carry the mandatory switches** (`/NORESTART`, `_?=`) instead of
+  the minimal command that looks correct and behaves badly.
 ## 0.26.3 - 2026-09-08 - Appendix L grows three sections it should always have had
 
 ### Documentation
