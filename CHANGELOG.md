@@ -2,6 +2,51 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.26.5 - 2026-09-08 - MSIX installs for nobody when SYSTEM makes the obvious call; App-V is not end of life
+
+### Documentation
+- **L.8, new: MSIX/AppX is a deployment model, not a switch set** - verified against Microsoft Learn AND against
+  the live cmdlets on Windows 11 26200, because the parameter names in circulation are wrong as often as not.
+  The section is built around the two-step model (machine-wide **staging** into `%ProgramFiles%\WindowsApps`,
+  then **per-user registration** at logon by the App Readiness Service), from which every trap follows:
+  - **`Add-AppxPackage` under SYSTEM registers the package for the SYSTEM account and reports success.** Intune
+    and the Phase 6 SYSTEM test both run as SYSTEM, so the obvious cmdlet produces a package that installs
+    "successfully" and that no interactive user can launch. The device-context call is
+    `Add-AppxProvisionedPackage -Online`.
+  - **`Get-AppxPackage` is the wrong detection cmdlet and fails silently.** Right after provisioning the package
+    is staged but registered for nobody, so a SYSTEM detection script finds nothing, Intune concludes "not
+    installed", and reinstalls on every check-in forever while the app works fine for every logged-on user.
+    Detect with `Get-AppxProvisionedPackage -Online`, or `Get-AppxPackage -AllUsers` for registration truth.
+  - **Uninstall is asymmetric, in Microsoft's own words:** de-provisioning means packages "will not be removed
+    from existing user accounts". An Uninstall hook that only de-provisions leaves the app fully working for
+    every user who has already logged on. A complete removal is `Remove-AppxProvisionedPackage -Online` **plus**
+    `Remove-AppxPackage -AllUsers`.
+  - **Signing: the certificate Subject must equal the manifest Publisher**, which is why a vendor MSIX cannot
+    simply be re-signed with a corporate certificate - the manifest has to be edited and the package repacked.
+    Self-signed/internal certs must land in `LocalMachine\TrustedPeople`, which is the Appendix N machine-store
+    problem again (Custom OMA-URI, not the built-in template). And **missing timestamping** is what turns an
+    expired certificate into "installed fine last year, fails on new devices today".
+  - Plus the decision that comes first: **usually do not wrap MSIX in PSADT at all.** Intune takes it natively
+    as a Line-of-business app. Wrap only for process-closing, legacy-version removal, certificate import,
+    per-machine config, dependency packages - or a package above the **8 GB** LOB cap (Win32 allows 30 GB).
+- **L.9, new: App-V's support position, corrected.** "App-V is end of life" is the claim in circulation and it
+  is wrong. The **client and sequencer are no longer deprecated** - they moved to *fixed extended support*, keep
+  shipping in Windows, have **no new end-of-support date**, and cost nothing extra; only design changes and new
+  features are off the table. The **server components** remain deprecated and end **April 2026** (MDOP extended
+  support ends 14.04.2026). Microsoft's own guidance is that an estate whose feature set still works needs no
+  migration. Also recorded: `Add-AppvClientPackage` alone publishes to nobody, `-Global` is the device-context
+  switch (without it a SYSTEM publish targets SYSTEM), and a package that is **in use** goes *pending* rather
+  than failing - where a global task applies only after a **shutdown and restart**, so a `-Global` upgrade of a
+  running app has not taken effect when the hook returns.
+
+### Changed
+- **The MSIX row in L.2 was actively misleading and is rewritten.** It listed `Remove-AppxPackage` as the
+  uninstall (leaves the provisioned package behind) and "package name / version" as the detection (the trap
+  above). It now carries the full pair for uninstall, the correct detection cmdlet with an explicit NOT, and
+  the SYSTEM caveat.
+- **L.2 gains an App-V row**; L.1's MSIX fingerprint now names what is actually inside the package
+  (`AppxManifest.xml` with `<Identity>`, `AppxBlockMap.xml`, `AppxSignature.p7x`) and points at L.8 before any
+  hook gets written.
 ## 0.26.4 - 2026-09-08 - Inno Setup reboots by itself, an NSIS uninstall returns too early
 
 ### Documentation

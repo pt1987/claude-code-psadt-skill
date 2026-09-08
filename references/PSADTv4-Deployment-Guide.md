@@ -2042,7 +2042,10 @@ the natural detection rule.
   and see **L.6** for the project-side traps.
 - **MSI:** a `.msi` (or an EXE that strings-shows `Windows Installer` / extracts an MSI).
 - **Squirrel:** `Update.exe` + `*.nupkg`; per-user `%LocalAppData%\<App>`.
-- **MSIX/AppX:** `.msix` / `.appx` / `.msixbundle`.
+- **MSIX/AppX:** `.msix` / `.appx` / `.msixbundle` / `.appxbundle`; inside, an `AppxManifest.xml`
+  carrying `<Identity Name= Version= Publisher=>` plus `AppxBlockMap.xml` and `AppxSignature.p7x`.
+  Read the identity with `Get-AppxPackageManifest`. **Not a classic installer at all** - see **L.8**
+  before writing any hook, and check first whether Intune's native LOB app type is the better route.
 
 > **A single string match is a HINT, not proof (BINDING).** A coincidental substring (e.g. `nsis` inside an
 > unrelated blob) can misidentify the framework - a real case: an install4j Aperio installer was mistaken for
@@ -2064,7 +2067,8 @@ the natural detection rule.
 | **Advanced Installer** | `msiexec /i pkg.msi /qn` | `msiexec /x {ProductCode} /qn` | `/norestart` | `/l*v "log"` | MSI ProductCode | plain MSI underneath; a fresh ProductCode per build is typical - re-probe every time (**L.6**) |
 | **WiX Burn bundle** | `bundle.exe /quiet /norestart` | `bundle.exe /uninstall /quiet` | `/norestart` | `/log "log"` | registry (BundleProviderKey) / file version | wraps MSIs; a single ProductCode is unreliable |
 | **Squirrel (Electron)** | `Setup.exe --silent` | `%LocalAppData%\<App>\Update.exe --uninstall -s` | n/a | n/a | file version under `%LocalAppData%` | usually PER-USER; a System/Win32 install needs care |
-| **MSIX / AppX** | provisioning (`Add-AppxProvisionedPackage`) | `Remove-AppxPackage` | n/a | n/a | package name / version | different model; not a classic Win32 installer |
+| **MSIX / AppX** | `Add-AppxProvisionedPackage -Online -PackagePath x -SkipLicense` | `Remove-AppxProvisionedPackage -Online` **AND** `Remove-AppxPackage -AllUsers` | n/a | DISM `-LogPath` | `Get-AppxProvisionedPackage -Online` (**NOT** `Get-AppxPackage`) | not a Win32 installer - **L.8**. As SYSTEM, `Add-AppxPackage` registers for SYSTEM only and still reports success. Prefer Intune's native LOB type (cap 8 GB). Must be signed; cert Subject == manifest Publisher |
+| **App-V** | `Add-AppvClientPackage x` then `Publish-AppvClientPackage -Global` | `Unpublish-AppvClientPackage` **AND** `Remove-AppvClientPackage` | n/a | client event log | `Get-AppvClientPackage` | **L.9**. Client not deprecated (fixed extended support); servers end 04/2026. Add alone publishes to nobody; without `-Global` it publishes to SYSTEM. A package in use goes *pending* - global tasks apply only after a RESTART |
 | **install4j (Java)** | `installer.exe -q` (unattended) | `<installdir>\uninstall.exe -q` | n/a | `-Dinstall4j.logToStderr=true` | registry / file version | **NOT `/S`** (that shows the language dialog + hangs). Needs elevation (runs as SYSTEM under Intune). QuietUninstallString is often EMPTY -> pass `-q` via `-AdditionalArgumentList`. Bundles its own JRE (no external dep). May `dpinst`-install drivers - extract the signer `.cer` and pre-trust it (TrustedPublisher). |
 | **IzPack (Java)** | `installer.jar auto-install.xml` / `-options resp.txt` | uninstaller `-q` | n/a | varies | registry / file | response-file driven |
 | **InstallAware / Wise** | `/s` or `/silent` | vendor-specific | varies | varies | registry / file | confirm per build; often MSI underneath |
@@ -2190,6 +2194,168 @@ must be removed by the package afterwards.
   NSIS install lands in the default directory anyway.
 - **`/NCRC`** skips the CRC check, unless the script used `CRCCheck force` - in which case the flag is
   ignored rather than honoured.
+
+### L.8 MSIX / AppX - staging vs registration, and why SYSTEM breaks the obvious call
+
+Verified against Microsoft Learn and against the live cmdlets (`Get-Command`, Windows 11 26200) on 2026-09-08.
+MSIX is NOT a Win32 installer with different switches - it is a different deployment model, and every trap
+below follows from that.
+
+**First decision: usually do NOT wrap it in PSADT.** Intune takes `.msix` / `.msixbundle` / `.appx` /
+`.appxbundle` natively as a **Line-of-business app**: no silent switches to research, no detection rule to
+author, no `.intunewin` - name, publisher and version are read out of the manifest, and the install command is
+standardised. Reach for a PSADT wrapper only when the deployment needs work the native type cannot do:
+
+- close running processes first (`Show-ADTInstallationWelcome -CloseProcesses`),
+- remove a legacy MSI/EXE version of the same product,
+- import the signing certificate into a machine store (Appendix N),
+- write per-machine configuration (registry policy, config file, ACLs),
+- ship framework dependency packages the estate does not already have,
+- or the package is **larger than 8 GB** - the cap for Windows LOB / AppX / MSIX apps, whereas a Win32
+  `.intunewin` may be up to 30 GB.
+
+A public Store app is neither of these: use Intune's **Microsoft Store app (new)** type, not an LOB upload.
+
+**The model: staging, then registration.** Only the first step is machine-wide.
+
+1. **Staging** copies the package into `%ProgramFiles%\WindowsApps`. Happens once, needs no user account, and
+   works against an offline `.wim`/`.vhd(x)` as well as a running OS.
+2. **Registration** is per user and happens at that user's logon, performed by the App Readiness Service: user
+   app data, file type associations, Start menu entries. **Only users the package is registered for can see or
+   run it.**
+
+**The SYSTEM trap - the single most important line in this section.** Under Intune (and therefore under the
+Phase 6 SYSTEM test) the deployment runs as SYSTEM:
+
+- `Add-AppxPackage` registers the package **for the calling user**. As SYSTEM that means registered for the
+  SYSTEM account. No interactive user ever gets the app - and the call **succeeds**, so the package reports
+  install success while nobody can launch anything.
+- The machine-wide call is **`Add-AppxProvisionedPackage -Online`** (DISM module). It stages the package and
+  arms auto-registration for every user at their next logon.
+
+```powershell
+Add-AppxProvisionedPackage -Online -PackagePath "$dirFiles\App.msixbundle" `
+    -DependencyPackagePath "$dirFiles\VCLibs.appx", "$dirFiles\WinAppSDK.msix" -SkipLicense
+```
+
+- **`-SkipLicense` vs `-LicensePath`:** a license is required ONLY for a Microsoft Store app (and those must be
+  free and configured as pre-installable in Partner Center). Every other package provisions without one.
+- **`-DependencyPackagePath` is not optional in practice.** Framework packages (VCLibs, .NET Native, WinAppSDK)
+  must be supplied; a missing framework is the normal reason provisioning fails on a freshly imaged device, and
+  it is not visible from the app package alone. Collect them in Phase 2, not at failure time.
+- Parameter names verified on the live cmdlet: `-PackagePath`, `-DependencyPackagePath`, `-OptionalPackagePath`,
+  `-LicensePath`, `-SkipLicense`, `-Regions` (plural), `-StubPackageOption`.
+
+**Detection: `Get-AppxPackage` is the WRONG cmdlet, and it fails silently.** Immediately after provisioning the
+package is staged and armed but registered for **nobody**. A detection script running as SYSTEM that calls
+`Get-AppxPackage -Name X` finds nothing, Intune concludes "not installed", and reinstalls on every check-in
+forever while the app is in fact working for every logged-on user.
+
+- Device context -> `Get-AppxProvisionedPackage -Online | Where-Object DisplayName -eq '<Name>'`, compare
+  `Version`.
+- Machine-wide registration truth -> `Get-AppxPackage -AllUsers` (needs elevation).
+- Plain `Get-AppxPackage` is correct ONLY for a genuinely per-user install evaluated in that user's context.
+
+**Uninstall is asymmetric.** Microsoft's own wording for `Remove-AppxProvisionedPackage`: *"App packages will
+not be installed when new user accounts are created. Packages will not be removed from existing user
+accounts."* So an Uninstall hook that only de-provisions leaves the app fully working for every user who has
+already logged on - and detection (if written correctly against the provisioned state) will even report it
+gone. A complete uninstall is BOTH calls:
+
+```powershell
+Get-AppxProvisionedPackage -Online | Where-Object DisplayName -eq '<Name>' |
+    Remove-AppxProvisionedPackage -Online
+Get-AppxPackage -AllUsers -Name '<Name>' | Remove-AppxPackage -AllUsers
+```
+
+`Remove-AppxProvisionedPackage` does carry an `-AllUsers` switch, but Learn documents it in four words
+("Execute the command to all users") with no stated semantics - do not build an uninstall on it; use the
+explicit pair above. `Remove-AppxPackage -PreserveApplicationData` is the MSIX equivalent of the skill's
+"keep user data by default" rule. A normal uninstall removes everything the package wrote - the `WindowsApps`
+folder plus the AppData and registry inside its container - but never user-created files.
+
+**Signing: mandatory, and the publisher must match exactly.**
+
+- Windows requires every MSIX to be signed, and the certificate must chain to a root the device trusts.
+- Documented hard requirement: *"the 'Subject' in the certificate must match the 'Publisher' section in your
+  app's manifest."* With `<Identity Publisher="CN=Contoso Software, O=Contoso Corporation, C=US"/>` the cert
+  Subject must be that exact string. **Consequence: you cannot simply re-sign a vendor MSIX with a corporate
+  certificate** - the manifest Publisher must be edited and the package repacked, which changes its identity.
+- Signing a bundle covers every package inside it; inner packages need no separate signature.
+- **Self-signed / internal CA: the certificate must be imported into `Cert:\LocalMachine\TrustedPeople`.** That
+  is the same machine-store problem as Appendix N and has the same answer: the built-in Intune "Trusted
+  certificate" template only handles Root/Intermediate, so TrustedPeople needs a **Custom OMA-URI** profile
+  (`./Device/Vendor/MSFT/RootCATrustedCertificates/TrustedPeople/<SHA1>/EncodedCertificate`, single-line
+  base64). Own the certificate in exactly ONE place - the policy or the package, never both.
+- **Timestamping decides what happens after the certificate expires.** Not timestamped + expired cert = the
+  package **fails to install**; timestamped + expired = it still installs, because the signature is validated
+  against signing time. Already-installed apps keep running either way. "It installed fine last year and now
+  fails on new devices, and we changed nothing" is the classic symptom of a missing timestamp.
+- **Sideloading** has been on by default since Windows 10 2004, but an enterprise can still disable it by
+  policy - check that before blaming the package.
+- `Add-AppxPackage` exposes `-AllowUnsigned`. It is a developer switch; an unsigned package has no integrity
+  protection and must never be a deployment route.
+- A signed package additionally enables integrity enforcement when the manifest declares
+  `uap10:PackageIntegrity` (Windows 2004+): a tampered package is blocked from launching and sent through a
+  repair workflow.
+
+**Identity, updates, removal behaviour.**
+
+- Identity is the **Package Full Name**: `Name_Version_Arch__PublisherHash`, e.g.
+  `Contoso.ContosoApp_44.20231.1000.0_neutral__8wekyb3d8bbwe`. Provisioning cmdlets address packages by this
+  name, not by a display name.
+- MSIX supports a **downgrade without uninstalling first** when the App Installer file sets
+  `ForceUpdateFromAnyVersion` - the documented way to pull back a bad build.
+- `UpdateBlocksActivation` marks an update critical: the app will not start until it is updated.
+- Since Windows 10 2004 **re-provisioning reinstalls** a package a user had removed; older builds refused.
+- AppLocker can allow or deny MSIX apps by publisher, product name, file name, file version, path or hash.
+
+### L.9 App-V - the support position, corrected
+
+Verified against Microsoft Learn on 2026-09-08. **"App-V is end of life" is the claim you will hear, and it is
+wrong.** The precise position:
+
+- The **client and sequencer are no longer deprecated.** They moved to a **fixed extended support** lifecycle:
+  they keep shipping as part of Windows, **there is no new end-of-support date**, and pricing does not change.
+  What you do not get is design changes or new features - only bug and security fixes.
+- The **server components remain deprecated, and their support ends April 2026** (MDOP extended support ends
+  **14 April 2026**). Server-side alternatives: App-V app attach on Azure Virtual Desktop (no server of your
+  own), or a non-Microsoft publishing server against the existing packages.
+- Microsoft's own answer to "should I migrate?": *"If the current feature set of App-V works for you, there's
+  no need to migrate away."*
+
+Practical reading: an existing App-V estate is not an emergency and does not justify a rushed repackaging
+project. A **new** virtualisation project should not start on App-V, because it will never gain a feature.
+
+**Deploying an App-V package through PSADT.** The client is an optional Windows feature and must be enabled
+first (Appendix P covers feature packages). Then:
+
+```powershell
+Add-AppvClientPackage '<path>\App.appv' | Publish-AppvClientPackage -Global
+```
+
+- **`Add-AppvClientPackage` only adds the package - it publishes to nobody.** Learn states this explicitly.
+  Stopping after the add is the App-V twin of the `Add-AppxPackage`-as-SYSTEM mistake in L.8: no error, no app.
+- **`-Global` is the device-context switch** (published to any user on the computer). Without it the package is
+  published to the calling user only - under SYSTEM, again useless.
+- `Mount-AppvClientPackage` loads the package fully onto the client instead of streaming it - do this in the
+  install hook when the app must work offline.
+- Uninstall needs both halves: `Unpublish-AppvClientPackage` (removes the entitlement, package stays on the
+  machine) then `Remove-AppvClientPackage` (removes it from the machine).
+- **Pending state - the trap that makes a deployment look successful and change nothing.** A cmdlet that
+  touches a package currently **in use** does not fail; the task goes *pending*, and `Get-AppvClientPackage`
+  then reports `UserPending` / `GlobalPending` = True. A user-scoped pending task applies after the next
+  logoff/logon; a **global** one only after a **shutdown and restart**. So a `-Global` publish or upgrade of a
+  running app has NOT taken effect when the hook returns. Close the processes first
+  (`Show-ADTInstallationWelcome -CloseProcesses`) or the package silently does nothing until a reboot.
+- A package name containing `$` must be single-quoted: `Add-AppvClientPackage 'Contoso$App.appv'`.
+- `Set-AppvClientConfiguration -RequirePublishAsAdmin 1` restricts publishing/unpublishing to administrators.
+
+**Conversion to MSIX** is done with the **MSIX Packaging Tool** (App-V is one of its documented input formats,
+and batch conversion of App-V 5 packages is a published path); Learn also carries a feature-by-feature App-V vs
+MSIX comparison. Treat a conversion as a project with a test phase, not a format change: App-V was typically
+chosen for applications with deep system integration, and the MSIX container does not host everything such an
+application may rely on. Verify the converted package behaves identically before retiring the App-V one.
 
 ---
 

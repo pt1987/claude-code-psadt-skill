@@ -369,6 +369,20 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.26.5 - 08.09.2026
+- **L.8, new: MSIX/AppX**, verified against Microsoft Learn and against the live cmdlets. MSIX is a two-step
+  model — machine-wide **staging**, then **per-user registration at logon** — and three traps follow from it:
+  **`Add-AppxPackage` as SYSTEM registers the app for the SYSTEM account and reports success** (nobody can launch
+  it), **`Get-AppxPackage` is the wrong detection cmdlet** (finds nothing right after provisioning, so Intune
+  reinstalls forever), and **de-provisioning does not remove the app from existing users** — a complete uninstall
+  needs `Remove-AppxProvisionedPackage` *and* `Remove-AppxPackage -AllUsers`. Plus signing: the certificate
+  Subject must equal the manifest Publisher (so a vendor MSIX cannot just be re-signed), self-signed certs belong
+  in `LocalMachine\TrustedPeople`, and missing timestamping is what makes an expired certificate break installs.
+  And the decision that comes first: **usually don't wrap MSIX in PSADT** — Intune takes it natively.
+- **L.9, new: App-V is not end of life.** The client and sequencer are **no longer deprecated** (fixed extended
+  support, no end date, no extra cost); only the **server components** end in **April 2026**. Also: `-Global` is
+  the device-context switch, and a package in use goes *pending* — a global task applies only after a restart.
+- **The MSIX row in L.2 was misleading and is rewritten**; L.2 gains an App-V row.
 ### 0.26.4 - 08.09.2026
 - **L.7, new: Inno Setup and NSIS**, verified against vendor documentation. `/VERYSILENT` **reboots the
   machine by itself** when a restart is needed — so `/NORESTART` is mandatory, and `/RESTARTEXITCODE=3010`
