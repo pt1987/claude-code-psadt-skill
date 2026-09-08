@@ -1,0 +1,30 @@
+# Machine-local runtime state created by setup - NEVER commit
+config.json
+secret.dpapi
+
+# Auto-downloaded content-prep tool (provisioned + version-checked by the skill)
+tools/
+
+# Safety net: never commit any secret/key artifacts
+*.dpapi
+*.pfx
+*.cer
+*.key
+secrets.*
+
+# OS / Editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.vs/
+.idea/
+
+# Pester / test artifacts
+testResults*.xml
+_pester.out
+
+# Local planning / specs (superpowers) - NEVER commit, stays local
+docs/superpowers/
+
+# Migrated legacy config/secret left behind by Initialize-PsadtSkill.ps1 -Fix (kept, never deleted)
+*.migrated

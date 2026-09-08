@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>psadt-deploy — PSADT v4 to Intune, in verified phases</title>
+    <meta
+      name="description"
+      content="A Claude Code skill that drives the full lifecycle of a PSAppDeployToolkit v4.x Intune Win32 package: intake, research, scaffold, pre-flight, a SYSTEM test in Windows Sandbox, packaging, dossier and an optional Graph upload."
+    />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#9fe870" />
+    <link rel="icon" href="/claude-code-psadt-skill/favicon.svg" type="image/svg+xml" />
+    <script type="module" crossorigin src="/claude-code-psadt-skill/assets/index-C3Ei-cxB.js"></script>
+    <link rel="stylesheet" crossorigin href="/claude-code-psadt-skill/assets/index-DAXGVwI3.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <!-- ================================ NAV ================================ -->
+    <header class="nav">
+      <div class="container-marketing nav__inner">
+        <a class="nav__brand" href="#top" aria-label="psadt-deploy, back to top">
+          <span class="nav__mark" aria-hidden="true"></span>
+          <span class="nav__wordmark">psadt-deploy</span>
+        </a>
+        <nav class="nav__links" aria-label="Sections">
+          <a href="#phases">Workflow</a>
+          <a href="#preflight">Pre-flight</a>
+          <a href="#sandbox">SYSTEM test</a>
+          <a href="#engines">Coverage</a>
+        </nav>
+        <div class="nav__actions">
+          <a class="nav__ghost" href="https://github.com/pt1987/claude-code-psadt-skill" rel="noopener">GitHub</a>
+          <a class="btn btn--primary nav__cta" href="#start">Install</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ============================== HERO =============================== -->
+      <section class="band band--sage hero" id="top">
+        <div class="container-marketing hero__grid">
+          <div class="hero__copy">
+            <p class="eyebrow" data-reveal>Claude Code skill · v0.26.7</p>
+            <h1 class="display-xl hero__headline">PSADT to Intune, without the guesswork.</h1>
+            <p class="lead hero__lead">
+              Describe the application. The skill runs the workflow — intake, research, scaffolding,
+              all three deployment types, pre-flight, a SYSTEM test, packaging, the dossier and the
+              optional upload. Twelve phases, each owned by a script rather than by prose, so a step
+              either passed or did not.
+            </p>
+            <div class="hero__actions">
+              <a class="btn btn--primary" href="#start">Get started</a>
+              <a class="btn btn--tertiary" href="https://github.com/pt1987/claude-code-psadt-skill" rel="noopener">View source</a>
+            </div>
+            <p class="hero__meta mono">Windows · Node 18+ · MIT · zero dependencies</p>
+          </div>
+
+          <!-- The signature component. Defaults are rendered server-side, so the card
+               shows a real derived value before any interaction and without JS. -->
+          <section class="card card--outline planner" data-planner aria-labelledby="planner-title">
+            <h2 class="planner__title display-xs" id="planner-title">Package planner</h2>
+            <p class="planner__sub">What the skill would name things, derived from the same rule its own generator uses.</p>
+
+            <div class="planner__presets" data-planner-presets></div>
+
+            <div class="planner__fields">
+              <label class="field">
+                <span class="field__label">Vendor</span>
+                <input class="field__input" type="text" value="Igor Pavlov" data-planner-vendor />
+              </label>
+              <label class="field">
+                <span class="field__label">Application</span>
+                <input class="field__input" type="text" value="7-Zip" data-planner-name />
+              </label>
+              <label class="field field--narrow">
+                <span class="field__label">Version</span>
+                <input class="field__input" type="text" value="24.09" data-planner-version />
+              </label>
+            </div>
+
+            <div class="planner__row">
+            <fieldset class="planner__arch">
+              <legend class="field__label">Architecture</legend>
+              <label class="seg"><input type="radio" name="planner-arch" value="x64" checked /><span>x64</span></label>
+              <label class="seg"><input type="radio" name="planner-arch" value="x86" /><span>x86</span></label>
+              <label class="seg"><input type="radio" name="planner-arch" value="ARM64" /><span>ARM64</span></label>
+            </fieldset>
+
+            <label class="field">
+              <span class="field__label">Installer engine</span>
+              <select class="field__input" data-planner-engine><optgroup label="Installer engines"><option value="MSI" selected>MSI</option><option value="MSI-wrapped EXE">MSI-wrapped EXE</option><option value="InstallShield (Basic MSI)">InstallShield (Basic MSI)</option><option value="InstallShield (InstallScript)">InstallShield (InstallScript)</option><option value="Inno Setup">Inno Setup</option><option value="NSIS">NSIS</option><option value="Advanced Installer">Advanced Installer</option><option value="WiX Burn bundle">WiX Burn bundle</option><option value="Squirrel (Electron)">Squirrel (Electron)</option><option value="MSIX / AppX">MSIX / AppX</option><option value="App-V">App-V</option><option value="install4j (Java)">install4j (Java)</option><option value="IzPack (Java)">IzPack (Java)</option><option value="InstallAware / Wise">InstallAware / Wise</option></optgroup><optgroup label="Specialty package types"><option value="Driver (pnputil)">Driver (pnputil)</option><option value="Browser extension">Browser extension</option><option value="Windows feature">Windows feature</option><option value="Script-only remediation">Script-only remediation</option><option value="WinGet">WinGet</option></optgroup></select>
+            </label>
+            </div>
+
+            <div class="planner__panel" data-planner-panel aria-live="polite" aria-atomic="false">
+              <dl class="derived">
+                <dt>Stem</dt>
+                <dd class="mono" data-out-stem>Igor_Pavlov_7-Zip_24.09_x64</dd>
+                <dt>Package</dt>
+                <dd class="mono" data-out-path>&lt;outputRoot&gt;\Igor_Pavlov_7-Zip_24.09_x64\Igor_Pavlov_7-Zip_24.09_x64.intunewin</dd>
+                <dt>Log</dt>
+                <dd class="mono" data-out-log>Igor_Pavlov_7-Zip_24.09_x64_Install_&lt;yyyyMMdd-HHmmss&gt;.log</dd>
+                <dt>Detection</dt>
+                <dd data-out-detection>Intune MSI rule, keyed on the ProductCode from the package probe</dd>
+                <dt>Return codes</dt>
+                <dd class="mono" data-out-codes>0 · 1707 · 3010 · 1641 · 1618 · 60001 · 60008</dd>
+              </dl>
+
+              <div class="verdict">
+                <span class="badge badge--positive" data-out-verdict>GREEN</span>
+                <p class="verdict__head" data-out-verdict-head>PSADT package, all three deployment types.</p>
+                <p class="verdict__body" data-out-verdict-body>
+                  Install, Uninstall and Repair are scaffolded and acid-tested together, and the
+                  SYSTEM test is binding before any upload.
+                </p>
+              </div>
+            </div>
+
+            <p class="planner__honesty">Derived, not executed. This page runs nothing and sends nothing.</p>
+          </section>
+        </div>
+      </section>
+
+      <!-- ============================= NUMBERS ============================= -->
+      <section class="band band--white" aria-labelledby="numbers-title">
+        <div class="container-marketing">
+          <h2 class="display-sm section__title" id="numbers-title" data-reveal>What it actually is</h2>
+          <dl class="stat-grid">
+      <div class="stat" data-reveal data-reveal-delay="0">
+        <dt class="stat__label">phases</dt>
+        <dd class="stat__value display-md">0–12</dd>
+        <dd class="stat__note">Phase 0 through Phase 12, each owned by a script</dd>
+      </div>
+      <div class="stat" data-reveal data-reveal-delay="60">
+        <dt class="stat__label">decision gates</dt>
+        <dd class="stat__value display-md">4</dd>
+        <dd class="stat__note">at most four, plus situational follow-ups</dd>
+      </div>
+      <div class="stat" data-reveal data-reveal-delay="120">
+        <dt class="stat__label">PowerShell scripts</dt>
+        <dd class="stat__value display-md">30</dd>
+        <dd class="stat__note">28 invocable, plus 2 shared Graph includes</dd>
+      </div>
+      <div class="stat" data-reveal data-reveal-delay="180">
+        <dt class="stat__label">Pester tests</dt>
+        <dd class="stat__value display-md">441</dd>
+        <dd class="stat__note">full suite green as of v0.26.7</dd>
+      </div>
+      <div class="stat" data-reveal data-reveal-delay="240">
+        <dt class="stat__label">guide appendices</dt>
+        <dd class="stat__value display-md">17</dd>
+        <dd class="stat__note">A through Q, consulted before any web search</dd>
+      </div>
+      <div class="stat" data-reveal data-reveal-delay="300">
+        <dt class="stat__label">installer engines</dt>
+        <dd class="stat__value display-md">14</dd>
+        <dd class="stat__note">identified and switch-mapped — two are routed away from PSADT, not wrapped</dd>
+      </div></dl>
+          <h3 class="sr-only">Measured runs</h3>
+          <div class="measure-grid">
+      <div class="card card--sage measure" data-reveal data-reveal-delay="0">
+        <p class="measure__value display-md">13:45</p>
+        <p class="measure__what">PuTTY 0.85, intake to verified .intunewin</p>
+        <p class="measure__detail">one measured end-to-end run, wall clock, model time included</p>
+      </div>
+      <div class="card card--sage measure" data-reveal data-reveal-delay="60">
+        <p class="measure__value display-md">5:58</p>
+        <p class="measure__what">Notepad++ 8.9.8 x64, Windows Sandbox SYSTEM test</p>
+        <p class="measure__detail">one measured run, GREEN, ten recorded steps</p>
+      </div></div>
+        </div>
+      </section>
+
+      <!-- ============================= PHASES ============================== -->
+      <section class="band band--sage phases" id="phases" aria-labelledby="phases-title">
+        <div class="container-marketing">
+          <h2 class="display-md section__title" id="phases-title" data-reveal>Phase 0 through Phase 12</h2>
+          <p class="lead section__lead" data-reveal>
+            Each phase is owned by a script, not by a paragraph. That is the whole difference: a step
+            either passed or it did not, and the thing that decides is the same every time.
+          </p>
+
+          <div class="phases__layout">
+            <nav class="rail" aria-label="Workflow phases">
+              <div class="rail__track" aria-hidden="true"><span class="rail__progress" data-rail-progress></span></div>
+              <ol class="rail__list" data-rail-strip>
+      <li class="rail__item">
+        <a class="rail__link" href="#phase-0" data-rail-link="0">
+          <span class="rail__num">0</span>
+          <span class="rail__title">Setup</span>
+        </a>
+      </li>
+      <li class="rail__item">
+        <a class="rail__link" href="#phase-12" data-rail-link="1–2">
+          <span class="rail__num">1–2</span>
+          <span class="rail__title">Intake + research</span>
+        </a>
+      </li>
+      <li class="rail__item">
+        <a class="rail__link" href="#phase-3" data-rail-link="3">
+          <span class="rail__num">3</span>
+          <span class="rail__title">Scaffold</span>
+        </a>
+      </li>
+      <li class="rail__item">
+        <a class="rail__link" href="#phase-4" data-rail-link="4">
+          <span class="rail__num">4</span>
+          <span class="rail__title">Customize</span>
+        </a>
+      </li>
+      <li class="rail__item">
+        <a class="rail__link" href="#phase-5" data-rail-link="5">
+          <span class="rail__num">5</span>
+          <span class="rail__title">Pre-flight</span>
+        </a>
+      </li>
+      <li class="rail__item">
+        <a class="rail__link" href="#phase-6" data-rail-link="6">
+          <span class="rail__num">6</span>
+          <span class="rail__title">SYSTEM test</span>
+        </a>
+      </li>
+      <li class="rail__item">
+        <a class="rail__link" href="#phase-7" data-rail-link="7">
+          <span class="rail__num">7</span>
+          <span class="rail__title">Package</span>
+        </a>
+      </li>
+      <li class="rail__item">
+        <a class="rail__link" href="#phase-8" data-rail-link="8">
+          <span class="rail__num">8</span>
+          <span class="rail__title">Dossier</span>
+        </a>
+      </li>
+      <li class="rail__item">
+        <a class="rail__link" href="#phase-9" data-rail-link="9">
+          <span class="rail__num">9</span>
+          <span class="rail__title">Upload</span>
+        </a>
+      </li>
+      <li class="rail__item">
+        <a class="rail__link" href="#phase-10" data-rail-link="10">
+          <span class="rail__num">10</span>
+          <span class="rail__title">Assignment</span>
+        </a>
+      </li>
+      <li class="rail__item">
+        <a class="rail__link" href="#phase-1112" data-rail-link="11–12">
+          <span class="rail__num">11–12</span>
+          <span class="rail__title">Test + rollout</span>
+        </a>
+      </li></ol>
+            </nav>
+            <div class="phases__cards">
+      <article class="card phase "
+               id="phase-0"
+               data-phase="0" data-reveal>
+        <div class="phase__head">
+          <span class="phase__num display-md">0</span>
+          <h3 class="phase__title display-xs">Setup</h3>
+        </div>
+        <p class="phase__what">13 prerequisite checks, GREEN / YELLOW / RED. <code class="mono">-Fix</code> provisions everything that needs no human decision.</p>
+        <p class="phase__owner mono">Initialize-PsadtSkill.ps1</p>
+      </article>
+      <article class="card phase "
+               id="phase-12"
+               data-phase="1–2" data-reveal>
+        <div class="phase__head">
+          <span class="phase__num display-md">1–2</span>
+          <h3 class="phase__title display-xs">Intake + research</h3>
+        </div>
+        <p class="phase__what">Blockers arrive as clickable options. Version, silent switches and known Intune pitfalls are researched in parallel, not asked.</p>
+        <p class="phase__owner mono">agent · gates 1–2</p>
+      </article>
+      <article class="card phase "
+               id="phase-3"
+               data-phase="3" data-reveal>
+        <div class="phase__head">
+          <span class="phase__num display-md">3</span>
+          <h3 class="phase__title display-xs">Scaffold</h3>
+        </div>
+        <p class="phase__what">A generator writes the launcher, the detection script, the per-run log name and the manifest in one pass.</p>
+        <p class="phase__owner mono">New-MsiPackage · New-DriverPackage · …</p>
+      </article>
+      <article class="card phase "
+               id="phase-4"
+               data-phase="4" data-reveal>
+        <div class="phase__head">
+          <span class="phase__num display-md">4</span>
+          <h3 class="phase__title display-xs">Customize</h3>
+        </div>
+        <p class="phase__what">All three hooks filled from the research; custom helpers go in the Extensions module, never the main script.</p>
+        <p class="phase__owner mono">agent</p>
+      </article>
+      <article class="card phase "
+               id="phase-5"
+               data-phase="5" data-reveal>
+        <div class="phase__head">
+          <span class="phase__num display-md">5</span>
+          <h3 class="phase__title display-xs">Pre-flight</h3>
+        </div>
+        <p class="phase__what">10 checks — encoding, AST parse, v3 cmdlets, hook structure, detection contract, manifest, log name, driver trust — returning GREEN or RED with the failing file named.</p>
+        <p class="phase__owner mono">Invoke-PsadtPreflight.ps1</p>
+      </article>
+      <article class="card phase phase--emphasis"
+               id="phase-6"
+               data-phase="6" data-reveal>
+        <div class="phase__head">
+          <span class="phase__num display-md">6</span>
+          <h3 class="phase__title display-xs">SYSTEM test</h3>
+        </div>
+        <p class="phase__what">Installs and uninstalls as SYSTEM, the way the Intune Management Extension does. Binding before any upload.</p>
+        <p class="phase__owner mono">Invoke-PsadtSystemTest.ps1 · Invoke-PsadtSandboxTest.ps1</p>
+      </article>
+      <article class="card phase "
+               id="phase-7"
+               data-phase="7" data-reveal>
+        <div class="phase__head">
+          <span class="phase__num display-md">7</span>
+          <h3 class="phase__title display-xs">Package</h3>
+        </div>
+        <p class="phase__what">One command produces a verified <code class="mono">.intunewin</code>, named after the app rather than after the toolkit.</p>
+        <p class="phase__owner mono">Invoke-PsadtPackage.ps1</p>
+      </article>
+      <article class="card phase "
+               id="phase-8"
+               data-phase="8" data-reveal>
+        <div class="phase__head">
+          <span class="phase__num display-md">8</span>
+          <h3 class="phase__title display-xs">Dossier</h3>
+        </div>
+        <p class="phase__what">Always generated, uploaded or not: one self-contained bilingual HTML file with the Intune dossier and the technical report.</p>
+        <p class="phase__owner mono">New-PsadtReport.ps1</p>
+      </article>
+      <article class="card phase "
+               id="phase-9"
+               data-phase="9" data-reveal>
+        <div class="phase__head">
+          <span class="phase__num display-md">9</span>
+          <h3 class="phase__title display-xs">Upload <span class="badge badge--neutral phase__optin">opt-in</span></h3>
+        </div>
+        <p class="phase__what">Dry run, then confirm, then a raw Graph <code class="mono">win32LobApp</code> push. Never deletes an older version.</p>
+        <p class="phase__owner mono">Invoke-IntuneWin32Upload.ps1</p>
+      </article>
+      <article class="card phase "
+               id="phase-10"
+               data-phase="10" data-reveal>
+        <div class="phase__head">
+          <span class="phase__num display-md">10</span>
+          <h3 class="phase__title display-xs">Assignment <span class="badge badge--neutral phase__optin">opt-in</span></h3>
+        </div>
+        <p class="phase__what">Creates or reuses Entra security groups by a configured naming scheme and assigns Required / Available / Uninstall.</p>
+        <p class="phase__owner mono">Invoke-IntuneAppAssignment.ps1</p>
+      </article>
+      <article class="card phase "
+               id="phase-1112"
+               data-phase="11–12" data-reveal>
+        <div class="phase__head">
+          <span class="phase__num display-md">11–12</span>
+          <h3 class="phase__title display-xs">Test + rollout</h3>
+        </div>
+        <p class="phase__what">DEV-VM cycles, a test group, then pilot to staged production.</p>
+        <p class="phase__owner mono">agent</p>
+      </article></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================== MANIFESTO I =========================== -->
+      <section class="band band--ink manifesto" aria-label="The project's central claim">
+        <div class="container-marketing">
+          <blockquote class="display-xl manifesto__quote">
+            Twelve phases, each owned by a script rather than by prose, so a step either passed or
+            did not.
+          </blockquote>
+        </div>
+      </section>
+
+      <!-- ============================ PRE-FLIGHT =========================== -->
+      <section class="band band--white" id="preflight" aria-labelledby="preflight-title">
+        <div class="container-marketing">
+          <h2 class="display-md section__title" id="preflight-title" data-reveal>Ten checks, and RED names the file</h2>
+          <p class="lead section__lead" data-reveal>
+            Pre-flight is a gate, not a report. These are the ten check categories; the number of
+            rows varies per package, because encoding and parse run per file and driver trust only
+            runs when there are drivers.
+          </p>
+          <div class="table-wrap" data-reveal>
+            <table class="checks">
+              <caption class="sr-only">Pre-flight check categories and their verdicts</caption>
+              <thead>
+                <tr><th scope="col">Check</th><th scope="col">What it proves</th><th scope="col">Verdict</th></tr>
+              </thead>
+              <tbody>
+      <tr class="check" data-check-index="0">
+        <td class="check__name mono">Encoding</td>
+        <td class="check__what">no non-ASCII without a BOM — the classic silent parse failure</td>
+        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
+      </tr>
+      <tr class="check" data-check-index="1">
+        <td class="check__name mono">Parse</td>
+        <td class="check__what">the launcher parses as valid PowerShell AST</td>
+        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
+      </tr>
+      <tr class="check" data-check-index="2">
+        <td class="check__name mono">v3-cmdlets</td>
+        <td class="check__what">no PSADT v3 command survives in a v4 package</td>
+        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
+      </tr>
+      <tr class="check" data-check-index="3">
+        <td class="check__name mono">Structure</td>
+        <td class="check__what">all three hooks present and correctly shaped</td>
+        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
+      </tr>
+      <tr class="check" data-check-index="4">
+        <td class="check__name mono">ProductCode</td>
+        <td class="check__what">a GUID goes to -ProductCode, never to -FilePath</td>
+        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
+      </tr>
+      <tr class="check" data-check-index="5">
+        <td class="check__name mono">TopLevel</td>
+        <td class="check__what">no stray top-level code outside the hooks</td>
+        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
+      </tr>
+      <tr class="check" data-check-index="6">
+        <td class="check__name mono">Detection</td>
+        <td class="check__what">the detection script honours the exit-code contract</td>
+        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
+      </tr>
+      <tr class="check" data-check-index="7">
+        <td class="check__name mono">Manifest</td>
+        <td class="check__what">psadt-package.json exists and agrees with the launcher</td>
+        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
+      </tr>
+      <tr class="check" data-check-index="8">
+        <td class="check__name mono">LogName</td>
+        <td class="check__what">a per-run log name, so runs do not pile into one file</td>
+        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
+      </tr>
+      <tr class="check" data-check-index="9">
+        <td class="check__name mono">DriverTrust</td>
+        <td class="check__what">driver signatures classified before anything is built</td>
+        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
+      </tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================= SANDBOX ============================= -->
+      <section class="band band--sage" id="sandbox" aria-labelledby="sandbox-title">
+        <div class="container-marketing">
+          <h2 class="display-md section__title" id="sandbox-title" data-reveal>The SYSTEM test costs the host nothing</h2>
+          <p class="lead section__lead" data-reveal>
+            Five deployment actions, each followed by a detection evaluation — ten recorded steps, run
+            as <code class="mono">NT AUTHORITY\SYSTEM</code> inside a throwaway Windows Sandbox VM
+            against a machine that has never seen the app.
+          </p>
+          <ol class="loop">
+      <li class="loop__step" data-reveal data-reveal-delay="0">
+        <span class="loop__index mono">1</span>
+        <span class="loop__action">Install</span>
+        <span class="loop__then mono">&rarr; detect</span>
+      </li>
+      <li class="loop__step" data-reveal data-reveal-delay="60">
+        <span class="loop__index mono">2</span>
+        <span class="loop__action">Uninstall</span>
+        <span class="loop__then mono">&rarr; detect</span>
+      </li>
+      <li class="loop__step" data-reveal data-reveal-delay="120">
+        <span class="loop__index mono">3</span>
+        <span class="loop__action">Reinstall</span>
+        <span class="loop__then mono">&rarr; detect</span>
+      </li>
+      <li class="loop__step" data-reveal data-reveal-delay="180">
+        <span class="loop__index mono">4</span>
+        <span class="loop__action">Repair</span>
+        <span class="loop__then mono">&rarr; detect</span>
+      </li>
+      <li class="loop__step" data-reveal data-reveal-delay="240">
+        <span class="loop__index mono">5</span>
+        <span class="loop__action">Uninstall</span>
+        <span class="loop__then mono">&rarr; detect</span>
+      </li></ol>
+          <p class="section__note" data-reveal>
+            The run itself needs no elevation and leaves the host untouched. Enabling the Sandbox
+            feature is a one-time elevated step, and it needs Windows Pro, Enterprise or Education
+            with virtualisation available.
+          </p>
+        </div>
+      </section>
+
+      <!-- ========================== MANIFESTO II =========================== -->
+      <section class="band band--ink" aria-labelledby="driver-title">
+        <div class="container-marketing">
+          <h2 class="display-xl manifesto__quote" id="driver-title">
+            A vendor-signed kernel driver is RED, not a warning.
+          </h2>
+          <p class="lead manifesto__lead">
+            Classified before anything is built, because the alternative is a package that installs
+            cleanly and then fails to load on every device.
+          </p>
+          <div class="driver-grid">
+      <article class="card driver" data-reveal data-reveal-delay="0">
+        <span class="badge badge--positive">GREEN</span>
+        <h3 class="driver__when display-xs">Microsoft-signed (WHQL, Attestation or inbox)</h3>
+        <p class="driver__then">Pre-stage with pnputil, then run the installer. No certificate work.</p>
+      </article>
+      <article class="card driver" data-reveal data-reveal-delay="60">
+        <span class="badge badge--warning">WARN</span>
+        <h3 class="driver__when display-xs">Vendor-signed, user-mode</h3>
+        <p class="driver__then">The signer certificate becomes a deliverable — preferably an Intune policy, not a package import. Own it in exactly one place.</p>
+      </article>
+      <article class="card driver" data-reveal data-reveal-delay="120">
+        <span class="badge badge--negative">RED</span>
+        <h3 class="driver__when display-xs">Vendor-signed kernel-mode, with Secure Boot on</h3>
+        <p class="driver__then">Refused. TrustedPublisher removes the PnP prompt but never satisfies Code Integrity, so the driver would install and then fail to load. There is no packaging trick. An explicit opt-out exists for fleets that genuinely run Secure Boot off.</p>
+      </article></div>
+        </div>
+      </section>
+
+      <!-- ============================ FEATURES ============================= -->
+      <section class="band band--white" id="features" aria-labelledby="features-title">
+        <div class="container-marketing">
+          <h2 class="display-md section__title" id="features-title" data-reveal>What it does for you</h2>
+          <div class="feature-grid">
+      <article class="card card--dark card--lift feature feature--wide"
+               data-reveal data-reveal-delay="0">
+        <h3 class="feature__title display-xs">A SYSTEM test that costs the host nothing</h3>
+        <p class="feature__body">Five deployment actions, each followed by a detection evaluation, all as NT AUTHORITY\SYSTEM inside a throwaway Windows Sandbox VM — ten recorded steps against a machine that has never seen the app. The run needs no elevation and leaves the host untouched; enabling the Sandbox feature itself is a one-time elevated step.</p>
+        <p class="feature__mono mono">Invoke-PsadtSandboxTest.ps1</p>
+      </article>
+      <article class="card card--sage card--lift feature "
+               data-reveal data-reveal-delay="60">
+        <h3 class="feature__title display-xs">Pre-flight that names the file</h3>
+        <p class="feature__body">Ten check categories — encoding and BOM, AST parse, launcher acid test, a scan for v3 cmdlets, hook structure, the detection contract, the manifest, the per-run log name, driver trust. The verdict is GREEN or RED, and RED tells you which file.</p>
+        <p class="feature__mono mono">10 categories → GREEN / RED</p>
+      </article>
+      <article class="card card--green card--lift feature "
+               data-reveal data-reveal-delay="120">
+        <h3 class="feature__title display-xs">Four questions, not forty</h3>
+        <p class="feature__body">Scope, deployment semantics, SYSTEM-test consent, upload confirmation. Everything else — the current version, the silent switches, the ProductCode, known Intune issues — is researched and stated as an assumption.</p>
+        <p class="feature__mono mono">4 decision gates</p>
+      </article>
+      <article class="card card--sage card--lift feature "
+               data-reveal data-reveal-delay="180">
+        <h3 class="feature__title display-xs">One manifest, one truth</h3>
+        <p class="feature__body">psadt-package.json holds the identity, the decisions taken at the gates, the research findings, every phase result and every artifact. Generators write it, later phases read it, pre-flight fails without it — which is what stops two packages of the same app from disagreeing about their own version.</p>
+        <p class="feature__mono mono">&lt;pkg&gt;\psadt-package.json</p>
+      </article>
+      <article class="card card--green card--lift feature "
+               data-reveal data-reveal-delay="180">
+        <h3 class="feature__title display-xs">All three deployment types, from the start</h3>
+        <p class="feature__body">Install, Uninstall and Repair are filled and acid-tested together, even when only install is needed today — because a Company Portal uninstall needs a real Uninstall hook, not a placeholder.</p>
+        <p class="feature__mono mono">Install · Uninstall · Repair</p>
+      </article>
+      <article class="card card--sage card--lift feature "
+               data-reveal data-reveal-delay="180">
+        <h3 class="feature__title display-xs">A vendor-signed kernel driver is RED, not a warning</h3>
+        <p class="feature__body">Drivers are classified before anything is built. With Secure Boot on — the default on Windows 11 — the kernel loads only Microsoft-signed drivers: TrustedPublisher removes the PnP prompt but never satisfies Code Integrity, so the driver would install and then fail to load. There is an explicit opt-out for fleets that genuinely run Secure Boot off.</p>
+        <p class="feature__mono mono">Get-DriverSignatureInfo.ps1</p>
+      </article>
+      <article class="card card--green card--lift feature "
+               data-reveal data-reveal-delay="180">
+        <h3 class="feature__title display-xs">The dossier is not optional</h3>
+        <p class="feature__body">Every package gets one self-contained Intune-Dossier.html — app info, a paste-ready Markdown Company Portal description, the return-code map, the detection rule, driver trust, plus the technical report with pre-flight and SYSTEM-test results. Bilingual, no external requests.</p>
+        <p class="feature__mono mono">New-PsadtReport.ps1</p>
+      </article>
+      <article class="card card--sage card--lift feature "
+               data-reveal data-reveal-delay="180">
+        <h3 class="feature__title display-xs">Upload that refuses to be destructive</h3>
+        <p class="feature__body">A raw Graph win32LobApp push with no third-party module: dry run, then confirm, then upload. It fills every objective app-info field, never imposes a category, and by default never deletes an older version — new versions coexist so you wire supersedence yourself. Replacing an app in place is a separate, explicit flag.</p>
+        <p class="feature__mono mono">Invoke-IntuneWin32Upload.ps1</p>
+      </article>
+      <article class="card card--green card--lift feature "
+               data-reveal data-reveal-delay="180">
+        <h3 class="feature__title display-xs">Access as state, not as a 403</h3>
+        <p class="feature__body">Before any upload or policy write, the skill reads its own capabilities and reports them three-valued — granted, missing, or genuinely unknown — and offers the exact fix. It does not probe a tenant by provoking an error.</p>
+        <p class="feature__mono mono">Test-PsadtIntuneAccess.ps1</p>
+      </article>
+      <article class="card card--sage card--lift feature "
+               data-reveal data-reveal-delay="180">
+        <h3 class="feature__title display-xs">More than one kind of package</h3>
+        <p class="feature__body">Browser-extension force-install for Edge, Chrome and Firefox including the REG_MULTI_SZ trap; Windows features and capabilities; drivers via per-INF pnputil; script-only remediation that survives the ESP; the WinGet lifecycle. And MSIX routes to Intune’s native LOB app type instead of being wrapped.</p>
+        <p class="feature__mono mono">Appendices I · K · O · P · Q</p>
+      </article>
+      <article class="card card--green card--lift feature "
+               data-reveal data-reveal-delay="180">
+        <h3 class="feature__title display-xs">Deterministic, verified output</h3>
+        <p class="feature__body">The .intunewin is named Vendor_App_Version_Arch and verified after the fact — Detection.xml, the SetupFile, the size and the SHA256 — instead of trusting that the packaging tool did what it said.</p>
+        <p class="feature__mono mono">Vendor_App_Version_x64.intunewin</p>
+      </article>
+      <article class="card card--sage card--lift feature "
+               data-reveal data-reveal-delay="180">
+        <h3 class="feature__title display-xs">Updates without losing your setup</h3>
+        <p class="feature__body">Self-update pulls from GitHub and touches tracked files only. config.json, the DPAPI secret and the downloaded tools live in %LOCALAPPDATA%\psadt-deploy, so they survive an update, a re-clone and a re-install.</p>
+        <p class="feature__mono mono">%LOCALAPPDATA%\psadt-deploy</p>
+      </article></div>
+        </div>
+      </section>
+
+      <!-- ============================= ENGINES ============================= -->
+      <section class="band band--sage" id="engines" aria-labelledby="engines-title">
+        <div class="container-marketing">
+          <h2 class="display-md section__title" id="engines-title" data-reveal>Fourteen installer engines, and the trap in each</h2>
+          <p class="lead section__lead" data-reveal>
+            Identified by fingerprint, not by guesswork, and consulted before any web search. Two of
+            them — MSIX and App-V — are routed away from PSADT rather than wrapped in it.
+          </p>
+          <div class="engine-grid">
+      <article class="card card--sage engine" data-reveal data-reveal-delay="0">
+        <h3 class="engine__name display-xs">MSI</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">msiexec /i pkg.msi /qn</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">ProductCode</code></p>
+        
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="60">
+        <h3 class="engine__name display-xs">MSI-wrapped EXE</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">setup.exe /s /v&quot;/qn /norestart&quot;</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">ProductCode</code></p>
+        <p class="engine__trap">Extract the MSI and probe it rather than trusting the wrapper.</p>
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="120">
+        <h3 class="engine__name display-xs">InstallShield (Basic MSI)</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">setup.exe /s /v&quot;/qn&quot;</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">ProductCode</code></p>
+        
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="180">
+        <h3 class="engine__name display-xs">InstallShield (InstallScript)</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">setup.exe /s /f1&quot;setup.iss&quot;</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">registry / file</code></p>
+        <p class="engine__trap">Record the response file first with setup.exe /r /f1&quot;setup.iss&quot;.</p>
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="180">
+        <h3 class="engine__name display-xs">Inno Setup</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">setup.exe /VERYSILENT /NORESTART</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">QuietUninstallString</code></p>
+        <p class="engine__trap">/VERYSILENT reboots the machine by itself when a restart is needed. /NORESTART is mandatory.</p>
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="180">
+        <h3 class="engine__name display-xs">NSIS</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">setup.exe /S</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">registry / file</code></p>
+        <p class="engine__trap">Uninstall.exe /S returns BEFORE it is done. _?=&lt;installdir&gt; makes it synchronous.</p>
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="180">
+        <h3 class="engine__name display-xs">Advanced Installer</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">msiexec /i pkg.msi /qn</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">ProductCode</code></p>
+        <p class="engine__trap">A fresh ProductCode per build is typical — re-probe every time.</p>
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="180">
+        <h3 class="engine__name display-xs">WiX Burn bundle</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">bundle.exe /quiet /norestart</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">BundleProviderKey</code></p>
+        <p class="engine__trap">A single ProductCode is the wrong detection key for a bundle.</p>
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="180">
+        <h3 class="engine__name display-xs">Squirrel (Electron)</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">Setup.exe --silent</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">file version under %LocalAppData%</code></p>
+        <p class="engine__trap">Usually per-user; a machine-wide Win32 install needs care.</p>
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="180">
+        <h3 class="engine__name display-xs">MSIX / AppX</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">Add-AppxProvisionedPackage -Online</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">Get-AppxProvisionedPackage</code></p>
+        <p class="engine__trap">As SYSTEM, Add-AppxPackage registers the app for SYSTEM only — and reports success.</p>
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="180">
+        <h3 class="engine__name display-xs">App-V</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">Publish-AppvClientPackage -Global</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">Get-AppvClientPackage</code></p>
+        <p class="engine__trap">Add alone publishes to nobody. Without -Global a SYSTEM publish targets SYSTEM.</p>
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="180">
+        <h3 class="engine__name display-xs">install4j (Java)</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">installer.exe -q</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">registry / file version</code></p>
+        <p class="engine__trap">NOT /S — that opens the language dialog and hangs forever.</p>
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="180">
+        <h3 class="engine__name display-xs">IzPack (Java)</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">installer.jar auto-install.xml</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">registry / file</code></p>
+        <p class="engine__trap">Response-file driven.</p>
+      </article>
+      <article class="card card--sage engine" data-reveal data-reveal-delay="180">
+        <h3 class="engine__name display-xs">InstallAware / Wise</h3>
+        <p class="engine__row"><span class="engine__key">silent</span> <code class="mono">/s or /silent</code></p>
+        <p class="engine__row"><span class="engine__key">detect</span> <code class="mono">registry / file</code></p>
+        <p class="engine__trap">Confirm per build — often an MSI underneath.</p>
+      </article></div>
+        </div>
+      </section>
+
+      <!-- ============================== LIMITS ============================= -->
+      <section class="band band--white" aria-labelledby="limits-title">
+        <div class="container-marketing">
+          <h2 class="display-sm section__title" id="limits-title" data-reveal>What this page is not claiming</h2>
+          <div class="limit-grid">
+      <div class="limit" data-reveal>
+        <h3 class="limit__title">Figures are as of v0.26.7</h3>
+        <p class="limit__body">Every number on this page was verified against the repository at that version. Counts drift; the linked source is authoritative, not this page.</p>
+      </div>
+      <div class="limit" data-reveal>
+        <h3 class="limit__title">The timings are single runs</h3>
+        <p class="limit__body">Not benchmarks. One machine, one app, one run each — and the end-to-end figure includes model thinking time, which depends on the model and the network.</p>
+      </div>
+      <div class="limit" data-reveal>
+        <h3 class="limit__title">Windows Sandbox has prerequisites</h3>
+        <p class="limit__body">Windows Pro, Enterprise or Education with virtualisation available. Enabling the Containers-DisposableClientVM feature needs elevation and one restart — after that, a test run needs neither.</p>
+      </div>
+      <div class="limit" data-reveal>
+        <h3 class="limit__title">Upload is opt-in, and non-destructive by default</h3>
+        <p class="limit__body">The default keeps older versions side by side so you can wire supersedence yourself. Replacing an app in place is a separate, explicit flag.</p>
+      </div>
+      <div class="limit" data-reveal>
+        <h3 class="limit__title">Not affiliated</h3>
+        <p class="limit__body">Not affiliated with or endorsed by Microsoft. PSAppDeployToolkit is a separate MIT-licensed project by its own authors; this skill drives it, it does not replace it.</p>
+      </div>
+      <div class="limit" data-reveal>
+        <h3 class="limit__title">One open point, stated plainly</h3>
+        <p class="limit__body">The driver pnputil exit-code semantics are documented, not verified here. 0 / 259 / 3010 and the two 0xE… failures come from Microsoft’s documentation; confirming them against setupapi.dev.log on a DEV VM with a real vendor-signed and a real Microsoft-signed driver is still open.</p>
+      </div></div>
+        </div>
+      </section>
+
+      <!-- ======================== START + FOOTER =========================== -->
+      <section class="band band--ink" id="start" aria-labelledby="start-title">
+        <div class="container-marketing">
+          <h2 class="display-md section__title" id="start-title">One command</h2>
+          <div class="start-grid">
+      <div class="start__block">
+        <div class="mono-inset">
+          <span class="mono-inset__prompt mono" aria-hidden="true">PS&gt;</span>
+          <code class="mono" id="install-cmd">npx psadt-deploy-skill</code>
+          <button class="btn btn--secondary copy" type="button"
+                  data-copy-target="#install-cmd"
+                  aria-label="Copy the install command">Copy</button>
+        </div>
+        <p class="start__note">Installs the skill folder into ~/.claude/skills/psadt-deploy and runs the setup doctor. Configuration, the DPAPI secret and downloaded tools go to %LOCALAPPDATA%\psadt-deploy, so they survive an update or a re-install.</p>
+      </div>
+      <div class="start__block">
+        <p class="eyebrow">Then say what you want</p>
+        <div class="mono-inset">
+          <code class="mono" id="first-prompt">Create the Win32 Intune package for 7-Zip 24.09</code>
+          <button class="btn btn--secondary copy" type="button"
+                  data-copy-target="#first-prompt"
+                  aria-label="Copy the example prompt">Copy</button>
+        </div>
+        <p class="start__note">Windows · Node 18+ · zero dependencies</p>
+      </div></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="band band--ink footer">
+      <div class="container-marketing footer__inner">
+        <p class="footer__meta mono">MIT &middot; Patrick Taubert, PHAT Consulting GmbH</p>
+        <nav class="footer__links" aria-label="Project links">
+          <a href="https://github.com/pt1987/claude-code-psadt-skill" rel="noopener">GitHub</a>
+          <a href="https://www.npmjs.com/package/psadt-deploy-skill" rel="noopener">npm</a>
+          <a href="https://github.com/pt1987/claude-code-psadt-skill/issues" rel="noopener">Issues</a>
+          <a href="https://psappdeploytoolkit.com/" rel="noopener">PSAppDeployToolkit</a>
+        </nav>
+      </div>
+    </footer>
+
+  </body>
+</html>
