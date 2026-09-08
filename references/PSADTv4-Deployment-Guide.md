@@ -1602,10 +1602,19 @@ the VM. The artifact that ships is therefore never the artifact tested. They mat
 edited after packaging - worth verifying explicitly (compare the newest file mtime under the package
 against the `.intunewin` mtime) before an upload.
 
-**6. Aborting a sandbox run from the host orphans the VM worker.** The design is correct - the GUEST shuts
-itself down, which is what releases the mapped folder - but there is no recovery path when a run is killed
-from outside. `vmmemWindowsSandbox` then holds the work folder (measured: ~200 s) and the next run THROWS
-instead of waiting. The message names the cause precisely; the remaining manual step is the wait.
+**6. Killing a sandbox run from the host orphans the VM worker.** The design is correct - the GUEST shuts
+itself down, which is what releases the mapped folder. `vmmemWindowsSandbox` is owned by the Hyper-V
+compute service, so the host cannot terminate it: kill the run from outside and it holds the work folder
+(measured: ~200 s) while the next run THROWS instead of waiting. The message names the cause precisely;
+the remaining manual step is the wait.
+
+> **Corrected in 0.26.6 for the case the script itself controls.** The host TIMEOUT used to be handled
+> like a finished run: the viewer processes were force-killed, which orphaned the worker AND destroyed the
+> window that was the user's only way to shut the guest down cleanly - and the warning then advised
+> "close the window by hand". The script now distinguishes the three terminal states (DONE.txt written /
+> VM gone / host gave up while the guest still runs) and on a timeout deliberately touches nothing,
+> explaining why and what to close. A run killed from OUTSIDE the script (Ctrl+C on the host) is still
+> the un-recoverable case above.
 
 **7. Service `%TEMP%` is not what the registry says.** On Windows 11 a LocalSystem service gets
 `C:\Windows\SystemTemp`, while `HKLM\...\Session Manager\Environment` still reads `C:\WINDOWS\TEMP`. Both

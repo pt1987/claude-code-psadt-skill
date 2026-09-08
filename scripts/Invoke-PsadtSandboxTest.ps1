@@ -417,6 +417,11 @@ while ((Get-Date) -lt $hostDeadline) {
     Start-Sleep -Seconds 10
 }
 
+# How long to wait for the VM worker to disappear after the guest has shut itself down. Named once:
+# this value is quoted back to the user in the warning below, and a literal in that message used to
+# drift from the actual wait (it claimed 60 seconds while the code waited 180).
+$sandboxStopTimeoutSeconds = 180
+
 function Stop-SandboxInstance {
     <#
       Disposes of the Windows Sandbox client window and waits until the VM is really gone.
@@ -435,7 +440,7 @@ function Stop-SandboxInstance {
           produce a prompt. Discarding is the entire point, and the evidence reached the host before
           DONE.txt was written.
     #>
-    param([int]$TimeoutSeconds = 180)
+    param([int]$TimeoutSeconds = $sandboxStopTimeoutSeconds)
 
     # The viewer only - never WindowsSandboxServer, which is what supervises the VM teardown.
     foreach ($name in 'WindowsSandboxRemoteSession', 'WindowsSandboxClient', 'WindowsSandbox') {
@@ -456,11 +461,26 @@ function Stop-SandboxInstance {
 
 $verdictFile = if (Test-Path -LiteralPath $donePath) { (Get-Content -LiteralPath $donePath -Raw).Trim() } else { $null }
 
+# Which of the three terminal states did the wait loop above end in? They are NOT interchangeable:
+#   * DONE.txt written        -> the guest shut itself down. Only the leftover viewer needs disposing of.
+#   * the VM went away        -> nothing left to do; Stop-SandboxInstance returns immediately.
+#   * the HOST gave up first  -> the guest is STILL RUNNING and was never told to stop.
+# The third case must not be handled like the other two. Killing the viewer there is worse than doing
+# nothing: it orphans the vmmemWindowsSandbox worker (the Hyper-V compute service owns it, so the host
+# cannot terminate it) which keeps holding the mapped folder, AND it destroys the window that was the
+# user's only way to shut the guest down cleanly. The old code did exactly that and then advised closing
+# a window it had just killed.
+$hostTimedOut = (-not $verdictFile) -and
+    @(Get-Process -Name 'WindowsSandboxServer' -ErrorAction SilentlyContinue).Count -gt 0
+
 # Tear the VM down before touching the work folder: while the sandbox lives it holds the mapped-folder
 # handle, which is what made the cleanup below need a retry loop in the first place.
 if (-not $KeepSandboxOpen) {
-    if (-not (Stop-SandboxInstance)) {
-        Write-Warning 'The Windows Sandbox process did not exit within 60 seconds; close the window by hand.'
+    if ($hostTimedOut) {
+        Write-Warning "The host stopped waiting after $TotalTimeoutMinutes minutes, but the sandbox is still running. It is deliberately left alone: killing it from here would orphan the vmmemWindowsSandbox worker, which then holds '$workRoot' open until a reboot. Close the Windows Sandbox window yourself and confirm the discard prompt - that shuts the guest down cleanly and releases the folder. Raise -TotalTimeoutMinutes if the package simply needs longer."
+    }
+    elseif (-not (Stop-SandboxInstance)) {
+        Write-Warning "The Windows Sandbox VM worker did not exit within $sandboxStopTimeoutSeconds seconds. It holds '$workRoot' open until it does; the folder is wiped at the start of the next run for this package."
     }
 }
 $result = $null

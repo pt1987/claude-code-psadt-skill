@@ -369,6 +369,16 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.26.6 - 08.09.2026
+- **Fixed: the sandbox host timeout force-killed the viewer, then told you to close the window.** A timed-out run
+  was torn down like a finished one. That **orphans `vmmemWindowsSandbox`** — the Hyper-V compute service owns it,
+  so the host cannot kill it, and it keeps the work folder locked until the next run throws on it — and it removes
+  the only window through which the guest could still be shut down cleanly. The script's own comments name this
+  mechanism as the reason the *guest* must shut itself down; the timeout path did it anyway. A timeout now touches
+  nothing and explains what to close and which knob to raise.
+- **Fixed: the warning claimed 60 seconds while the code waited 180** — a literal duplicating a parameter default.
+  One declared value now feeds both.
+- **Appendix G finding 6 corrected**: "no recovery path" is now scoped to a run killed from *outside* the script.
 ### 0.26.5 - 08.09.2026
 - **L.8, new: MSIX/AppX**, verified against Microsoft Learn and against the live cmdlets. MSIX is a two-step
   model — machine-wide **staging**, then **per-user registration at logon** — and three traps follow from it:

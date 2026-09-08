@@ -213,6 +213,34 @@ Describe 'Invoke-PsadtSandboxTest' {
             $script:sbxCode | Should -Match 'foreach \(\$attempt in 1\.\.10\)'
         }
 
+        It 'tells a host timeout apart from a guest that finished on its own' {
+            # Three terminal states, and they are NOT interchangeable: DONE.txt written (the guest shut
+            # itself down), the VM gone without DONE.txt, and the HOST giving up while the guest is still
+            # working. Only the third one must keep its hands off the VM.
+            $script:sbxCode | Should -Match '\$hostTimedOut'
+        }
+
+        It 'leaves the VM alone on a host timeout instead of orphaning the worker' {
+            # The script's own reasoning: a host-side kill orphans vmmemWindowsSandbox, which then holds the
+            # work folder open until a reboot. Killing the viewer on the timeout path ALSO removes the only
+            # way the user could still shut the guest down cleanly - the window is gone.
+            $script:sbxCode | Should -Match 'if \(\$hostTimedOut\)'
+            $script:sbxCode | Should -Match 'elseif \(-not \(Stop-SandboxInstance'
+        }
+
+        It 'never states a timeout the code does not actually wait' {
+            # The warning claimed "60 seconds" while Stop-SandboxInstance waited 180 - a literal in a
+            # message duplicating a default. One source, interpolated into both.
+            $script:sbxCode | Should -Not -Match 'within 60 seconds'
+            $script:sbxCode | Should -Match '\$sandboxStopTimeoutSeconds'
+        }
+
+        It 'does not advise closing a window it has already killed' {
+            # The old timeout warning said "close the window by hand" AFTER force-killing every viewer
+            # process - advice the user cannot act on. The replacement must say why the VM is still there.
+            $script:sbxCode | Should -Not -Match 'close the window by hand'
+            $script:sbxCode | Should -Match 'orphan'
+        }
         It 'reports the work folder from what is on disk, not from what was intended' {
             # A single Remove-Item -ErrorAction SilentlyContinue leaves an empty directory behind AND
             # reports success. The returned value must be a Test-Path result, not a flag.

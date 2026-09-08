@@ -2,6 +2,38 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.26.6 - 2026-09-08 - The sandbox timeout killed the window it then told you to close
+
+### Fixed
+- **A host timeout was handled like a finished run, and did the one thing the script's own comments forbid.**
+  `Invoke-PsadtSandboxTest.ps1` ended its wait loop in one of three states, but treated them all alike. Two are
+  harmless: DONE.txt written (the guest shut itself down) or the VM already gone. The third - the HOST giving up
+  while the guest is still working - then went through the same teardown, which force-kills every viewer process.
+  Two consequences, both bad:
+  - It **orphans `vmmemWindowsSandbox`**. The Hyper-V compute service owns that worker, so the host cannot
+    terminate it; it keeps holding the mapped work folder, and the NEXT run of the package throws on the locked
+    folder instead of starting. The script documents this exact mechanism as the reason the guest must shut
+    itself down - and then did it anyway on the timeout path.
+  - It **destroys the only remaining way out**. After the viewer is killed there is no window left, yet the
+    warning read *"close the window by hand"* - advice the user cannot act on.
+
+  The script now computes `$hostTimedOut` BEFORE any teardown and, on a timeout, deliberately touches nothing:
+  it explains that the VM is still running, why killing it from the host would make things worse, that closing
+  the Windows Sandbox window and confirming the discard prompt is what releases the folder, and that
+  `-TotalTimeoutMinutes` is the knob if the package simply needs longer.
+- **The warning named a timeout the code did not wait.** It claimed 60 seconds while `Stop-SandboxInstance`
+  waited 180 - a literal in a message duplicating a parameter default, which is why the two had drifted. Both
+  now read `$sandboxStopTimeoutSeconds`, declared once.
+
+Four Pester cases cover it (RED first: all four failed against the old script), including the two that encode the
+contract rather than the wording - that a timeout is told apart from a finished run, and that the teardown branches
+on it.
+
+### Documentation
+- **Appendix G finding 6 is corrected rather than left standing.** It claimed there is "no recovery path" when a
+  run is aborted, which was true for the whole class before this fix. Now scoped: the case the script controls
+  (its own timeout) is handled, and a run killed from OUTSIDE the script (Ctrl+C on the host) remains the
+  un-recoverable one. The mechanism - the compute service owning the worker - is stated where it belongs.
 ## 0.26.5 - 2026-09-08 - MSIX installs for nobody when SYSTEM makes the obvious call; App-V is not end of life
 
 ### Documentation
