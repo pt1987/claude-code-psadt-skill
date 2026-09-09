@@ -1,1565 +1,1080 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>psadt-deploy — PSADT v4 to Intune, in verified phases</title>
-    <meta
-      name="description"
-      content="A Claude Code skill that drives the full lifecycle of a PSAppDeployToolkit v4.x Intune Win32 package: intake, research, scaffold, pre-flight, a SYSTEM test in Windows Sandbox, packaging, dossier and an optional Graph upload."
-    />
-    <meta name="color-scheme" content="light" />
-    <meta name="theme-color" content="#9fe870" />
-    <link rel="icon" href="/claude-code-psadt-skill/favicon.svg" type="image/svg+xml" />
-    <script type="module" crossorigin src="/claude-code-psadt-skill/assets/index-CNZNqkfL.js"></script>
-    <link rel="stylesheet" crossorigin href="/claude-code-psadt-skill/assets/index-C18l05Q8.css">
-  </head>
-  <body>
-    <a class="skip-link" href="#main">Skip to content</a>
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>psadt-deploy — PSADT v4 to Intune, in verified phases</title>
+<meta name="description" content="A Claude Code skill that drives the full lifecycle of a PSAppDeployToolkit v4.x Intune Win32 package: intake, research, scaffold, pre-flight, a SYSTEM test in Windows Sandbox, packaging, dossier and an optional Graph upload.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#161826">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:title" content="psadt-deploy — PSADT v4 to Intune, in verified phases">
+<meta property="og:description" content="Thirteen phases, each owned by a script rather than by prose. A step either passed or it did not.">
+<meta property="og:url" content="https://pt1987.github.io/claude-code-psadt-skill/">
+<script>window.__resources = {"https://unpkg.com/react@18.3.1/umd/react.production.min.js":"assets/react.production-d949f1c3.js","https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js":"assets/react-dom.production-35f4f974.js"};</script>
 
-    <!-- ================================ NAV ================================ -->
-    <header class="nav">
-      <div class="container-marketing nav__inner">
-        <a class="nav__brand" href="#top" aria-label="psadt-deploy, back to top">
-          <span class="nav__mark" aria-hidden="true"></span>
-          <span class="nav__wordmark">psadt-deploy</span>
-        </a>
-        <nav class="nav__links" aria-label="Sections">
-          <a href="#preflight">Pre-flight</a>
-          <a href="#sandbox">SYSTEM test</a>
-          <a href="#engines">Coverage</a>
-        </nav>
-        <div class="nav__actions">
-          <a class="nav__ghost" href="https://github.com/pt1987/claude-code-psadt-skill" rel="noopener">GitHub</a>
-          <a class="btn btn--primary nav__cta" href="#start">Install</a>
+<script src="assets/dc-runtime-8fe7df74.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>/* Nocturne — design-system tokens and component classes. This file is the source of truth for the system's look; retune it here and see readme.md. */
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/inter-ca157063.woff2") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/inter-71d5ee93.woff2") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/inter-6e9e020a.woff2") format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* greek */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/inter-1be3448e.woff2") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/inter-5c66f9e0.woff2") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/inter-34b9c504.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/inter-3100e775.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("assets/inter-ca157063.woff2") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("assets/inter-71d5ee93.woff2") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("assets/inter-6e9e020a.woff2") format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* greek */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("assets/inter-1be3448e.woff2") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("assets/inter-5c66f9e0.woff2") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("assets/inter-34b9c504.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("assets/inter-3100e775.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("assets/inter-ca157063.woff2") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("assets/inter-71d5ee93.woff2") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("assets/inter-6e9e020a.woff2") format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* greek */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("assets/inter-1be3448e.woff2") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("assets/inter-5c66f9e0.woff2") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("assets/inter-34b9c504.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("assets/inter-3100e775.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("assets/inter-ca157063.woff2") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("assets/inter-71d5ee93.woff2") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("assets/inter-6e9e020a.woff2") format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* greek */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("assets/inter-1be3448e.woff2") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("assets/inter-5c66f9e0.woff2") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("assets/inter-34b9c504.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("assets/inter-3100e775.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+
+:root {
+  --color-bg: #161826;
+  --color-surface: #232532;
+  --color-text: #e9e9ed;
+  --color-accent: #9184d9; /* review round 7 (Barron): the accent moves to
+     the product's blurple — OKLCH hue 289.2, the hue of the app's own Pro
+     accent (#9a8fe0, --om-accent-pro) — at the same lightness the steel
+     accent held (L 0.660, so the documented ratios survive) and chroma
+     in the product blurple's own range (its token sits at C 0.118; the
+     accent takes 0.125, from the old steel's 0.030):
+     the accent now reads as an accent rather than another neutral. */
+  --color-accent-2: #a7a1db; /* the machine-derived stand-in follows: same
+     hue, same L 0.734, chroma at the same 2:3 proportion it held */
+  --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+
+  /* Tonal ramps — generated in OKLCH on one shared lightness scale, so the
+     same step of any role matches the others in visual value. */
+  --color-neutral-100: #f3f5fe;
+  --color-neutral-200: #e4e7f5;
+  --color-neutral-300: #cfd3e5;
+  --color-neutral-400: #b2b6ca;
+  --color-neutral-500: #9397ab;
+  --color-neutral-600: #75798c;
+  --color-neutral-700: #595d6c;
+  --color-neutral-800: #3f424d;
+  --color-neutral-900: #292b31;
+
+  --color-accent-100: #f5f4ff;
+  --color-accent-200: #e7e5fe;
+  --color-accent-300: #d2cefd;
+  --color-accent-400: #b5abfc;
+  --color-accent-500: #968ae0;
+  --color-accent-600: #796cbf;
+  --color-accent-700: #5d5294;
+  --color-accent-800: #423a6a;
+  --color-accent-900: #2b2741;
+
+  --color-accent-2-100: #f5f4ff;
+  --color-accent-2-200: #e7e5fe;
+  --color-accent-2-300: #d2cefd;
+  --color-accent-2-400: #b5afe8;
+  --color-accent-2-500: #9690c9;
+  --color-accent-2-600: #7972a9;
+  --color-accent-2-700: #5c5783;
+  --color-accent-2-800: #423e5d;
+  --color-accent-2-900: #2b293a;
+
+  /* Deck section-divider ground — review round 3: saturation as presence.
+     Dividers take a saturated deep indigo (hue 277, the neutral ramp's own
+     family; C 0.094 — written when the accent held C 0.030, before the
+     round-7 blurple raised it past the ground's) with a lighter bloom and
+     a ghost tint of the same hue, while the slide grounds stay
+     desaturated. Deck-scale fills only — not interface colors. */
+  --color-section: #262a60;
+  --color-section-glow: #353b80;
+  --color-section-ghost: #4c5397;
+
+  --font-heading: "Inter", system-ui, sans-serif;
+  --font-heading-weight: 500;
+  --font-body: "Inter", system-ui, sans-serif;
+
+  --space-1: 2.8px;
+  --space-2: 5.6px;
+  --space-3: 8.4px;
+  --space-4: 11.2px;
+  --space-6: 16.8px;
+  --space-8: 22.4px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+
+  /* Elevation — derived from the ground: soft ink-tinted shadows on a
+     light theme, a hairline edge + ambient darkness on a dark one. */
+  --shadow-sm: 0 0 0 1px #3f424d;
+  --shadow-md: 0 0 0 1px #595d6c, 0 6px 18px rgba(0,0,0,0.55);
+  --shadow-lg: 0 0 0 1px #9397ab, 0 16px 40px rgba(0,0,0,0.65);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+h1, h2, h3, h4 { font-family: var(--font-heading); font-weight: var(--font-heading-weight); }
+
+.lighten{mix-blend-mode:lighten;background-color:transparent}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Components — built with the tokens above. Plain CSS
+   on plain HTML: no JavaScript, no build step. Each class is documented in
+   readme.md and demonstrated in foundations/ and components/.
+   ══════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; font-size: 15px; line-height: 1.55; font-weight: 400; }
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  line-height: 1.12; letter-spacing: -0.015em; margin: 0 0 var(--space-2);
+}
+h1 { font-size: 42px; }
+h2 { font-size: 32px; }
+h3 { font-size: 25px; }
+h4 { font-size: 20px; }
+h5 { font-size: 16px; }
+h6 { font-size: 13px; }
+h6 { letter-spacing: 0.08em; text-transform: uppercase; }
+p { margin: 0 0 var(--space-3); }
+a { color: var(--color-accent); text-underline-offset: 3px; }
+img { display: block; max-width: 100%; }
+figure { margin: 0; }
+figcaption {
+  font-size: 11px; margin-top: var(--space-1);
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+.text-muted { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+
+/* — rules — */
+/* Rules fade to transparent at both ends instead of stopping cleanly — a
+   Nocturne signature. The ramp is 48px an end (one deck baseline unit),
+   painted from the same divider token. Freestanding rules fade; box
+   outlines, in-control separators, and short accent marks stay solid. */
+.hr {
+  height: 1px; border: 0; margin: var(--space-4) 0;
+  background: linear-gradient(to right,
+    transparent, var(--color-divider) 48px,
+    var(--color-divider) calc(100% - 48px), transparent);
+}
+
+/* — buttons — */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; text-decoration: none;
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 14px; line-height: 1.2; color: var(--color-text); /* matches the .input's 14px —
+     the pair sits side by side in sign-up rows */
+  background: transparent; border: 1px solid transparent;
+  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  border-radius: var(--radius-md);
+}
+.btn svg { display: block; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { color: var(--color-accent); border-color: var(--color-accent); }
+.btn-primary:hover { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.btn-primary:active { background: color-mix(in srgb, var(--color-accent) 22%, transparent); }
+.btn-secondary { border-color: var(--color-divider); }
+.btn-secondary:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.btn-secondary:active { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+.btn-ghost { color: var(--color-accent); padding-inline: var(--space-1); }
+.btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.btn-ghost:active { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.btn-icon { width: 36px; height: 36px; padding: 0; }
+.btn-block { width: 100%; margin-top: var(--space-2); }
+
+/* — forms — */
+.field > label {
+  display: block; font-size: 12px; margin-bottom: 5px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.input {
+  width: 100%; min-height: 36px; padding: 6px 10px; font: inherit;
+  font-size: 14px; color: var(--color-text); caret-color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+}
+.input:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+textarea.input { min-height: 90px; resize: vertical; }
+.radio { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.radio input, .seg-opt input {
+  position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+}
+.radio .dot {
+  width: 16px; height: 16px; flex: none; border-radius: 50%;
+  border: 1.5px solid var(--color-divider);
+}
+.radio:hover .dot { border-color: var(--color-accent); }
+.radio input:checked + .dot {
+  border-color: var(--color-accent); background: var(--color-accent);
+  box-shadow: inset 0 0 0 4px var(--color-bg);
+}
+.radio input:focus-visible + .dot { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.seg {
+  display: inline-flex; overflow: hidden;
+  border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+}
+.seg-opt {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; font-size: 13px; cursor: pointer;
+}
+.seg-opt + .seg-opt { border-left: 1px solid var(--color-divider); }
+.seg-opt:has(input:checked) { color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
+.seg-opt:not(:has(input:checked)):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.seg-opt:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
+/* — cards — */
+.card {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-surface);
+}
+.card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent); }
+.card-title {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 17px; line-height: 1.2;
+}
+.card-body { margin: 0; font-size: 13px; opacity: 0.8; flex: 1; }
+.card-meta {
+  display: flex; align-items: center; gap: 6px; font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+}
+.elev-sm { box-shadow: var(--shadow-sm); }
+.elev-md { box-shadow: var(--shadow-md); }
+.elev-lg { box-shadow: var(--shadow-lg); }
+
+/* — tags — */
+.tag {
+  display: inline-flex; align-items: center; font-size: 11px;
+  letter-spacing: 0.02em; padding: 3px 10px;
+  border-radius: calc(var(--radius-md) * 0.75);
+}
+.tag-accent { background: var(--color-accent-800); color: var(--color-accent-100); }
+.tag-accent-2 { background: var(--color-accent-2-800); color: var(--color-accent-2-100); }
+.tag-neutral { background: var(--color-neutral-800); color: var(--color-neutral-100); }
+.tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent); }
+
+/* — navigation — */
+.nav {
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: none;
+}
+.nav-brand {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 18px; margin-right: auto;
+}
+.nav a { color: inherit; text-decoration: none; font-size: 14px; }
+.nav a:hover, .nav a[aria-current='page'] { color: var(--color-accent); }
+
+/* — tables — */
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th {
+  text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  padding: var(--space-2); border-bottom: 1px solid transparent; /* keeps layout; the row paints the fading rule */
+}
+.table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid transparent;
+}
+/* Row rules as row-level strips so the end-fade spans the row, not each cell. */
+.table thead tr {
+  background: linear-gradient(to right,
+    transparent, var(--color-divider) 48px,
+    var(--color-divider) calc(100% - 48px), transparent) no-repeat bottom / 100% 1px;
+}
+.table tbody tr {
+  background: linear-gradient(to right,
+    transparent, color-mix(in srgb, var(--color-text) 8%, transparent) 48px,
+    color-mix(in srgb, var(--color-text) 8%, transparent) calc(100% - 48px), transparent) no-repeat bottom / 100% 1px;
+}
+.table tbody tr:hover {
+  /* the hover tint layers over the row rule, which keeps painting */
+  background:
+    linear-gradient(color-mix(in srgb, var(--color-text) 4%, transparent),
+                    color-mix(in srgb, var(--color-text) 4%, transparent)) no-repeat 0 0 / 100% 100%,
+    linear-gradient(to right,
+      transparent, color-mix(in srgb, var(--color-text) 8%, transparent) 48px,
+      color-mix(in srgb, var(--color-text) 8%, transparent) calc(100% - 48px), transparent) no-repeat bottom / 100% 1px;
+}
+
+/* — dialog — */
+.dialog-backdrop {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+}
+.dialog {
+  width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
+}
+.dialog-title {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 20px;
+}
+.dialog-body { font-size: 14px; opacity: 0.85; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+
+</style>
+<script src="assets/nocturne-aceb66bf.js"></script>
+<style>
+  :root {
+    --color-accent: #1e9480;
+    --color-accent-2: #34a894;
+    --color-accent-100: #effaf7;
+    --color-accent-200: #d2f1ea;
+    --color-accent-300: #a4e4d6;
+    --color-accent-400: #61cfb8;
+    --color-accent-500: #23a48e;
+    --color-accent-600: #17806f;
+    --color-accent-700: #126254;
+    --color-accent-800: #0d463c;
+    --color-accent-900: #0a2f29;
+    --color-section: #10403c;
+    --color-section-glow: #175a52;
+    --color-section-ghost: #23796d;
+  }
+  body { margin: 0; background: var(--color-bg); }
+  a { color: var(--color-accent); text-decoration: none; }
+  a:hover { color: var(--color-accent-300); }
+  @keyframes noct-pulse { 0%,100% { opacity: 0.35 } 50% { opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important } }
+  [data-hero-title] { font-size: clamp(30px, 5.4vw, 64px) !important }
+
+  @media (max-width: 1024px) {
+    [data-col] { grid-template-columns: minmax(0, 1fr) !important; gap: 32px !important }
+    [data-sticky] { position: static !important }
+    [data-nav-links] { display: none !important }
+    [data-hero-pad] { padding-top: 52px !important; padding-bottom: 68px !important }
+  }
+  @media (max-width: 760px) {
+    [data-wrap] { padding-left: 18px !important; padding-right: 18px !important }
+    h2 { font-size: 27px !important }
+    h3 { font-size: 21px !important }
+  }
+  @media (max-width: 520px) {
+    [data-wrap] { padding-top: 56px !important; padding-bottom: 56px !important }
+  }
+</style>
+</helmet>
+
+
+
+<div style="background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); min-height: 100vh; overflow-x: hidden">
+
+  <header style="position: sticky; top: 0; z-index: 40; backdrop-filter: blur(14px); background: color-mix(in srgb, var(--color-bg) 82%, transparent); border-bottom: 1px solid var(--color-divider)">
+    <div data-wrap="" style="max-width: 1160px; margin: 0 auto; padding: 12px 28px; display: flex; align-items: center; gap: 28px; flex-wrap: wrap">
+      <a href="#top" style="display: flex; align-items: center; gap: 10px; color: var(--color-text); font-family: var(--font-heading); font-weight: 500; letter-spacing: -0.01em; white-space: nowrap">
+        <span style="width: 10px; height: 10px; border-radius: 2px; background: var(--color-accent); box-shadow: 0 0 12px var(--color-accent)"></span>
+        psadt-deploy
+      </a>
+      <nav data-nav-links="" style="display: flex; gap: 22px; font-size: 13px; margin-left: auto; white-space: nowrap">
+        <a href="#phases" style="color: var(--color-neutral-400)">Phases</a>
+        <a href="#phases" style="color: var(--color-neutral-400)">Pre-flight</a>
+        <a href="#engines" style="color: var(--color-neutral-400)">Engines</a>
+        <a href="https://github.com/pt1987/claude-code-psadt-skill" rel="noopener" style="color: var(--color-neutral-400)">GitHub</a>
+      </nav>
+      <a class="btn btn-primary" href="#start" style="margin-left: auto">Install</a>
+    </div>
+  </header>
+
+  <section id="top" data-hero-pad="" style="position: relative; max-width: 1160px; margin: 0 auto; padding: 116px 28px 96px">
+    <div style="position: absolute; inset: -140px 40% 40% -220px; background: radial-gradient(circle at 30% 40%, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent 62%); filter: blur(30px); pointer-events: none; opacity: 0.9"></div>
+    <div data-col="" style="position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 64px; align-items: end">
+      <div>
+        <p style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-300); margin: 0 0 20px">Claude Code skill · v0.26.7</p>
+        <h1 data-hero-title="" style="font-size: 64px; line-height: 1.02; letter-spacing: -0.03em; margin: 0 0 24px; text-wrap: balance">PSADT v4 to Intune,<br>in verified phases.</h1>
+        <p style="font-size: 19px; line-height: 1.5; color: var(--color-neutral-300); max-width: 46ch; margin: 0 0 32px">Thirteen phases, each owned by a script rather than by prose. A step either passed or it did not — and the thing that decides is the same every time.</p>
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
+          <a class="btn btn-primary" href="#start" style="padding: 10px 18px; font-size: 15px">Install the skill</a>
+          <a class="btn btn-secondary" href="#phases" style="padding: 10px 18px; font-size: 15px">See the workflow</a>
         </div>
       </div>
-    </header>
+      <div style="border: 1px solid var(--color-divider); border-radius: var(--radius-lg); background: linear-gradient(160deg, var(--color-surface), var(--color-bg)); box-shadow: var(--shadow-md); overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--color-divider)">
+          <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--color-neutral-700)"></span>
+          <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--color-neutral-700)"></span>
+          <span style="font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-500); margin-left: 6px">terminal</span>
+        </div>
+        <div style="padding: 20px 18px 22px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13.5px; line-height: 1.9">
+          <div style="color: var(--color-neutral-500)">$ <span style="color: var(--color-text)">{{ installCmd }}</span></div>
+          <div style="color: var(--color-neutral-500)">→ ~/.claude/skills/psadt-deploy</div>
+          <div style="color: var(--color-accent-300); margin-top: 12px">&gt; Create the Win32 Intune package for 7-Zip 24.09</div>
+        </div>
+        <div style="padding: 12px 18px; border-top: 1px solid var(--color-divider); display: flex; align-items: center; justify-content: space-between; gap: 12px">
+          <span style="font-size: 11.5px; color: var(--color-neutral-500)">Windows · Node 18+ · zero dependencies</span>
+          <button class="btn btn-ghost" type="button" sc-camel-on-click="{{ copy }}" style="font-size: 12px">{{ copyLabel }}</button>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    <main id="main">
-      <!-- ===================== WALKTHROUGH (the header) ===================== -->
-      <section class="band band--sage wt-band" id="top">
-        <div class="container-marketing">
-          <div class="wt" data-walkthrough>
-            <div class="wt__top">
-              <div class="wt__intro">
-                <p class="wt__eyebrow">Claude Code skill · v0.26.7</p>
-                <h1 class="wt__title">Phase 0 through 12,<br />each owned by a script.</h1>
-                <p class="wt__lead">
-                  A step either passed or it did not — and the thing that decides is the same
-                  every time. Press play, or click any phase.
-                </p>
-              </div>
-              <div class="wt__controls">
-                <button class="wt__btn" type="button" data-wt-play aria-pressed="false">Play</button>
-                <button class="wt__btn wt__btn--ghost" type="button" data-wt-restart>Restart</button>
-              </div>
+  <section style="border-top: 1px solid var(--color-divider); border-bottom: 1px solid var(--color-divider); background: color-mix(in srgb, var(--color-surface) 55%, transparent)">
+    <div data-wrap="" style="max-width: 1160px; margin: 0 auto; padding: 40px 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 28px 24px">
+      <sc-for list="{{ stats }}" as="s" hint-placeholder-count="6">
+        <div>
+          <div style="font-family: var(--font-heading); font-size: 38px; line-height: 1; letter-spacing: -0.02em; color: var(--color-accent-300)">{{ s.value }}</div>
+          <div style="font-size: 13.5px; margin-top: 8px">{{ s.label }}</div>
+          <div style="font-size: 11.5px; line-height: 1.45; color: var(--color-neutral-500); margin-top: 4px">{{ s.note }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section id="phases" style="max-width: 1160px; margin: 0 auto; padding: 96px 28px 40px">
+    <p style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-300); margin: 0 0 14px">The workflow</p>
+    <h2 style="font-size: 40px; letter-spacing: -0.025em; margin: 0 0 16px">Phase 0 through 12</h2>
+    <p style="font-size: 17px; color: var(--color-neutral-300); max-width: 58ch; margin: 0">Every phase leaves a verdict behind, and four of them stop to ask you something. Step through them here.</p>
+  </section>
+
+  <div data-wrap="" style="max-width: 1160px; margin: 0 auto; padding: 0 28px 96px">
+    <div style="display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; margin-bottom: 20px">
+      <div style="flex: 1; min-width: 200px">
+        <div style="font-family: var(--font-heading); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-500)">Phase</div>
+        <div style="display: flex; align-items: baseline; gap: 14px; margin-top: 4px">
+          <div style="font-family: var(--font-heading); font-size: 48px; line-height: 1; letter-spacing: -0.03em">{{ activeNum }}</div>
+          <div style="font-size: 22px; color: var(--color-accent-300)">{{ activeName }}</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: var(--color-neutral-500)">{{ counter }}</span>
+        <button class="btn btn-secondary" type="button" sc-camel-on-click="{{ prev }}" aria-label="Previous phase" style="width: 38px; height: 38px; padding: 0; font-size: 16px">←</button>
+        <button class="btn btn-secondary" type="button" sc-camel-on-click="{{ next }}" aria-label="Next phase" style="width: 38px; height: 38px; padding: 0; font-size: 16px">→</button>
+      </div>
+    </div>
+
+    <div data-chiprail="" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px">
+      <sc-for list="{{ ticks }}" as="t" hint-placeholder-count="13">
+        <button type="button" sc-camel-on-click="{{ t.go }}" title="{{ t.name }}" style="{{ t.style }}">
+          <span style="font-family: var(--font-heading); font-size: 11.5px">{{ t.num }}</span>
+          <span style="{{ t.nameStyle }}">{{ t.name }}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="position: relative; height: 2px; background: var(--color-divider); border-radius: 2px; margin-bottom: 24px">
+      <div style="{{ railFillStyle }}"></div>
+    </div>
+
+    <div style="{{ cardStyle }}">
+      <div style="display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap">
+        <span style="font-family: var(--font-heading); font-size: 13px; color: var(--color-accent); letter-spacing: 0.08em">{{ cardPad }}</span>
+        <h3 style="font-size: 26px; letter-spacing: -0.02em; margin: 0">{{ cardName }}</h3>
+        <sc-if value="{{ cardOptional }}" hint-placeholder-val="{{ false }}">
+          <span class="tag tag-outline" style="font-size: 10.5px">opt-in</span>
+        </sc-if>
+        <span style="margin-left: auto; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: var(--color-neutral-500)">{{ cardOwner }}</span>
+      </div>
+      <p style="font-size: 17px; line-height: 1.55; color: var(--color-neutral-300); margin: 14px 0 0; max-width: 62ch">{{ cardBlurb }}</p>
+      <div data-col="" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); gap: 32px; margin-top: 26px">
+        <div style="display: flex; flex-direction: column; gap: 9px">
+          <sc-if value="{{ notGate }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-direction: column; gap: 9px">
+              <sc-for list="{{ cardItems }}" as="it" hint-placeholder-count="5">
+                <div style="{{ it.style }}">
+                  <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; color: var(--color-accent); width: 14px; flex: none">✓</span>
+                  <span style="font-size: 13.5px; flex: 1; min-width: 0">{{ it.label }}</span>
+                  <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10.5px; color: var(--color-neutral-500); text-align: right">{{ it.meta }}</span>
+                </div>
+              </sc-for>
             </div>
-
-            <div class="wt__nav">
-              <ol class="wt__chips">
-      <li class="wt__chip-item">
-        <a class="wt__chip is-current" href="#phase-0"
-           data-wt-chip="0">
-          <span class="wt__chip-num mono">0</span>
-          <span class="wt__chip-name">Setup</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-1"
-           data-wt-chip="1">
-          <span class="wt__chip-num mono">1</span>
-          <span class="wt__chip-name">Intake</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-2"
-           data-wt-chip="2">
-          <span class="wt__chip-num mono">2</span>
-          <span class="wt__chip-name">Research</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-3"
-           data-wt-chip="3">
-          <span class="wt__chip-num mono">3</span>
-          <span class="wt__chip-name">Scaffold</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-4"
-           data-wt-chip="4">
-          <span class="wt__chip-num mono">4</span>
-          <span class="wt__chip-name">Customize</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-5"
-           data-wt-chip="5">
-          <span class="wt__chip-num mono">5</span>
-          <span class="wt__chip-name">Pre-flight</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-6"
-           data-wt-chip="6">
-          <span class="wt__chip-num mono">6</span>
-          <span class="wt__chip-name">SYSTEM test</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-7"
-           data-wt-chip="7">
-          <span class="wt__chip-num mono">7</span>
-          <span class="wt__chip-name">Package</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-8"
-           data-wt-chip="8">
-          <span class="wt__chip-num mono">8</span>
-          <span class="wt__chip-name">Dossier</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-9"
-           data-wt-chip="9">
-          <span class="wt__chip-num mono">9</span>
-          <span class="wt__chip-name">Upload</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-10"
-           data-wt-chip="10">
-          <span class="wt__chip-num mono">10</span>
-          <span class="wt__chip-name">Assignment</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-11"
-           data-wt-chip="11">
-          <span class="wt__chip-num mono">11</span>
-          <span class="wt__chip-name">Test sequence</span>
-        </a>
-      </li>
-      <li class="wt__chip-item">
-        <a class="wt__chip" href="#phase-12"
-           data-wt-chip="12">
-          <span class="wt__chip-num mono">12</span>
-          <span class="wt__chip-name">Rollout</span>
-        </a>
-      </li></ol>
-              <div class="wt__bar"><span class="wt__bar-fill" data-wt-bar></span></div>
+          </sc-if>
+          <sc-if value="{{ isGate }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; gap: 9px">
+              <sc-for list="{{ checks }}" as="c" hint-placeholder-count="10">
+                <div style="{{ c.rowStyle }}">
+                  <span style="{{ c.markStyle }}">{{ c.mark }}</span>
+                  <span style="font-size: 13.5px; flex: 1; min-width: 0">{{ c.name }} <span style="color: var(--color-neutral-500); font-size: 12.5px">{{ c.what }}</span></span>
+                  <span style="{{ c.metaStyle }}">{{ c.status }}</span>
+                </div>
+              </sc-for>
             </div>
-
-            <!-- The figures and the caveat do not change with the phase, so they sit
-                 above the split rather than under a panel that swaps beneath them. -->
-            <div class="wt__facts">
-              <div class="wt__tiles">
-      <div class="wt__tile">
-        <span class="wt__tile-value">13</span>
-        <span class="wt__tile-label mono">phases</span>
-      </div>
-      <div class="wt__tile">
-        <span class="wt__tile-value">4</span>
-        <span class="wt__tile-label mono">decision gates</span>
-      </div>
-      <div class="wt__tile">
-        <span class="wt__tile-value">30</span>
-        <span class="wt__tile-label mono">PowerShell scripts</span>
-      </div>
-      <div class="wt__tile">
-        <span class="wt__tile-value">14</span>
-        <span class="wt__tile-label mono">installer engines</span>
-      </div></div>
-              <p class="wt__note mono">
-                Figures as of v0.26.7. The SYSTEM test is binding; the upload is opt-in and
-                non-destructive by default.
-              </p>
+          </sc-if>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 14px">
+          <div>
+            <span style="{{ cardVerdictStyle }}">{{ cardVerdictLabel }}</span>
+            <p style="font-size: 13px; line-height: 1.55; color: var(--color-neutral-400); margin: 10px 0 0">{{ cardVerdictText }}</p>
+          </div>
+          <sc-if value="{{ cardGate }}" hint-placeholder-val="{{ false }}">
+            <div style="border-left: 2px solid var(--color-accent); padding: 4px 0 4px 12px">
+              <div style="font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent-300)">decision gate</div>
+              <p style="font-size: 12.5px; line-height: 1.5; color: var(--color-neutral-400); margin: 6px 0 0">{{ cardGate }}</p>
             </div>
-
-            <div class="wt__split">
-              <div class="wt__panels">
-      <article class="wt__card" id="phase-0" data-wt-panel="0">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 0</p>
-            <h3 class="wt__name">Setup</h3>
-            <p class="wt__blurb">Thirteen prerequisite checks, each GREEN, YELLOW or RED.</p>
-          </div>
-          <code class="wt__owner mono">Initialize-PsadtSkill.ps1</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">PowerShell 5.1+ or 7+</span>
-            <span class="wt__item-meta mono">required</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">PSADT v4 toolkit</span>
-            <span class="wt__item-meta mono">fetched</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">IntuneWinAppUtil</span>
-            <span class="wt__item-meta mono">%LOCALAPPDATA%</span>
-          </li>
-          <li class="wt__item" data-wt-step="3">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Windows Sandbox feature</span>
-            <span class="wt__item-meta mono">enabled</span>
-          </li>
-          <li class="wt__item" data-wt-step="4">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">13 prerequisite checks</span>
-            <span class="wt__item-meta mono">GREEN</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-1" data-wt-panel="1">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 1</p>
-            <h3 class="wt__name">Intake</h3>
-            <p class="wt__blurb">The application is named and scoped. Blockers arrive as clickable options, not as a questionnaire.</p>
-          </div>
-          <code class="wt__owner mono">agent · gate 1</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Vendor · app · version · arch</span>
-            <span class="wt__item-meta mono">identity</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Gate 1 — scope</span>
-            <span class="wt__item-meta mono">decision</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Blockers as options</span>
-            <span class="wt__item-meta mono">clickable</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-2" data-wt-panel="2">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 2</p>
-            <h3 class="wt__name">Research</h3>
-            <p class="wt__blurb">Version, silent switches and known Intune pitfalls are researched in parallel, not asked.</p>
-          </div>
-          <code class="wt__owner mono">agent · gate 2</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Current version</span>
-            <span class="wt__item-meta mono">researched</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Silent switches</span>
-            <span class="wt__item-meta mono">researched</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Known Intune pitfalls</span>
-            <span class="wt__item-meta mono">researched</span>
-          </li>
-          <li class="wt__item" data-wt-step="3">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Installer engine</span>
-            <span class="wt__item-meta mono">1 of 14</span>
-          </li>
-          <li class="wt__item" data-wt-step="4">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Gate 2 — semantics</span>
-            <span class="wt__item-meta mono">decision</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-3" data-wt-panel="3">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 3</p>
-            <h3 class="wt__name">Scaffold</h3>
-            <p class="wt__blurb">A generator writes the package in one pass — not four separate handoffs.</p>
-          </div>
-          <code class="wt__owner mono">New-MsiPackage · New-DriverPackage · …</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Launcher</span>
-            <span class="wt__item-meta mono">generated</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Detection script</span>
-            <span class="wt__item-meta mono">exit-code contract</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Per-run log name</span>
-            <span class="wt__item-meta mono">_Install_&lt;ts&gt;.log</span>
-          </li>
-          <li class="wt__item" data-wt-step="3">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">psadt-package.json</span>
-            <span class="wt__item-meta mono">one truth</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-4" data-wt-panel="4">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 4</p>
-            <h3 class="wt__name">Customize</h3>
-            <p class="wt__blurb">All three hooks filled from the research; custom helpers go in the Extensions module, never in the main script.</p>
-          </div>
-          <code class="wt__owner mono">agent</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Install hook</span>
-            <span class="wt__item-meta mono">filled</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Uninstall hook</span>
-            <span class="wt__item-meta mono">filled</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Repair hook</span>
-            <span class="wt__item-meta mono">filled</span>
-          </li>
-          <li class="wt__item" data-wt-step="3">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Extensions module</span>
-            <span class="wt__item-meta mono">custom helpers</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-5" data-wt-panel="5">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 5</p>
-            <h3 class="wt__name">Pre-flight</h3>
-            <p class="wt__blurb">Ten check categories. A gate, not a report.</p>
-          </div>
-          <code class="wt__owner mono">Invoke-PsadtPreflight.ps1</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Encoding · BOM</span>
-            <span class="wt__item-meta mono">PASS</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">AST parse</span>
-            <span class="wt__item-meta mono">PASS</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">v3 cmdlets</span>
-            <span class="wt__item-meta mono">PASS</span>
-          </li>
-          <li class="wt__item" data-wt-step="3">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Hook structure</span>
-            <span class="wt__item-meta mono">PASS</span>
-          </li>
-          <li class="wt__item" data-wt-step="4">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">ProductCode</span>
-            <span class="wt__item-meta mono">PASS</span>
-          </li>
-          <li class="wt__item" data-wt-step="5">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Top-level code</span>
-            <span class="wt__item-meta mono">PASS</span>
-          </li>
-          <li class="wt__item" data-wt-step="6">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Detection contract</span>
-            <span class="wt__item-meta mono">PASS</span>
-          </li>
-          <li class="wt__item" data-wt-step="7">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Manifest</span>
-            <span class="wt__item-meta mono">PASS</span>
-          </li>
-          <li class="wt__item" data-wt-step="8">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Log name</span>
-            <span class="wt__item-meta mono">PASS</span>
-          </li>
-          <li class="wt__item" data-wt-step="9">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Driver trust</span>
-            <span class="wt__item-meta mono">PASS</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-6" data-wt-panel="6">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 6</p>
-            <h3 class="wt__name">SYSTEM test</h3>
-            <p class="wt__blurb">Five deployment actions, each followed by a detection evaluation — ten recorded steps.</p>
-          </div>
-          <code class="wt__owner mono">Invoke-PsadtSandboxTest.ps1 · Invoke-PsadtSystemTest.ps1</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">1 Install → detect</span>
-            <span class="wt__item-meta mono">SYSTEM</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">2 Uninstall → detect</span>
-            <span class="wt__item-meta mono">SYSTEM</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">3 Reinstall → detect</span>
-            <span class="wt__item-meta mono">SYSTEM</span>
-          </li>
-          <li class="wt__item" data-wt-step="3">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">4 Repair → detect</span>
-            <span class="wt__item-meta mono">SYSTEM</span>
-          </li>
-          <li class="wt__item" data-wt-step="4">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">5 Uninstall → detect</span>
-            <span class="wt__item-meta mono">SYSTEM</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-7" data-wt-panel="7">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 7</p>
-            <h3 class="wt__name">Package</h3>
-            <p class="wt__blurb">One command produces a verified .intunewin, named after the app rather than after the toolkit.</p>
-          </div>
-          <code class="wt__owner mono">Invoke-PsadtPackage.ps1</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">.intunewin built</span>
-            <span class="wt__item-meta mono">Vendor_App_Version_x64</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Detection.xml · SetupFile</span>
-            <span class="wt__item-meta mono">verified</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Size · SHA256</span>
-            <span class="wt__item-meta mono">verified</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-8" data-wt-panel="8">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 8</p>
-            <h3 class="wt__name">Dossier</h3>
-            <p class="wt__blurb">One self-contained bilingual HTML file — generated whether you upload or not.</p>
-          </div>
-          <code class="wt__owner mono">New-PsadtReport.ps1</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Intune dossier</span>
-            <span class="wt__item-meta mono">bilingual</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Company Portal text</span>
-            <span class="wt__item-meta mono">paste-ready</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Return codes · detection</span>
-            <span class="wt__item-meta mono">documented</span>
-          </li>
-          <li class="wt__item" data-wt-step="3">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Technical report</span>
-            <span class="wt__item-meta mono">pre-flight · SYSTEM test</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-9" data-wt-panel="9">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 9 <span class="wt__optin mono">opt-in</span></p>
-            <h3 class="wt__name">Upload</h3>
-            <p class="wt__blurb">Access read as state, then a dry run, then confirmation, then a raw Graph push.</p>
-          </div>
-          <code class="wt__owner mono">Invoke-IntuneWin32Upload.ps1 · Test-PsadtIntuneAccess.ps1</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Access capabilities</span>
-            <span class="wt__item-meta mono">granted · missing · unknown</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Dry run</span>
-            <span class="wt__item-meta mono">no writes</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Gate 4 — confirm</span>
-            <span class="wt__item-meta mono">decision</span>
-          </li>
-          <li class="wt__item" data-wt-step="3">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Graph win32LobApp push</span>
-            <span class="wt__item-meta mono">older version kept</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-10" data-wt-panel="10">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 10 <span class="wt__optin mono">opt-in</span></p>
-            <h3 class="wt__name">Assignment</h3>
-            <p class="wt__blurb">Entra security groups by a configured naming scheme, created or reused.</p>
-          </div>
-          <code class="wt__owner mono">Invoke-IntuneAppAssignment.ps1</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Entra groups</span>
-            <span class="wt__item-meta mono">created or reused</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Required</span>
-            <span class="wt__item-meta mono">intent</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Available</span>
-            <span class="wt__item-meta mono">intent</span>
-          </li>
-          <li class="wt__item" data-wt-step="3">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Uninstall</span>
-            <span class="wt__item-meta mono">intent</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-11" data-wt-panel="11">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 11</p>
-            <h3 class="wt__name">Test sequence</h3>
-            <p class="wt__blurb">DEV-VM cycles and a real test group before anyone else sees it.</p>
-          </div>
-          <code class="wt__owner mono">agent</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">DEV-VM cycles</span>
-            <span class="wt__item-meta mono">install · uninstall</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Test group</span>
-            <span class="wt__item-meta mono">real devices</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Detection re-checked</span>
-            <span class="wt__item-meta mono">in Intune</span>
-          </li>
-        </ol>
-      </article>
-      <article class="wt__card" id="phase-12" data-wt-panel="12">
-        <div class="wt__head">
-          <div class="wt__head-main">
-            <p class="wt__kicker mono">Phase 12</p>
-            <h3 class="wt__name">Rollout</h3>
-            <p class="wt__blurb">Pilot, then staged production.</p>
-          </div>
-          <code class="wt__owner mono">agent</code>
-        </div>
-
-        <ol class="wt__items">
-          <li class="wt__item" data-wt-step="0">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Pilot group</span>
-            <span class="wt__item-meta mono">staged</span>
-          </li>
-          <li class="wt__item" data-wt-step="1">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Staged production</span>
-            <span class="wt__item-meta mono">waves</span>
-          </li>
-          <li class="wt__item" data-wt-step="2">
-            <span class="wt__mark" aria-hidden="true">&middot;</span>
-            <span class="wt__item-label">Same artifact</span>
-            <span class="wt__item-meta mono">no rebuild</span>
-          </li>
-        </ol>
-      </article></div>
-              <div class="wt__sides">
-      <div class="wt__side" data-wt-side="0">
-        <div class="wt__verdict is-green" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>GREEN</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>-Fix provisions everything that needs no human decision. What is left is a decision, not a chore.</p>
-        </div>
-        
-      </div>
-      <div class="wt__side" data-wt-side="1">
-        <div class="wt__verdict" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>SCOPED</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>Identity is fixed here: vendor, application, version, architecture. Everything downstream is named after it.</p>
-        </div>
-        <div class="wt__gate">
-          <p class="wt__kicker mono">Decision gate</p>
-          <p class="wt__gate-text">Gate 1 — scope. What is being packaged, for which architecture, and what counts as done.</p>
+          </sc-if>
         </div>
       </div>
-      <div class="wt__side" data-wt-side="2">
-        <div class="wt__verdict" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>RESEARCHED, NOT ASKED</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>Findings are stated as assumptions you can correct — and the guide's 17 appendices are consulted before any web search.</p>
+    </div>
+  </div>
+
+  <section style="border-top: 1px solid var(--color-divider)">
+    <div data-wrap="" style="max-width: 1160px; margin: 0 auto; padding: 88px 28px">
+      <div data-col="" style="display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 56px; align-items: start">
+        <div>
+          <p style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-300); margin: 0 0 14px">Phase 6</p>
+          <h2 style="font-size: 38px; letter-spacing: -0.025em; margin: 0 0 16px">The SYSTEM test costs the host nothing</h2>
+          <p style="font-size: 16px; line-height: 1.6; color: var(--color-neutral-300); margin: 0 0 14px">Five deployment actions, each followed by a detection evaluation — ten recorded steps, run as <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13.5px; color: var(--color-accent-300)">NT AUTHORITY\SYSTEM</span> inside a throwaway Windows Sandbox VM against a machine that has never seen the app.</p>
+          <p style="font-size: 13px; line-height: 1.6; color: var(--color-neutral-500); margin: 0">Needs Windows Pro, Enterprise or Education with virtualisation. Enabling the Sandbox feature is a one-time elevated step; a run after that needs neither elevation nor the host.</p>
         </div>
-        <div class="wt__gate">
-          <p class="wt__kicker mono">Decision gate</p>
-          <p class="wt__gate-text">Gate 2 — deployment semantics. Per-machine or per-user, and what a repair should actually do.</p>
-        </div>
-      </div>
-      <div class="wt__side" data-wt-side="3">
-        <div class="wt__verdict" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>ONE PASS</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>Launcher, detection, log name and manifest are written together, so they cannot disagree with each other.</p>
-        </div>
-        
-      </div>
-      <div class="wt__side" data-wt-side="4">
-        <div class="wt__verdict" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>ALL THREE TYPES</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>Install, Uninstall and Repair are filled together even when only install is needed today — a Company Portal uninstall needs a real hook, not a placeholder.</p>
-        </div>
-        
-      </div>
-      <div class="wt__side" data-wt-side="5">
-        <div class="wt__verdict is-green" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>GREEN</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>The verdict is GREEN or RED — and RED tells you which file failed, by name.</p>
-        </div>
-        
-      </div>
-      <div class="wt__side" data-wt-side="6">
-        <div class="wt__verdict is-green" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>GREEN</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>Run as NT AUTHORITY\SYSTEM against a machine that has never seen the app — the way the Intune Management Extension does it. Binding before any upload.</p>
-        </div>
-        <div class="wt__gate">
-          <p class="wt__kicker mono">Decision gate</p>
-          <p class="wt__gate-text">Gate 3 — SYSTEM-test consent. The Sandbox route runs the whole loop in a throwaway VM with no elevation and leaves the host untouched; the DEV-VM route needs an elevated session.</p>
-        </div>
-      </div>
-      <div class="wt__side" data-wt-side="7">
-        <div class="wt__verdict" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>VERIFIED</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>Checked after the fact instead of trusting that the packaging tool did what it said.</p>
-        </div>
-        
-      </div>
-      <div class="wt__side" data-wt-side="8">
-        <div class="wt__verdict" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>ALWAYS GENERATED</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>App info, a paste-ready Company Portal description, the return-code map, the detection rule and driver trust — plus the technical report. No external requests.</p>
-        </div>
-        
-      </div>
-      <div class="wt__side" data-wt-side="9">
-        <div class="wt__verdict" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>NON-DESTRUCTIVE</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>A raw Graph win32LobApp push with no third-party module. Older versions coexist by default, so you wire supersedence yourself.</p>
-        </div>
-        <div class="wt__gate">
-          <p class="wt__kicker mono">Decision gate</p>
-          <p class="wt__gate-text">Gate 4 — upload confirmation. Nothing reaches the tenant before you say so.</p>
-        </div>
-      </div>
-      <div class="wt__side" data-wt-side="10">
-        <div class="wt__verdict" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>ASSIGNED</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>Required, Available and Uninstall intents wired to groups that follow your own naming scheme.</p>
-        </div>
-        
-      </div>
-      <div class="wt__side" data-wt-side="11">
-        <div class="wt__verdict" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>TESTED</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>The install path is exercised on a device that behaves like a fleet device, not like a build machine.</p>
-        </div>
-        
-      </div>
-      <div class="wt__side" data-wt-side="12">
-        <div class="wt__verdict is-green" data-wt-verdict>
-          <div class="wt__verdict-head">
-            <span class="wt__dot" aria-hidden="true"></span>
-            <span class="wt__verdict-label mono" data-wt-verdict-label>SHIPPED</span>
-          </div>
-          <p class="wt__verdict-text" data-wt-verdict-text>The package that reaches production is the one that passed the SYSTEM test — the same artifact, not a rebuild.</p>
-        </div>
-        
-      </div></div>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <sc-for list="{{ loop }}" as="l" hint-placeholder-count="5">
+            <div style="display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 16px; border: 1px solid var(--color-divider); border-radius: var(--radius-md); padding: 14px 18px; background: var(--color-surface)" style-hover="border-color: var(--color-accent-700)">
+              <span style="font-family: var(--font-heading); font-size: 15px; color: var(--color-neutral-600)">{{ l.n }}</span>
+              <span style="font-size: 15px">{{ l.action }} <span style="color: var(--color-accent)">→</span> <span style="color: var(--color-neutral-400)">detect</span></span>
+              <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10.5px; letter-spacing: 0.06em; color: var(--color-neutral-500)">SYSTEM</span>
             </div>
-          </div>
+          </sc-for>
         </div>
-      </section>
-
-      <!-- ============================= NUMBERS ============================= -->
-      <section class="band band--white" aria-labelledby="numbers-title">
-        <div class="container-marketing">
-          <h2 class="display-sm section__title" id="numbers-title" data-reveal>What it actually is</h2>
-          <dl class="stat-grid">
-      <div class="stat" data-reveal data-reveal-delay="0">
-        <dt class="stat__label">phases</dt>
-        <dd class="stat__value display-md">13</dd>
-        <dd class="stat__note">numbered Phase 0 through Phase 12, each owned by a script</dd>
       </div>
-      <div class="stat" data-reveal data-reveal-delay="60">
-        <dt class="stat__label">decision gates</dt>
-        <dd class="stat__value display-md">4</dd>
-        <dd class="stat__note">at most four, plus situational follow-ups</dd>
+    </div>
+  </section>
+
+  <section style="background: linear-gradient(180deg, var(--color-section) 0%, color-mix(in srgb, var(--color-section) 55%, var(--color-bg)) 100%)">
+    <div data-wrap="" style="max-width: 1160px; margin: 0 auto; padding: 92px 28px">
+      <h2 style="font-size: 44px; letter-spacing: -0.03em; margin: 0 0 18px; max-width: 24ch; text-wrap: balance">A vendor-signed kernel driver is RED, not a warning.</h2>
+      <p style="font-size: 17px; line-height: 1.6; color: var(--color-neutral-200); max-width: 62ch; margin: 0 0 44px">Classified before anything is built, because the alternative is a package that installs cleanly and then fails to load on every device.</p>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px">
+        <sc-for list="{{ drivers }}" as="d" hint-placeholder-count="3">
+          <div style="border: 1px solid color-mix(in srgb, var(--color-neutral-100) 22%, transparent); border-radius: var(--radius-lg); padding: 24px; background: color-mix(in srgb, var(--color-bg) 55%, transparent)">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span style="{{ d.markStyle }}"></span>
+              <span style="font-family: var(--font-heading); font-size: 13px; letter-spacing: 0.12em">{{ d.verdict }}</span>
+            </div>
+            <p style="font-size: 15px; margin: 16px 0 10px; color: var(--color-neutral-100)">{{ d.when }}</p>
+            <p style="font-size: 13px; line-height: 1.6; color: var(--color-neutral-300); margin: 0">{{ d.then }}</p>
+          </div>
+        </sc-for>
       </div>
-      <div class="stat" data-reveal data-reveal-delay="120">
-        <dt class="stat__label">PowerShell scripts</dt>
-        <dd class="stat__value display-md">30</dd>
-        <dd class="stat__note">28 invocable, plus 2 shared Graph includes</dd>
+    </div>
+  </section>
+
+  <section id="engines" style="border-top: 1px solid var(--color-divider)">
+    <div data-wrap="" style="max-width: 1160px; margin: 0 auto; padding: 88px 28px">
+      <p style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-300); margin: 0 0 14px">Appendix L.2</p>
+      <h2 style="font-size: 38px; letter-spacing: -0.025em; margin: 0 0 16px">Fourteen installer engines, and the trap in each</h2>
+      <p style="font-size: 16px; line-height: 1.6; color: var(--color-neutral-300); max-width: 64ch; margin: 0 0 32px">Identified by fingerprint, not by guesswork, and consulted before any web search. Twelve of the fourteen carry a trap the switch table alone will not tell you — and two, MSIX and App-V, are routed away from PSADT rather than wrapped in it.</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px">
+        <sc-for list="{{ engineChips }}" as="e" hint-placeholder-count="14">
+          <button type="button" sc-camel-on-click="{{ e.go }}" style="{{ e.style }}">
+            <span style="{{ e.dotStyle }}"></span>{{ e.name }}
+          </button>
+        </sc-for>
       </div>
-      <div class="stat" data-reveal data-reveal-delay="180">
-        <dt class="stat__label">Pester tests</dt>
-        <dd class="stat__value display-md">441</dd>
-        <dd class="stat__note">full suite green as of v0.26.7</dd>
+      <div data-col="" style="border: 1px solid var(--color-divider); border-radius: var(--radius-lg); background: var(--color-surface); padding: 30px; box-shadow: var(--shadow-sm); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 36px; align-items: start">
+        <div>
+          <h3 style="font-size: 25px; letter-spacing: -0.02em; margin: 0 0 20px">{{ engineName }}</h3>
+          <div style="font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-500)">silent install</div>
+          <div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px; color: var(--color-accent-300); background: var(--color-bg); border: 1px solid var(--color-divider); border-radius: var(--radius-sm); padding: 10px 12px; margin: 8px 0 18px; overflow-x: auto; white-space: nowrap">{{ engineSilent }}</div>
+          <div style="font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-500)">detection</div>
+          <div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px; margin-top: 6px">{{ engineDetect }}</div>
+        </div>
+        <div style="border-left: 1px solid var(--color-divider); padding-left: 32px; min-height: 120px">
+          <div style="font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent-300)">{{ trapLabel }}</div>
+          <p style="font-size: 16px; line-height: 1.6; color: var(--color-neutral-200); margin: 12px 0 0">{{ engineTrap }}</p>
+        </div>
       </div>
-      <div class="stat" data-reveal data-reveal-delay="240">
-        <dt class="stat__label">guide appendices</dt>
-        <dd class="stat__value display-md">17</dd>
-        <dd class="stat__note">A through Q, consulted before any web search</dd>
+    </div>
+  </section>
+
+  <section id="start" style="border-top: 1px solid var(--color-divider); background: color-mix(in srgb, var(--color-surface) 55%, transparent)">
+    <div data-wrap="" style="max-width: 1160px; margin: 0 auto; padding: 92px 28px">
+      <h2 style="font-size: 40px; letter-spacing: -0.025em; margin: 0 0 16px">One command</h2>
+      <p style="font-size: 16px; line-height: 1.6; color: var(--color-neutral-300); max-width: 60ch; margin: 0 0 28px">Installs the skill into <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13.5px; color: var(--color-accent-300)">~/.claude/skills/psadt-deploy</span> and runs the setup doctor. Configuration, the DPAPI secret and downloaded tools go to <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13.5px; color: var(--color-accent-300)">%LOCALAPPDATA%\psadt-deploy</span>, so they survive an update or a re-install.</p>
+      <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; border: 1px solid var(--color-accent-700); border-radius: var(--radius-md); background: var(--color-bg); padding: 16px 18px; max-width: 620px">
+        <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 16px; flex: 1; min-width: 0"><span style="color: var(--color-neutral-600)">$ </span>{{ installCmd }}</span>
+        <button class="btn btn-primary" type="button" sc-camel-on-click="{{ copy }}">{{ copyLabel }}</button>
       </div>
-      <div class="stat" data-reveal data-reveal-delay="300">
-        <dt class="stat__label">installer engines</dt>
-        <dd class="stat__value display-md">14</dd>
-        <dd class="stat__note">identified and switch-mapped — two are routed away from PSADT, not wrapped</dd>
-      </div></dl>
-        </div>
-      </section>
+      <p style="font-size: 12.5px; color: var(--color-neutral-500); margin: 16px 0 0">Figures as of v0.26.7 and verified against the repository at that version — the linked source is authoritative, not this page. Not affiliated with or endorsed by Microsoft.</p>
+    </div>
+  </section>
 
-      <!-- =========================== MANIFESTO I =========================== -->
-      <section class="band band--ink manifesto" aria-label="The project's central claim">
-        <div class="container-marketing">
-          <p class="display-xl manifesto__quote">
-            Each phase is owned by a script rather than by prose, so a step either passed or it
-            did not.
-          </p>
-        </div>
-      </section>
+  <footer style="border-top: 1px solid var(--color-divider)">
+    <div data-wrap="" style="max-width: 1160px; margin: 0 auto; padding: 32px 28px; display: flex; gap: 24px; flex-wrap: wrap; align-items: center; justify-content: space-between">
+      <p style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: var(--color-neutral-500); margin: 0">psadt-deploy v0.26.7 · MIT · Patrick Taubert · PHAT Consulting GmbH</p>
+      <nav style="display: flex; gap: 20px; font-size: 13px">
+        <a href="https://github.com/pt1987/claude-code-psadt-skill" rel="noopener">GitHub</a>
+        <a href="https://www.npmjs.com/package/psadt-deploy-skill" rel="noopener">npm</a>
+        <a href="https://github.com/pt1987/claude-code-psadt-skill/issues" rel="noopener">Issues</a>
+        <a href="https://psappdeploytoolkit.com/" rel="noopener">PSAppDeployToolkit</a>
+      </nav>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;motion&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;full&quot;,&quot;subtle&quot;,&quot;off&quot;],&quot;default&quot;:&quot;full&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Motion&quot;},&quot;installCommand&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;npx psadt-deploy-skill&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Content&quot;}}">
+const PHASES = [
+  { num: '0', name: 'Setup', owner: 'Initialize-PsadtSkill.ps1', blurb: 'Thirteen prerequisite checks, each GREEN, YELLOW or RED.', verdict: { label: 'GREEN', green: true, text: '-Fix provisions everything that needs no human decision. What is left is a decision, not a chore.' }, items: [ { label: 'PowerShell 5.1+ or 7+', meta: 'required' }, { label: 'PSADT v4 toolkit', meta: 'fetched' }, { label: 'IntuneWinAppUtil', meta: '%LOCALAPPDATA%' }, { label: 'Windows Sandbox feature', meta: 'enabled' }, { label: '13 prerequisite checks', meta: 'GREEN' } ] },
+  { num: '1', name: 'Intake', owner: 'agent · gate 1', blurb: 'The application is named and scoped. Blockers arrive as clickable options, not as a questionnaire.', gate: 'Gate 1 — scope. What is being packaged, for which architecture, and what counts as done.', verdict: { label: 'SCOPED', text: 'Identity is fixed here: vendor, application, version, architecture. Everything downstream is named after it.' }, items: [ { label: 'Vendor · app · version · arch', meta: 'identity' }, { label: 'Gate 1 — scope', meta: 'decision' }, { label: 'Blockers as options', meta: 'clickable' } ] },
+  { num: '2', name: 'Research', owner: 'agent · gate 2', blurb: 'Version, silent switches and known Intune pitfalls are researched in parallel, not asked.', gate: 'Gate 2 — deployment semantics. Per-machine or per-user, and what a repair should actually do.', verdict: { label: 'RESEARCHED, NOT ASKED', text: "Findings are stated as assumptions you can correct — and the guide's 17 appendices are consulted before any web search." }, items: [ { label: 'Current version', meta: 'researched' }, { label: 'Silent switches', meta: 'researched' }, { label: 'Known Intune pitfalls', meta: 'researched' }, { label: 'Installer engine', meta: '1 of 14' }, { label: 'Gate 2 — semantics', meta: 'decision' } ] },
+  { num: '3', name: 'Scaffold', owner: 'New-MsiPackage · New-DriverPackage · …', blurb: 'A generator writes the package in one pass — not four separate handoffs.', verdict: { label: 'ONE PASS', text: 'Launcher, detection, log name and manifest are written together, so they cannot disagree with each other.' }, items: [ { label: 'Launcher', meta: 'generated' }, { label: 'Detection script', meta: 'exit-code contract' }, { label: 'Per-run log name', meta: '_Install_<ts>.log' }, { label: 'psadt-package.json', meta: 'one truth' } ] },
+  { num: '4', name: 'Customize', owner: 'agent', blurb: 'All three hooks filled from the research; custom helpers go in the Extensions module, never in the main script.', verdict: { label: 'ALL THREE TYPES', text: 'Install, Uninstall and Repair are filled together even when only install is needed today — a Company Portal uninstall needs a real hook, not a placeholder.' }, items: [ { label: 'Install hook', meta: 'filled' }, { label: 'Uninstall hook', meta: 'filled' }, { label: 'Repair hook', meta: 'filled' }, { label: 'Extensions module', meta: 'custom helpers' } ] },
+  { num: '5', name: 'Pre-flight', owner: 'Invoke-PsadtPreflight.ps1', blurb: 'Ten check categories. A gate, not a report.', verdict: { label: 'GREEN', green: true, text: 'The verdict is GREEN or RED — and RED tells you which file failed, by name.' }, items: [ { label: 'Encoding · BOM · AST parse', meta: 'PASS' }, { label: 'v3 cmdlets · hook structure', meta: 'PASS' }, { label: 'ProductCode · top-level code', meta: 'PASS' }, { label: 'Detection contract · manifest', meta: 'PASS' }, { label: 'Log name · driver trust', meta: 'PASS' } ] },
+  { num: '6', name: 'SYSTEM test', owner: 'Invoke-PsadtSandboxTest.ps1', blurb: 'Five deployment actions, each followed by a detection evaluation — ten recorded steps.', gate: 'Gate 3 — SYSTEM-test consent. The Sandbox route runs the whole loop in a throwaway VM with no elevation and leaves the host untouched; the DEV-VM route needs an elevated session.', verdict: { label: 'GREEN', green: true, text: 'Run as NT AUTHORITY\\SYSTEM against a machine that has never seen the app — the way the Intune Management Extension does it. Binding before any upload.' }, items: [ { label: '1 Install → detect', meta: 'SYSTEM' }, { label: '2 Uninstall → detect', meta: 'SYSTEM' }, { label: '3 Reinstall → detect', meta: 'SYSTEM' }, { label: '4 Repair → detect', meta: 'SYSTEM' }, { label: '5 Uninstall → detect', meta: 'SYSTEM' } ] },
+  { num: '7', name: 'Package', owner: 'Invoke-PsadtPackage.ps1', blurb: 'One command produces a verified .intunewin, named after the app rather than after the toolkit.', verdict: { label: 'VERIFIED', text: 'Checked after the fact instead of trusting that the packaging tool did what it said.' }, items: [ { label: '.intunewin built', meta: 'Vendor_App_Version_x64' }, { label: 'Detection.xml · SetupFile', meta: 'verified' }, { label: 'Size · SHA256', meta: 'verified' } ] },
+  { num: '8', name: 'Dossier', owner: 'New-PsadtReport.ps1', blurb: 'One self-contained bilingual HTML file — generated whether you upload or not.', verdict: { label: 'ALWAYS GENERATED', text: 'App info, a paste-ready Company Portal description, the return-code map, the detection rule and driver trust — plus the technical report. No external requests.' }, items: [ { label: 'Intune dossier', meta: 'bilingual' }, { label: 'Company Portal text', meta: 'paste-ready' }, { label: 'Return codes · detection', meta: 'documented' }, { label: 'Technical report', meta: 'pre-flight · SYSTEM test' } ] },
+  { num: '9', name: 'Upload', owner: 'Invoke-IntuneWin32Upload.ps1', optional: true, blurb: 'Access read as state, then a dry run, then confirmation, then a raw Graph push.', gate: 'Gate 4 — upload confirmation. Nothing reaches the tenant before you say so.', verdict: { label: 'NON-DESTRUCTIVE', text: 'A raw Graph win32LobApp push with no third-party module. Older versions coexist by default, so you wire supersedence yourself.' }, items: [ { label: 'Access capabilities', meta: 'granted · missing · unknown' }, { label: 'Dry run', meta: 'no writes' }, { label: 'Gate 4 — confirm', meta: 'decision' }, { label: 'Graph win32LobApp push', meta: 'older version kept' } ] },
+  { num: '10', name: 'Assignment', owner: 'Invoke-IntuneAppAssignment.ps1', optional: true, blurb: 'Entra security groups by a configured naming scheme, created or reused.', verdict: { label: 'ASSIGNED', text: 'Required, Available and Uninstall intents wired to groups that follow your own naming scheme.' }, items: [ { label: 'Entra groups', meta: 'created or reused' }, { label: 'Required', meta: 'intent' }, { label: 'Available', meta: 'intent' }, { label: 'Uninstall', meta: 'intent' } ] },
+  { num: '11', name: 'Test sequence', owner: 'agent', blurb: 'DEV-VM cycles and a real test group before anyone else sees it.', verdict: { label: 'TESTED', text: 'The install path is exercised on a device that behaves like a fleet device, not like a build machine.' }, items: [ { label: 'DEV-VM cycles', meta: 'install · uninstall' }, { label: 'Test group', meta: 'real devices' }, { label: 'Detection re-checked', meta: 'in Intune' } ] },
+  { num: '12', name: 'Rollout', owner: 'agent', blurb: 'Pilot, then staged production.', verdict: { label: 'SHIPPED', green: true, text: 'The package that reaches production is the one that passed the SYSTEM test — the same artifact, not a rebuild.' }, items: [ { label: 'Pilot group', meta: 'staged' }, { label: 'Staged production', meta: 'waves' }, { label: 'Same artifact', meta: 'no rebuild' } ] },
+]
 
-      <!-- ============================ PRE-FLIGHT =========================== -->
-      <section class="band band--white" id="preflight" aria-labelledby="preflight-title">
-        <div class="container-marketing">
-          <h2 class="display-md section__title" id="preflight-title" data-reveal>Ten checks, and RED names the file</h2>
-          <p class="lead section__lead" data-reveal>
-            Pre-flight is a gate, not a report. These are the ten check categories; the number of
-            rows varies per package, because encoding and parse run per file and driver trust only
-            runs when there are drivers.
-          </p>
-          <div class="table-wrap" data-reveal>
-            <table class="checks">
-              <caption class="sr-only">Pre-flight check categories and their verdicts</caption>
-              <thead>
-                <tr><th scope="col">Check</th><th scope="col">What it proves</th><th scope="col">Verdict</th></tr>
-              </thead>
-              <tbody>
-      <tr class="check" data-check-index="0">
-        <td class="check__name mono">Encoding</td>
-        <td class="check__what">no non-ASCII without a BOM — the classic silent parse failure</td>
-        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
-      </tr>
-      <tr class="check" data-check-index="1">
-        <td class="check__name mono">Parse</td>
-        <td class="check__what">the launcher parses as valid PowerShell AST</td>
-        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
-      </tr>
-      <tr class="check" data-check-index="2">
-        <td class="check__name mono">v3-cmdlets</td>
-        <td class="check__what">no PSADT v3 command survives in a v4 package</td>
-        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
-      </tr>
-      <tr class="check" data-check-index="3">
-        <td class="check__name mono">Structure</td>
-        <td class="check__what">all three hooks present and correctly shaped</td>
-        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
-      </tr>
-      <tr class="check" data-check-index="4">
-        <td class="check__name mono">ProductCode</td>
-        <td class="check__what">a GUID goes to -ProductCode, never to -FilePath</td>
-        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
-      </tr>
-      <tr class="check" data-check-index="5">
-        <td class="check__name mono">TopLevel</td>
-        <td class="check__what">no stray top-level code outside the hooks</td>
-        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
-      </tr>
-      <tr class="check" data-check-index="6">
-        <td class="check__name mono">Detection</td>
-        <td class="check__what">the detection script honours the exit-code contract</td>
-        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
-      </tr>
-      <tr class="check" data-check-index="7">
-        <td class="check__name mono">Manifest</td>
-        <td class="check__what">psadt-package.json exists and agrees with the launcher</td>
-        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
-      </tr>
-      <tr class="check" data-check-index="8">
-        <td class="check__name mono">LogName</td>
-        <td class="check__what">a per-run log name, so runs do not pile into one file</td>
-        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
-      </tr>
-      <tr class="check" data-check-index="9">
-        <td class="check__name mono">DriverTrust</td>
-        <td class="check__what">driver signatures classified before anything is built</td>
-        <td class="check__verdict"><span class="badge badge--positive">PASS</span></td>
-      </tr></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+const STATS = [
+  { value: '13', label: 'phases', note: 'Phase 0 through 12, each owned by a script' },
+  { value: '4', label: 'decision gates', note: 'at most four, plus situational follow-ups' },
+  { value: '30', label: 'PowerShell scripts', note: '28 invocable, plus 2 shared Graph includes' },
+  { value: '441', label: 'Pester tests', note: 'full suite green as of v0.26.7' },
+  { value: '17', label: 'guide appendices', note: 'A through Q, before any web search' },
+  { value: '14', label: 'installer engines', note: 'identified and switch-mapped' },
+]
 
-      <!-- ============================= SANDBOX ============================= -->
-      <section class="band band--sage" id="sandbox" aria-labelledby="sandbox-title">
-        <div class="container-marketing">
-          <h2 class="display-md section__title" id="sandbox-title" data-reveal>The SYSTEM test costs the host nothing</h2>
-          <p class="lead section__lead" data-reveal>
-            Five deployment actions, each followed by a detection evaluation — ten recorded steps, run
-            as <code class="mono">NT AUTHORITY\SYSTEM</code> inside a throwaway Windows Sandbox VM
-            against a machine that has never seen the app.
-          </p>
-          <ol class="loop">
-      <li class="loop__step" data-reveal data-reveal-delay="0">
-        <span class="loop__index mono">1</span>
-        <span class="loop__action">Install</span>
-        <span class="loop__then mono">&rarr; detect</span>
-      </li>
-      <li class="loop__step" data-reveal data-reveal-delay="60">
-        <span class="loop__index mono">2</span>
-        <span class="loop__action">Uninstall</span>
-        <span class="loop__then mono">&rarr; detect</span>
-      </li>
-      <li class="loop__step" data-reveal data-reveal-delay="120">
-        <span class="loop__index mono">3</span>
-        <span class="loop__action">Reinstall</span>
-        <span class="loop__then mono">&rarr; detect</span>
-      </li>
-      <li class="loop__step" data-reveal data-reveal-delay="180">
-        <span class="loop__index mono">4</span>
-        <span class="loop__action">Repair</span>
-        <span class="loop__then mono">&rarr; detect</span>
-      </li>
-      <li class="loop__step" data-reveal data-reveal-delay="240">
-        <span class="loop__index mono">5</span>
-        <span class="loop__action">Uninstall</span>
-        <span class="loop__then mono">&rarr; detect</span>
-      </li></ol>
-          <p class="section__note" data-reveal>
-            The run itself needs no elevation and leaves the host untouched. Enabling the Sandbox
-            feature is a one-time elevated step, and it needs Windows Pro, Enterprise or Education
-            with virtualisation available.
-          </p>
-        </div>
-      </section>
+const CHECKS = [
+  { name: 'Encoding', what: 'no non-ASCII without a BOM — the classic silent parse failure' },
+  { name: 'Parse', what: 'the launcher parses as valid PowerShell AST' },
+  { name: 'v3-cmdlets', what: 'no PSADT v3 command survives in a v4 package' },
+  { name: 'Structure', what: 'all three hooks present and correctly shaped' },
+  { name: 'ProductCode', what: 'a GUID goes to -ProductCode, never to -FilePath' },
+  { name: 'TopLevel', what: 'no stray top-level code outside the hooks' },
+  { name: 'Detection', what: 'the detection script honours the exit-code contract' },
+  { name: 'Manifest', what: 'psadt-package.json exists and agrees with the launcher' },
+  { name: 'LogName', what: 'a per-run log name, so runs do not pile into one file' },
+  { name: 'DriverTrust', what: 'driver signatures classified before anything is built' },
+]
 
-      <!-- ========================== MANIFESTO II =========================== -->
-      <section class="band band--ink" aria-labelledby="driver-title">
-        <div class="container-marketing">
-          <h2 class="display-xl manifesto__quote" id="driver-title">
-            A vendor-signed kernel driver is RED, not a warning.
-          </h2>
-          <p class="lead manifesto__lead">
-            Classified before anything is built, because the alternative is a package that installs
-            cleanly and then fails to load on every device.
-          </p>
-          <div class="driver-grid">
-      <article class="card driver" data-reveal data-reveal-delay="0">
-        <span class="badge badge--positive">GREEN</span>
-        <h3 class="driver__when display-xs">Microsoft-signed (WHQL, Attestation or inbox)</h3>
-        <p class="driver__then">Pre-stage with pnputil, then run the installer. No certificate work.</p>
-      </article>
-      <article class="card driver" data-reveal data-reveal-delay="60">
-        <span class="badge badge--warning">WARN</span>
-        <h3 class="driver__when display-xs">Vendor-signed, user-mode</h3>
-        <p class="driver__then">The signer certificate becomes a deliverable — preferably an Intune policy, not a package import. Own it in exactly one place.</p>
-      </article>
-      <article class="card driver" data-reveal data-reveal-delay="120">
-        <span class="badge badge--negative">RED</span>
-        <h3 class="driver__when display-xs">Vendor-signed kernel-mode, with Secure Boot on</h3>
-        <p class="driver__then">Refused. TrustedPublisher removes the PnP prompt but never satisfies Code Integrity, so the driver would install and then fail to load. There is no packaging trick. An explicit opt-out exists for fleets that genuinely run Secure Boot off.</p>
-      </article></div>
-        </div>
-      </section>
+const LOOP = [
+  { n: '01', action: 'Install' }, { n: '02', action: 'Uninstall' }, { n: '03', action: 'Reinstall' },
+  { n: '04', action: 'Repair' }, { n: '05', action: 'Uninstall' },
+]
 
-      <!-- ============================ FEATURES ============================= -->
-      <section class="band band--white" id="features" aria-labelledby="features-title">
-        <div class="container-marketing">
-          <h2 class="display-md section__title" id="features-title" data-reveal>What it does for you</h2>
-          <div class="feature-grid">
-      <article class="card card--dark card--lift feature feature--wide"
-               data-reveal data-reveal-delay="0">
-        <h3 class="feature__title display-xs">A SYSTEM test that costs the host nothing</h3>
-        <p class="feature__body">Five deployment actions, each followed by a detection evaluation, all as NT AUTHORITY\SYSTEM inside a throwaway Windows Sandbox VM — ten recorded steps against a machine that has never seen the app. The run needs no elevation and leaves the host untouched; enabling the Sandbox feature itself is a one-time elevated step.</p>
-        <p class="feature__mono mono">Invoke-PsadtSandboxTest.ps1</p>
-      </article>
-      <article class="card card--sage card--lift feature "
-               data-reveal data-reveal-delay="60">
-        <h3 class="feature__title display-xs">Pre-flight that names the file</h3>
-        <p class="feature__body">Ten check categories — encoding and BOM, AST parse, launcher acid test, a scan for v3 cmdlets, hook structure, the detection contract, the manifest, the per-run log name, driver trust. The verdict is GREEN or RED, and RED tells you which file.</p>
-        <p class="feature__mono mono">10 categories → GREEN / RED</p>
-      </article>
-      <article class="card card--green card--lift feature "
-               data-reveal data-reveal-delay="120">
-        <h3 class="feature__title display-xs">Four questions, not forty</h3>
-        <p class="feature__body">Scope, deployment semantics, SYSTEM-test consent, upload confirmation. Everything else — the current version, the silent switches, the ProductCode, known Intune issues — is researched and stated as an assumption.</p>
-        <p class="feature__mono mono">4 decision gates</p>
-      </article>
-      <article class="card card--sage card--lift feature "
-               data-reveal data-reveal-delay="180">
-        <h3 class="feature__title display-xs">One manifest, one truth</h3>
-        <p class="feature__body">psadt-package.json holds the identity, the decisions taken at the gates, the research findings, every phase result and every artifact. Generators write it, later phases read it, pre-flight fails without it — which is what stops two packages of the same app from disagreeing about their own version.</p>
-        <p class="feature__mono mono">&lt;pkg&gt;\psadt-package.json</p>
-      </article>
-      <article class="card card--green card--lift feature "
-               data-reveal data-reveal-delay="180">
-        <h3 class="feature__title display-xs">All three deployment types, from the start</h3>
-        <p class="feature__body">Install, Uninstall and Repair are filled and acid-tested together, even when only install is needed today — because a Company Portal uninstall needs a real Uninstall hook, not a placeholder.</p>
-        <p class="feature__mono mono">Install · Uninstall · Repair</p>
-      </article>
-      <article class="card card--sage card--lift feature "
-               data-reveal data-reveal-delay="180">
-        <h3 class="feature__title display-xs">A vendor-signed kernel driver is RED, not a warning</h3>
-        <p class="feature__body">Drivers are classified before anything is built. With Secure Boot on — the default on Windows 11 — the kernel loads only Microsoft-signed drivers: TrustedPublisher removes the PnP prompt but never satisfies Code Integrity, so the driver would install and then fail to load. There is an explicit opt-out for fleets that genuinely run Secure Boot off.</p>
-        <p class="feature__mono mono">Get-DriverSignatureInfo.ps1</p>
-      </article>
-      <article class="card card--green card--lift feature "
-               data-reveal data-reveal-delay="180">
-        <h3 class="feature__title display-xs">The dossier is not optional</h3>
-        <p class="feature__body">Every package gets one self-contained Intune-Dossier.html — app info, a paste-ready Markdown Company Portal description, the return-code map, the detection rule, driver trust, plus the technical report with pre-flight and SYSTEM-test results. Bilingual, no external requests.</p>
-        <p class="feature__mono mono">New-PsadtReport.ps1</p>
-      </article>
-      <article class="card card--sage card--lift feature "
-               data-reveal data-reveal-delay="180">
-        <h3 class="feature__title display-xs">Upload that refuses to be destructive</h3>
-        <p class="feature__body">A raw Graph win32LobApp push with no third-party module: dry run, then confirm, then upload. It fills every objective app-info field, never imposes a category, and by default never deletes an older version — new versions coexist so you wire supersedence yourself. Replacing an app in place is a separate, explicit flag.</p>
-        <p class="feature__mono mono">Invoke-IntuneWin32Upload.ps1</p>
-      </article>
-      <article class="card card--green card--lift feature "
-               data-reveal data-reveal-delay="180">
-        <h3 class="feature__title display-xs">Access as state, not as a 403</h3>
-        <p class="feature__body">Before any upload or policy write, the skill reads its own capabilities and reports them three-valued — granted, missing, or genuinely unknown — and offers the exact fix. It does not probe a tenant by provoking an error.</p>
-        <p class="feature__mono mono">Test-PsadtIntuneAccess.ps1</p>
-      </article>
-      <article class="card card--sage card--lift feature "
-               data-reveal data-reveal-delay="180">
-        <h3 class="feature__title display-xs">More than one kind of package</h3>
-        <p class="feature__body">Browser-extension force-install for Edge, Chrome and Firefox including the REG_MULTI_SZ trap; Windows features and capabilities; drivers via per-INF pnputil; script-only remediation that survives the ESP; the WinGet lifecycle. And MSIX routes to Intune’s native LOB app type instead of being wrapped.</p>
-        <p class="feature__mono mono">Appendices I · K · O · P · Q</p>
-      </article>
-      <article class="card card--green card--lift feature "
-               data-reveal data-reveal-delay="180">
-        <h3 class="feature__title display-xs">Deterministic, verified output</h3>
-        <p class="feature__body">The .intunewin is named Vendor_App_Version_Arch and verified after the fact — Detection.xml, the SetupFile, the size and the SHA256 — instead of trusting that the packaging tool did what it said.</p>
-        <p class="feature__mono mono">Vendor_App_Version_x64.intunewin</p>
-      </article>
-      <article class="card card--sage card--lift feature "
-               data-reveal data-reveal-delay="180">
-        <h3 class="feature__title display-xs">Updates without losing your setup</h3>
-        <p class="feature__body">Self-update pulls from GitHub and touches tracked files only. config.json, the DPAPI secret and the downloaded tools live in %LOCALAPPDATA%\psadt-deploy, so they survive an update, a re-clone and a re-install.</p>
-        <p class="feature__mono mono">%LOCALAPPDATA%\psadt-deploy</p>
-      </article></div>
-        </div>
-      </section>
+const DRIVERS = [
+  { verdict: 'GREEN', tone: 'green', when: 'Microsoft-signed (WHQL, Attestation or inbox)', then: 'Pre-stage with pnputil, then run the installer. No certificate work.' },
+  { verdict: 'WARN', tone: 'warn', when: 'Vendor-signed, user-mode', then: 'The signer certificate becomes a deliverable — preferably an Intune policy, not a package import. Own it in exactly one place.' },
+  { verdict: 'RED', tone: 'red', when: 'Vendor-signed kernel-mode, Secure Boot on', then: 'Refused. TrustedPublisher removes the PnP prompt but never satisfies Code Integrity, so the driver would install and then fail to load. An explicit opt-out exists for fleets that genuinely run Secure Boot off.' },
+]
 
-      <!-- ============================= ENGINES ============================= -->
-      <section class="band band--sage" id="engines" aria-labelledby="engines-title">
-        <div class="container-marketing">
-          <h2 class="display-md section__title" id="engines-title" data-reveal>Fourteen installer engines, and the trap in each</h2>
-          <p class="lead section__lead" data-reveal>
-            Identified by fingerprint, not by guesswork, and consulted before any web search.
-            Twelve of the fourteen carry a trap the switch table alone will not tell you — and two,
-            MSIX and App-V, are routed away from PSADT rather than wrapped in it.
-          </p>
+const ENGINES = [
+  { name: 'MSI', silent: 'msiexec /i pkg.msi /qn', detect: 'ProductCode' },
+  { name: 'MSI-wrapped EXE', silent: 'setup.exe /s /v"/qn /norestart"', detect: 'ProductCode', trap: 'Extract the MSI and probe it rather than trusting the wrapper.' },
+  { name: 'InstallShield (Basic MSI)', silent: 'setup.exe /s /v"/qn"', detect: 'ProductCode' },
+  { name: 'InstallShield (InstallScript)', silent: 'setup.exe /s /f1"setup.iss"', detect: 'registry / file', trap: 'Record the response file first with setup.exe /r /f1"setup.iss".' },
+  { name: 'Inno Setup', silent: 'setup.exe /VERYSILENT /NORESTART', detect: 'QuietUninstallString', trap: '/VERYSILENT reboots the machine by itself when a restart is needed. /NORESTART is mandatory.' },
+  { name: 'NSIS', silent: 'setup.exe /S', detect: 'registry / file', trap: 'Uninstall.exe /S returns BEFORE it is done. _?=<installdir> makes it synchronous.' },
+  { name: 'Advanced Installer', silent: 'msiexec /i pkg.msi /qn', detect: 'ProductCode', trap: 'A fresh ProductCode per build is typical — re-probe every time.' },
+  { name: 'WiX Burn bundle', silent: 'bundle.exe /quiet /norestart', detect: 'BundleProviderKey', trap: 'A single ProductCode is the wrong detection key for a bundle.' },
+  { name: 'Squirrel (Electron)', silent: 'Setup.exe --silent', detect: 'file version under %LocalAppData%', trap: 'Usually per-user; a machine-wide Win32 install needs care.' },
+  { name: 'MSIX / AppX', silent: 'Add-AppxProvisionedPackage -Online', detect: 'Get-AppxProvisionedPackage', trap: 'As SYSTEM, Add-AppxPackage registers the app for SYSTEM only — and reports success. Routed to Intune’s native LOB app type instead of being wrapped.' },
+  { name: 'App-V', silent: 'Publish-AppvClientPackage -Global', detect: 'Get-AppvClientPackage', trap: 'Add alone publishes to nobody. Without -Global a SYSTEM publish targets SYSTEM.' },
+  { name: 'install4j (Java)', silent: 'installer.exe -q', detect: 'registry / file version', trap: 'NOT /S — that opens the language dialog and hangs forever.' },
+  { name: 'IzPack (Java)', silent: 'installer.jar auto-install.xml', detect: 'registry / file', trap: 'Response-file driven.' },
+  { name: 'InstallAware / Wise', silent: '/s or /silent', detect: 'registry / file', trap: 'Confirm per build — often an MSI underneath.' },
+]
 
-          <div class="eng" data-engines>
-            <ol class="eng__chips">
-      <li class="eng__chip-item">
-        <a class="eng__chip is-selected" href="#engine-msi"
-           data-eng-chip="engine-msi">
-          <span class="eng__chip-name">MSI</span>
-          
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-msi-wrapped-exe"
-           data-eng-chip="engine-msi-wrapped-exe">
-          <span class="eng__chip-name">MSI-wrapped EXE</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-installshield-basic-msi"
-           data-eng-chip="engine-installshield-basic-msi">
-          <span class="eng__chip-name">InstallShield (Basic MSI)</span>
-          
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-installshield-installscript"
-           data-eng-chip="engine-installshield-installscript">
-          <span class="eng__chip-name">InstallShield (InstallScript)</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-inno-setup"
-           data-eng-chip="engine-inno-setup">
-          <span class="eng__chip-name">Inno Setup</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-nsis"
-           data-eng-chip="engine-nsis">
-          <span class="eng__chip-name">NSIS</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-advanced-installer"
-           data-eng-chip="engine-advanced-installer">
-          <span class="eng__chip-name">Advanced Installer</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-wix-burn-bundle"
-           data-eng-chip="engine-wix-burn-bundle">
-          <span class="eng__chip-name">WiX Burn bundle</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-squirrel-electron"
-           data-eng-chip="engine-squirrel-electron">
-          <span class="eng__chip-name">Squirrel (Electron)</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-msix-appx"
-           data-eng-chip="engine-msix-appx">
-          <span class="eng__chip-name">MSIX / AppX</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-app-v"
-           data-eng-chip="engine-app-v">
-          <span class="eng__chip-name">App-V</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-install4j-java"
-           data-eng-chip="engine-install4j-java">
-          <span class="eng__chip-name">install4j (Java)</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-izpack-java"
-           data-eng-chip="engine-izpack-java">
-          <span class="eng__chip-name">IzPack (Java)</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li>
-      <li class="eng__chip-item">
-        <a class="eng__chip" href="#engine-installaware-wise"
-           data-eng-chip="engine-installaware-wise">
-          <span class="eng__chip-name">InstallAware / Wise</span>
-          <span class="eng__dot" aria-hidden="true"></span>
-        </a>
-      </li></ol>
-            <p class="eng__legend mono"><span class="eng__dot" aria-hidden="true"></span> carries a trap</p>
-            <div class="eng__panels">
-      <article class="eng__panel" id="engine-msi" data-eng-panel="engine-msi" data-eng-initial>
-        <h3 class="display-xs eng__name">MSI</h3>
+class Component extends DCLogic {
+  state = { active: 0, engine: 4, copied: false, fading: false }
 
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-msi-cmd">msiexec /i pkg.msi /qn</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-msi-cmd"
-                    aria-label="Copy the silent install command for MSI">Copy</button>
-          </div>
-        </div>
+  componentDidMount() {
+    this.onKey = (e) => {
+      if (e.target && /input|textarea/i.test(e.target.tagName)) return
+      if (e.key === 'ArrowRight') this.step(1)
+      if (e.key === 'ArrowLeft') this.step(-1)
+    }
+    window.addEventListener('keydown', this.onKey)
+  }
 
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">ProductCode</p>
-        </div>
+  componentWillUnmount() {
+    window.removeEventListener('keydown', this.onKey)
+    clearTimeout(this.t)
+    clearTimeout(this.ft)
+  }
 
-        <div class="eng__trap eng__trap--none">
-          <p class="eyebrow">No trap</p>
-          <p class="eng__trap-text">The switch is the whole story here.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-msi-wrapped-exe" data-eng-panel="engine-msi-wrapped-exe">
-        <h3 class="display-xs eng__name">MSI-wrapped EXE</h3>
+  goPhase(i) {
+    const n = ((i % PHASES.length) + PHASES.length) % PHASES.length
+    if (n === this.state.active) return
 
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-msi-wrapped-exe-cmd">setup.exe /s /v&quot;/qn /norestart&quot;</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-msi-wrapped-exe-cmd"
-                    aria-label="Copy the silent install command for MSI-wrapped EXE">Copy</button>
-          </div>
-        </div>
+    this.setState({ fading: true })
+    clearTimeout(this.ft)
+    this.ft = setTimeout(() => this.setState({ active: n, fading: false }), 130)
+  }
 
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">ProductCode</p>
-        </div>
+  step(d) { this.goPhase(this.state.active + d) }
 
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">Extract the MSI and probe it rather than trusting the wrapper.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-installshield-basic-msi" data-eng-panel="engine-installshield-basic-msi">
-        <h3 class="display-xs eng__name">InstallShield (Basic MSI)</h3>
+  renderVals() {
+    const motion = this.props.motion ?? 'full'
+    const active = this.state.active
+    const eng = ENGINES[this.state.engine] || ENGINES[0]
+    const p = PHASES[active]
 
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-installshield-basic-msi-cmd">setup.exe /s /v&quot;/qn&quot;</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-installshield-basic-msi-cmd"
-                    aria-label="Copy the silent install command for InstallShield (Basic MSI)">Copy</button>
-          </div>
-        </div>
+    const ticks = PHASES.map((ph, i) => ({
+      num: ph.num, name: ph.name, go: () => this.goPhase(i),
+      style: {
+        display: 'inline-flex', alignItems: 'center', gap: '7px', cursor: 'pointer',
+        padding: i === active ? '6px 12px' : '6px 0', borderRadius: '999px', flex: 'none',
+        minWidth: i === active ? 'auto' : '34px', justifyContent: 'center',
+        background: i === active ? 'color-mix(in srgb, var(--color-accent) 20%, transparent)' : 'transparent',
+        border: '1px solid ' + (i === active ? 'var(--color-accent)' : 'var(--color-divider)'),
+        color: i === active ? 'var(--color-accent-200)' : 'var(--color-neutral-400)',
+        transition: motion === 'off' ? 'none' : 'all 200ms ease',
+      },
+      nameStyle: {
+        fontSize: '12.5px', fontFamily: 'var(--font-body)', whiteSpace: 'nowrap',
+        display: i === active ? 'inline' : 'none',
+      },
+    }))
 
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">ProductCode</p>
-        </div>
+    const fading = this.state.fading
+    const cardVals = {
+      cardPad: 'PHASE ' + p.num, cardName: p.name, cardOwner: p.owner, cardBlurb: p.blurb,
+      cardGate: p.gate || false, cardOptional: !!p.optional,
+      cardVerdictLabel: p.verdict.label, cardVerdictText: p.verdict.text,
+      cardStyle: {
+        border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-lg)',
+        background: 'var(--color-surface)', padding: '30px 32px 28px',
+        boxShadow: 'var(--shadow-sm)', minHeight: '300px',
+        opacity: motion === 'off' ? 1 : (fading ? 0 : 1),
+        transform: motion === 'full' && fading ? 'translateY(6px)' : 'none',
+        transition: motion === 'off' ? 'none' : 'opacity 180ms ease, transform 180ms ease',
+      },
+      cardVerdictStyle: {
+        display: 'inline-block', fontFamily: 'var(--font-heading)', fontSize: '11px',
+        letterSpacing: '0.12em', padding: '4px 10px', borderRadius: 'var(--radius-sm)',
+        border: '1px solid ' + (p.verdict.green ? 'var(--color-accent)' : 'var(--color-divider)'),
+        background: p.verdict.green ? 'color-mix(in srgb, var(--color-accent) 18%, transparent)' : 'transparent',
+        color: p.verdict.green ? 'var(--color-accent-200)' : 'var(--color-neutral-300)',
+      },
+      cardItems: p.items.map((it, j) => ({
+        label: it.label, meta: it.meta,
+        style: {
+          display: 'flex', alignItems: 'baseline', gap: '10px',
+          paddingBottom: '9px', borderBottom: '1px solid var(--color-divider)',
+          opacity: motion === 'off' ? 1 : (fading ? 0 : 1),
+          transition: motion === 'off' ? 'none' : 'opacity 260ms ease ' + (fading ? 0 : j * 45) + 'ms',
+        },
+      })),
+    }
 
-        <div class="eng__trap eng__trap--none">
-          <p class="eyebrow">No trap</p>
-          <p class="eng__trap-text">The switch is the whole story here.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-installshield-installscript" data-eng-panel="engine-installshield-installscript">
-        <h3 class="display-xs eng__name">InstallShield (InstallScript)</h3>
+    const engineChips = ENGINES.map((e, i) => ({
+      name: e.name, go: () => this.setState({ engine: i }),
+      style: {
+        display: 'inline-flex', alignItems: 'center', gap: '7px', cursor: 'pointer',
+        fontFamily: 'var(--font-body)', fontSize: '12.5px', padding: '7px 12px',
+        borderRadius: '999px', transition: motion === 'off' ? 'none' : 'all 200ms ease',
+        background: i === this.state.engine ? 'color-mix(in srgb, var(--color-accent) 20%, transparent)' : 'transparent',
+        border: '1px solid ' + (i === this.state.engine ? 'var(--color-accent)' : 'var(--color-divider)'),
+        color: i === this.state.engine ? 'var(--color-accent-200)' : 'var(--color-neutral-300)',
+      },
+      dotStyle: {
+        width: '5px', height: '5px', borderRadius: '50%', flex: 'none',
+        background: e.trap ? 'var(--color-accent)' : 'var(--color-neutral-700)',
+      },
+    }))
 
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-installshield-installscript-cmd">setup.exe /s /f1&quot;setup.iss&quot;</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-installshield-installscript-cmd"
-                    aria-label="Copy the silent install command for InstallShield (InstallScript)">Copy</button>
-          </div>
-        </div>
+    const drivers = DRIVERS.map((d) => ({
+      verdict: d.verdict, when: d.when, then: d.then,
+      markStyle: (() => {
+        const c = d.tone === 'green' ? '#3fbf9c' : d.tone === 'warn' ? '#e3b341' : '#e0625c'
+        return {
+          width: '11px', height: '11px', borderRadius: '50%', flex: 'none',
+          background: c, boxShadow: '0 0 12px ' + c,
+        }
+      })(),
+    }))
 
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">registry / file</p>
-        </div>
+    const checkRows = CHECKS.map((c, i) => ({
+      n: String(i + 1).padStart(2, '0'), name: c.name, what: c.what, status: 'PASS', mark: '\u2713',
+      rowStyle: {
+        display: 'flex', alignItems: 'baseline', gap: '10px',
+        paddingBottom: '9px', borderBottom: '1px solid var(--color-divider)',
+      },
+      markStyle: {
+        fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', fontSize: '11px',
+        width: '14px', flex: 'none', color: 'var(--color-accent)',
+      },
+      metaStyle: {
+        fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', fontSize: '10.5px',
+        letterSpacing: '0.06em', textAlign: 'right', flex: 'none',
+        color: 'var(--color-accent-300)',
+      },
+    }))
 
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">Record the response file first with setup.exe /r /f1&quot;setup.iss&quot;.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-inno-setup" data-eng-panel="engine-inno-setup">
-        <h3 class="display-xs eng__name">Inno Setup</h3>
+    return {
+      stats: STATS, loop: LOOP, drivers, ticks, engineChips, checks: checkRows,
+      ...cardVals,
+      counter: (active + 1) + ' / ' + PHASES.length,
+      isGate: p.num === '5',
+      notGate: p.num !== '5',
+      prev: () => this.step(-1),
+      next: () => this.step(1),
+      installCmd: this.props.installCommand ?? 'npx psadt-deploy-skill',
+      copyLabel: this.state.copied ? 'Copied' : 'Copy',
+      copy: () => {
+        const cmd = this.props.installCommand ?? 'npx psadt-deploy-skill'
+        try { navigator.clipboard.writeText(cmd) } catch (e) {}
+        this.setState({ copied: true })
+        clearTimeout(this.t)
+        this.t = setTimeout(() => this.setState({ copied: false }), 1600)
+      },
+      activeNum: p.num, activeName: p.name,
+      railFillStyle: {
+        position: 'absolute', left: 0, top: 0, height: '2px', borderRadius: '2px',
+        width: (((active + 1) / PHASES.length) * 100).toFixed(1) + '%',
+        background: 'var(--color-accent)', boxShadow: '0 0 10px var(--color-accent)',
+        transition: motion === 'off' ? 'none' : 'width 320ms ease',
+      },
+      engineName: eng.name, engineSilent: eng.silent, engineDetect: eng.detect,
+      engineTrap: eng.trap || 'No trap beyond the switch table — the switch and the detection key are the whole story.',
+      trapLabel: eng.trap ? 'the trap' : 'no trap',
+    }
+  }
+}
+</script>
 
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-inno-setup-cmd">setup.exe /VERYSILENT /NORESTART</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-inno-setup-cmd"
-                    aria-label="Copy the silent install command for Inno Setup">Copy</button>
-          </div>
-        </div>
 
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">QuietUninstallString</p>
-        </div>
-
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">/VERYSILENT reboots the machine by itself when a restart is needed. /NORESTART is mandatory.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-nsis" data-eng-panel="engine-nsis">
-        <h3 class="display-xs eng__name">NSIS</h3>
-
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-nsis-cmd">setup.exe /S</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-nsis-cmd"
-                    aria-label="Copy the silent install command for NSIS">Copy</button>
-          </div>
-        </div>
-
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">registry / file</p>
-        </div>
-
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">Uninstall.exe /S returns BEFORE it is done. _?=&lt;installdir&gt; makes it synchronous.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-advanced-installer" data-eng-panel="engine-advanced-installer">
-        <h3 class="display-xs eng__name">Advanced Installer</h3>
-
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-advanced-installer-cmd">msiexec /i pkg.msi /qn</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-advanced-installer-cmd"
-                    aria-label="Copy the silent install command for Advanced Installer">Copy</button>
-          </div>
-        </div>
-
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">ProductCode</p>
-        </div>
-
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">A fresh ProductCode per build is typical — re-probe every time.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-wix-burn-bundle" data-eng-panel="engine-wix-burn-bundle">
-        <h3 class="display-xs eng__name">WiX Burn bundle</h3>
-
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-wix-burn-bundle-cmd">bundle.exe /quiet /norestart</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-wix-burn-bundle-cmd"
-                    aria-label="Copy the silent install command for WiX Burn bundle">Copy</button>
-          </div>
-        </div>
-
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">BundleProviderKey</p>
-        </div>
-
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">A single ProductCode is the wrong detection key for a bundle.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-squirrel-electron" data-eng-panel="engine-squirrel-electron">
-        <h3 class="display-xs eng__name">Squirrel (Electron)</h3>
-
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-squirrel-electron-cmd">Setup.exe --silent</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-squirrel-electron-cmd"
-                    aria-label="Copy the silent install command for Squirrel (Electron)">Copy</button>
-          </div>
-        </div>
-
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">file version under %LocalAppData%</p>
-        </div>
-
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">Usually per-user; a machine-wide Win32 install needs care.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-msix-appx" data-eng-panel="engine-msix-appx">
-        <h3 class="display-xs eng__name">MSIX / AppX</h3>
-
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-msix-appx-cmd">Add-AppxProvisionedPackage -Online</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-msix-appx-cmd"
-                    aria-label="Copy the silent install command for MSIX / AppX">Copy</button>
-          </div>
-        </div>
-
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">Get-AppxProvisionedPackage</p>
-        </div>
-
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">As SYSTEM, Add-AppxPackage registers the app for SYSTEM only — and reports success.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-app-v" data-eng-panel="engine-app-v">
-        <h3 class="display-xs eng__name">App-V</h3>
-
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-app-v-cmd">Publish-AppvClientPackage -Global</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-app-v-cmd"
-                    aria-label="Copy the silent install command for App-V">Copy</button>
-          </div>
-        </div>
-
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">Get-AppvClientPackage</p>
-        </div>
-
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">Add alone publishes to nobody. Without -Global a SYSTEM publish targets SYSTEM.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-install4j-java" data-eng-panel="engine-install4j-java">
-        <h3 class="display-xs eng__name">install4j (Java)</h3>
-
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-install4j-java-cmd">installer.exe -q</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-install4j-java-cmd"
-                    aria-label="Copy the silent install command for install4j (Java)">Copy</button>
-          </div>
-        </div>
-
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">registry / file version</p>
-        </div>
-
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">NOT /S — that opens the language dialog and hangs forever.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-izpack-java" data-eng-panel="engine-izpack-java">
-        <h3 class="display-xs eng__name">IzPack (Java)</h3>
-
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-izpack-java-cmd">installer.jar auto-install.xml</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-izpack-java-cmd"
-                    aria-label="Copy the silent install command for IzPack (Java)">Copy</button>
-          </div>
-        </div>
-
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">registry / file</p>
-        </div>
-
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">Response-file driven.</p>
-        </div>
-      </article>
-      <article class="eng__panel" id="engine-installaware-wise" data-eng-panel="engine-installaware-wise">
-        <h3 class="display-xs eng__name">InstallAware / Wise</h3>
-
-        <div class="eng__row">
-          <p class="eyebrow">Silent install</p>
-          <div class="mono-inset mono-inset--light">
-            <code class="mono" id="engine-installaware-wise-cmd">/s or /silent</code>
-            <button class="btn btn--secondary copy" type="button"
-                    data-copy-target="#engine-installaware-wise-cmd"
-                    aria-label="Copy the silent install command for InstallAware / Wise">Copy</button>
-          </div>
-        </div>
-
-        <div class="eng__row">
-          <p class="eyebrow">Detection</p>
-          <p class="eng__detect mono">registry / file</p>
-        </div>
-
-        <div class="eng__trap">
-          <p class="eyebrow">The trap</p>
-          <p class="eng__trap-text">Confirm per build — often an MSI underneath.</p>
-        </div>
-      </article></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============================== LIMITS ============================= -->
-      <section class="band band--white" aria-labelledby="limits-title">
-        <div class="container-marketing">
-          <h2 class="display-sm section__title" id="limits-title" data-reveal>What this page is not claiming</h2>
-          <div class="limit-grid">
-      <div class="limit" data-reveal>
-        <h3 class="limit__title">Figures are as of v0.26.7</h3>
-        <p class="limit__body">Every number on this page was verified against the repository at that version. Counts drift; the linked source is authoritative, not this page.</p>
-      </div>
-      <div class="limit" data-reveal>
-        <h3 class="limit__title">Windows Sandbox has prerequisites</h3>
-        <p class="limit__body">Windows Pro, Enterprise or Education with virtualisation available. Enabling the Containers-DisposableClientVM feature needs elevation and one restart — after that, a test run needs neither.</p>
-      </div>
-      <div class="limit" data-reveal>
-        <h3 class="limit__title">Upload is opt-in, and non-destructive by default</h3>
-        <p class="limit__body">The default keeps older versions side by side so you can wire supersedence yourself. Replacing an app in place is a separate, explicit flag.</p>
-      </div>
-      <div class="limit" data-reveal>
-        <h3 class="limit__title">Not affiliated</h3>
-        <p class="limit__body">Not affiliated with or endorsed by Microsoft. PSAppDeployToolkit is a separate MIT-licensed project by its own authors; this skill drives it, it does not replace it.</p>
-      </div>
-      <div class="limit" data-reveal>
-        <h3 class="limit__title">One open point, stated plainly</h3>
-        <p class="limit__body">The driver pnputil exit-code semantics are documented, not verified here. 0 / 259 / 3010 and the two 0xE… failures come from Microsoft’s documentation; confirming them against setupapi.dev.log on a DEV VM with a real vendor-signed and a real Microsoft-signed driver is still open.</p>
-      </div></div>
-        </div>
-      </section>
-
-      <!-- ======================== START + FOOTER =========================== -->
-      <section class="band band--ink" id="start" aria-labelledby="start-title">
-        <div class="container-marketing">
-          <h2 class="display-md section__title" id="start-title">One command</h2>
-          <div class="start-grid">
-      <div class="start__block">
-        <p class="eyebrow">Run this once</p>
-        <div class="mono-inset">
-          <span class="mono-inset__prompt mono" aria-hidden="true">PS&gt;</span>
-          <code class="mono" id="install-cmd">npx psadt-deploy-skill</code>
-          <button class="btn btn--secondary copy" type="button"
-                  data-copy-target="#install-cmd"
-                  aria-label="Copy the install command">Copy</button>
-        </div>
-        <p class="start__note">Installs the skill folder into ~/.claude/skills/psadt-deploy and runs the setup doctor. Configuration, the DPAPI secret and downloaded tools go to %LOCALAPPDATA%\psadt-deploy, so they survive an update or a re-install.</p>
-      </div>
-      <div class="start__block">
-        <p class="eyebrow">Then say what you want</p>
-        <div class="mono-inset">
-          <code class="mono" id="first-prompt">Create the Win32 Intune package for 7-Zip 24.09</code>
-          <button class="btn btn--secondary copy" type="button"
-                  data-copy-target="#first-prompt"
-                  aria-label="Copy the example prompt">Copy</button>
-        </div>
-        <p class="start__note">Windows · Node 18+ · zero dependencies</p>
-      </div></div>
-        </div>
-      </section>
-    </main>
-
-    <footer class="band band--ink footer">
-      <div class="container-marketing footer__inner">
-        <p class="footer__meta mono">MIT &middot; Patrick Taubert, PHAT Consulting GmbH</p>
-        <nav class="footer__links" aria-label="Project links">
-          <a href="https://github.com/pt1987/claude-code-psadt-skill" rel="noopener">GitHub</a>
-          <a href="https://www.npmjs.com/package/psadt-deploy-skill" rel="noopener">npm</a>
-          <a href="https://github.com/pt1987/claude-code-psadt-skill/issues" rel="noopener">Issues</a>
-          <a href="https://psappdeploytoolkit.com/" rel="noopener">PSAppDeployToolkit</a>
-        </nav>
-      </div>
-    </footer>
-
-  </body>
-</html>
+</body></html>
