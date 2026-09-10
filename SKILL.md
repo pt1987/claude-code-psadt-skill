@@ -272,11 +272,14 @@ ambiguous/duplicate names are skipped, not guessed. Needs `Capabilities.Groups` 
 script asserts them before creating anything). Feed the returned `Groups` into the dossier Assignments
 table. Full schema + naming rules + permission model: guide Appendix M.
 
-**Phase 11 - Test sequence (DEV VM, all three types).** Install (ps1 → exe → SYSTEM via
-`Invoke-PsadtSystemTest.ps1`, PsExec fallback) → Uninstall on the same VM + post-uninstall verification
-(detection empty, services/tasks/firewall gone, install dir gone, vendor neighbours intact) → Repair after a
-reinstall. Then an Intune test group (1 device, Required; check the PSADT log + AppWorkload.log for `Installed`
-/ `Uninstalled` and `Close-ADTSession` exit 0). Steps + checks: guide Phase 11 / Appendix E.
+**Phase 11 - Real devices via an Intune test group.** The local Install/Uninstall/Repair loop is
+**Phase 6** and is not repeated here - Phase 6 already ran it as SYSTEM and its verdict is what let the
+upload happen. What Phase 6 cannot show is the delivery path, so this phase is about that: one test group
+with a real device, Required. Check the IME side - `AppWorkload.log` reaching `Status: Installed` (and
+`Uninstalled` on removal), the PSADT session log ending in `Close-ADTSession` exit 0, the detection script
+returning exit 0 with stdout, and Company-Portal behaviour if the app is Available. A package that passed
+Phase 6 and fails here has a delivery or detection problem, not a script problem. Steps + checks:
+phase 11, App. E.
 
 **Phase 12 - Rollout.** All three green → pilot 24-48h → staged production. **Rollback** = re-point the
 assignment (and supersedence) at the retained prior version - it was never deleted (`CreateNewCoexist`).

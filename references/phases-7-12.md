@@ -204,6 +204,13 @@ Config, naming rules and the permission model: Appendix M. Only runs when the us
 
 ## Phase 11: Test sequence
 
+> **Scope, since 0.27.0:** the local loop (11.1-11.3) belongs to **Phase 6**, which runs Install,
+> detection, Uninstall, detection, Reinstall and Repair as SYSTEM in a throwaway Sandbox and whose
+> verdict is the gate that allowed the upload at all. Phase 11 is about the **delivery path** - what
+> Phase 6 cannot see - and that is 11.4. Sections 11.1-11.3 are kept below as the manual fallback for a
+> machine where the Sandbox route is not available and you are driving the loop by hand; they are not a
+> second round of testing to perform after Phase 6 has passed.
+
 In this order on a DEV VM (not prod).
 
 ### 11.1 Direct invoke (smoke test)
