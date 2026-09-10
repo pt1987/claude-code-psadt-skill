@@ -156,4 +156,10 @@ Describe 'Update-PsadtSkill tracks everything an installation needs' {
             $script:upd | Should -Match "\`$TrackedItems = @\([^)]*'$([regex]::Escape($item))'" -Because "$item is delivered to users"
         }
     }
+
+    It 'includes every top-level directory a user is meant to receive' {
+        foreach ($item in 'references', 'scripts', 'tests', 'bin', 'evals') {
+            $script:upd | Should -Match "\`$TrackedItems = @\([^)]*'$([regex]::Escape($item))'" -Because "$item is delivered to users"
+        }
+    }
 }

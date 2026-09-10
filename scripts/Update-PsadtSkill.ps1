@@ -50,7 +50,7 @@ $ErrorActionPreference = 'Stop'
 
 # Tracked content an update may overwrite. Everything else (config.json, secret.dpapi, tools/, docs/, .git)
 # is machine-local / gitignored and is deliberately preserved.
-$TrackedItems = @('SKILL.md', 'README.md', 'CHANGELOG.md', 'LICENSE', 'SECURITY.md', 'package.json', 'references', 'scripts', 'tests', 'bin')
+$TrackedItems = @('SKILL.md', 'README.md', 'CHANGELOG.md', 'LICENSE', 'SECURITY.md', 'package.json', 'references', 'scripts', 'tests', 'bin', 'evals')
 $ApiHeaders = @{ 'User-Agent' = 'psadt-deploy-skill'; 'Accept' = 'application/vnd.github+json' }
 
 function Get-TopChangelogVersion([string]$text) {
