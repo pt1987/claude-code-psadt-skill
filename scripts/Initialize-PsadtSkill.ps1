@@ -212,7 +212,7 @@ if ($probe.LegacyInUse) {
 }
 
 # --- 6. Skill tree ---------------------------------------------------------------------------------
-$expected = @('SKILL.md', 'scripts', 'references/PSADTv4-Deployment-Guide.md')
+$expected = @('SKILL.md', 'scripts', 'references/README.md', 'references/phases-0-6.md')
 $absent   = @($expected | Where-Object { -not (Test-Path (Join-Path $skillTree $_)) })
 if ($absent.Count) { Add-Check 'SkillLocation' 'WARN' "incomplete skill tree at $skillTree (missing: $($absent -join ', '))" 're-install the skill, or run the scripts from a full checkout' }
 else { Add-Check 'SkillLocation' 'PASS' $skillTree $null }

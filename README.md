@@ -68,7 +68,8 @@ gates, the research findings, every phase's result and the artifacts produced. T
 every later phase reads and updates it, and pre-flight fails without it. That is what stops two packages of
 the same app from disagreeing about their own version.
 
-Depth lives in `references/PSADTv4-Deployment-Guide.md` (Phases 0–12 + Appendices A–Q); `SKILL.md` stays the
+Depth lives in `references/` (phases 0–12 + appendices A–Q, one file per domain — see
+`references/README.md`); `SKILL.md` stays the
 control plane.
 
 ## Features
@@ -341,7 +342,9 @@ psadt-deploy/
 │  ├─ _GraphCommon.ps1                   shared Graph helpers (retry, errors, token roles)
 │  └─ _GraphInteractive.ps1              shared WAM sign-in
 ├─ references/
-│  ├─ PSADTv4-Deployment-Guide.md        Phases 0-12 + Appendices A-Q
+│  ├─ README.md                          the reference map (label -> file)
+│  ├─ phases-0-6.md · phases-7-12.md     the twelve phases
+│  ├─ appendix-a-errors.md … -q-drivers.md  one file per appendix
 │  ├─ Report-Template.html               the fixed dossier template
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
 └─ tests/                                Pester suite, 441 tests

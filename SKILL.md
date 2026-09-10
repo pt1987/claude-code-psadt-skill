@@ -7,8 +7,9 @@ license: MIT
 # PSADT v4.x Deployment Skill
 
 Drive a PSADT v4.x Intune Win32 package end-to-end. Depth lives in
-`references/PSADTv4-Deployment-Guide.md` (Phases 0-12 + Appendix A-P) and in each script's comment-based
-help. Keep THIS file as the control plane; load guide sections on demand instead of inlining them.
+`references/` (phases 0-12 + Appendix A-Q, one file per domain - map: `references/README.md`) and in
+each script's comment-based help. Keep THIS file as the control plane; load a reference on demand
+instead of inlining it.
 
 ## Operating mode (autonomy first)
 
@@ -433,22 +434,29 @@ Full symptom/HRESULT catalogue: guide Appendix A.
 
 ## Reference lookup
 
-`references/app-registration.md` - THE Graph permission matrix (app roles + capabilities + bootstrap scopes).
-`references/research-trust.md` - why researched content is data and how a value gets verified (install4j case).
-`references/PSADTv4-Deployment-Guide.md` - **Phase 0 setup doctor + config home + Intune access** ·
-Phase 1.2 intake catalogue · 1.1/1.3 research · Phase 3 scaffold ·
-4 customize · 5 pre-flight · **6.1 sandbox SYSTEM test / 6.2 per-action / 6.3 run it in parallel** ·
-7 package · 8-9 Intune config fields · 11 test · 12 rollout · App. A errors ·
-B anti-patterns · C test stubs · D URLs · E deploy checklist · F dossier template (all fields) · G lessons
-learned · H direct Graph upload · **I WinGet packaging** · **J app-logo acquisition + verification** ·
-**K script-only / remediation packages (ESP-safe)** · **L installer technologies + silent switches** ·
-**M group assignment (opt-in: config, naming, permissions)** ·
-**N certificate store deployment (driver-trust / TrustedPublisher; RootCATrustedCertificates CSP OMA-URI;
-`New-IntuneTrustedCertPolicy.ps1`)** ·
-**O browser-extension force-install (opt-in: Edge/Chrome/Firefox policy keys, Firefox `REG_MULTI_SZ` trap,
-merge/selective-remove; `New-BrowserExtensionPackage.ps1`)** ·
-**P windows-features (opt-in: Enable-WindowsOptionalFeature + Add-WindowsCapability, 3010 reboot, WU/WSUS-bypass
-content source, EnablePending detection; `New-WindowsFeaturePackage.ps1`)** ·
-**Q third-party drivers (classification matrix, PnP install vs. Code Integrity, pnputil 0/259/3010 + the two
-0xE... failures, oemNN.inf resolution, installer-bundled drivers; `Get-DriverSignatureInfo.ps1`,
-`New-DriverPackage.ps1`)**.
+Depth lives in `references/`. `references/README.md` is the map; section numbering inside each file is
+unchanged, so "App. L.1" or "Phase 6.2" still resolves.
+
+| Need | File |
+|---|---|
+| Phase 0 setup doctor + config home + Intune access · 1.2 intake catalogue · 1.1/1.3 research · 3 scaffold · 4 customize · 5 pre-flight · **6.1 sandbox SYSTEM test / 6.2 per-action / 6.3 in parallel** | `references/phases-0-6.md` |
+| 7 package · 8-9 Intune config fields · 10 assignment · 11 test · 12 rollout | `references/phases-7-12.md` |
+| Graph permission matrix (app roles + capabilities + bootstrap scopes) | `references/app-registration.md` |
+| Why researched content is data, and how a value gets verified (install4j case) | `references/research-trust.md` |
+| App. A - error / HRESULT catalogue | `references/appendix-a-errors.md` |
+| App. B - full anti-pattern list | `references/appendix-b-anti-patterns.md` |
+| App. C - test stub pattern | `references/appendix-c-test-stubs.md` |
+| App. D - resources and URLs | `references/appendix-d-resources.md` |
+| App. E - final deploy checklist | `references/appendix-e-deploy-checklist.md` |
+| App. F - dossier template, every field (F.0 metadata keys, F.2 structure, F.4 return-code order) | `references/appendix-f-dossier-template.md` |
+| App. G - lessons learned from real incidents | `references/appendix-g-lessons.md` |
+| App. H - direct Graph upload gotchas | `references/appendix-h-graph-upload.md` |
+| App. I - **WinGet packaging** (opt-in, never the default) | `references/appendix-i-winget.md` |
+| App. J - **app-logo acquisition + verification** | `references/appendix-j-logo.md` |
+| App. K - **script-only / remediation packages** (ESP-safe) | `references/appendix-k-remediation.md` |
+| App. L - **installer technologies + silent switches**, consult BEFORE web research (L.8 MSIX/AppX, L.9 App-V) | `references/appendix-l-installers.md` |
+| App. M - **group assignment** (opt-in: config, naming, permissions) | `references/appendix-m-group-assignment.md` |
+| App. N - **certificate store deployment** (driver-trust / TrustedPublisher; RootCATrustedCertificates CSP OMA-URI; `New-IntuneTrustedCertPolicy.ps1`) | `references/appendix-n-cert-store.md` |
+| App. O - **browser-extension force-install** (Edge/Chrome/Firefox policy keys, Firefox `REG_MULTI_SZ` trap, merge/selective-remove; `New-BrowserExtensionPackage.ps1`) | `references/appendix-o-browser-extensions.md` |
+| App. P - **windows-features** (Enable-WindowsOptionalFeature + Add-WindowsCapability, 3010 reboot, WU/WSUS-bypass content source, EnablePending detection; `New-WindowsFeaturePackage.ps1`) | `references/appendix-p-windows-features.md` |
+| App. Q - **third-party drivers** (classification matrix, PnP install vs. Code Integrity, pnputil 0/259/3010 + the two 0xE... failures, oemNN.inf resolution; `Get-DriverSignatureInfo.ps1`, `New-DriverPackage.ps1`) | `references/appendix-q-drivers.md` |

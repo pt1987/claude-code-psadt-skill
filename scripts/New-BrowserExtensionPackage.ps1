@@ -12,7 +12,7 @@
       - PSAppDeployToolkit.Extensions\PSAppDeployToolkit.Extensions.psm1  (4 merge/remove helpers)
       - Detect-<Name>.ps1            (verifies the policy is set; honest model)
 
-    See references/PSADTv4-Deployment-Guide.md Appendix O for the model, registry reference and
+    See references/appendix-o-browser-extensions.md for the model, registry reference and
     anti-patterns.
 
     .PARAMETER Extensions
