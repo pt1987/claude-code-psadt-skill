@@ -428,6 +428,39 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.27.0 - 10.09.2026
+- **Fixed: after auto-compaction, half of SKILL.md was gone.** Claude Code re-attaches only the **first
+  5000 tokens** of an invoked skill after a summary. SKILL.md was ~10 10900, so the cut fell at line 198 — the
+  middle of Phase 2. In exactly the sessions long enough to compact, the skill lost Phases 3–12, the whole
+  troubleshooting table, every anti-pattern and the reference map. The fix is **ordering, not size**: the
+  operating mode, the four gates, the conventions and Phases 0–6 now sit ahead of the cut, and Phase 6 ends
+  at byte 17 457 of a 17 500-byte budget — with a test that fails if it ever crosses back.
+- **Fixed: `--ref <tag>` returned HTTP 404 on the tarball route.** The installer built
+  `tar.gz/refs/heads/<ref>`, and `refs/heads` only resolves *branches* — so pinning worked with git and failed
+  on exactly the machines without it, which are the ones most likely to need a pinned release.
+  `Update-PsadtSkill.ps1` had the same latent bug in its archive path.
+- **Fixed: a failed install exited 127 instead of 1**, with a libuv assertion after the error message. A
+  mistyped `--ref` printed a correct explanation and then looked like a crash.
+- **Changed: the default install is the newest release tag, not `main`.** This skill registers an Entra app
+  with admin consent and writes to a tenant; installing whatever last landed on a branch is not a defensible
+  default for that. `--ref main` and `--ref v0.27.0` both remain. The update check now distinguishes a
+  release-pinned installation (counts *releases* behind) from one following a branch.
+- **Changed: the 2942-line deployment guide is now nineteen files**, one per domain, with
+  `references/README.md` as the map. Section numbering is unchanged, so every "App. L.1" and "Phase 6.2"
+  still resolves.
+- **Changed (behaviour): Phase 11 no longer re-runs Phase 6.** Phase 6 answers *does the package work* (the
+  gate, in a throwaway Sandbox); Phase 11 answers *does the delivery work* (Intune test group, real device,
+  `AppWorkload.log`). A package that passes 6 and fails 11 now tells you something.
+- **Changed: `"update skill"` is gone from the description** — un-namespaced, it made this skill answer for
+  every other updatable skill on the machine. `"psadt update"` stays.
+- **Added `SECURITY.md`** — the risk surface next to the control that covers each part of it, each naming the
+  file and the test that implement it.
+- **Added: researched content is data, never instructions** (`references/research-trust.md`) — Phase 2
+  researches on the open web and the result runs as SYSTEM. The install4j case generalised.
+- **Added three guards and CI**: rule anchors proving no binding rule was lost in the move, a two-directional
+  doc cross-reference check that also reads `scripts/`, a context-budget test, and the suite on a clean
+  Windows runner for every push. Suite 441 → 474.
+- **Added `evals/`** — 20 trigger and behaviour cases. Not yet run: `claude plugin eval` is in early access.
 ### 0.26.7 - 08.09.2026
 - **Fixed: the control plane did not know MSIX exists.** L.8/L.9 landed in 0.26.5, but Gate 1's package-type list
   never mentioned MSIX — so a `.msix` fell through to "native installer (default)", the one route that is wrong for
