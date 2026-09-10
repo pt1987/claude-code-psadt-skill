@@ -170,7 +170,7 @@ The app's **native installer is always the default**. Everything else is opt-in 
 - **Self-update** — `scripts/Update-PsadtSkill.ps1` compares against GitHub, shows what changed, and
   updates in place on your confirmation (`git pull --ff-only` for a clone, otherwise a branch-zip overwrite
   of tracked files only). Machine-local state is never touched. Say *"update skill"* or *"psadt update"*.
-- **326 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
+- **441 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
   disagree.
 
 ## Requirements
@@ -303,7 +303,7 @@ psadt-deploy/
 │  ├─ PSADTv4-Deployment-Guide.md        Phases 0-12 + Appendices A-Q
 │  ├─ Report-Template.html               the fixed dossier template
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
-└─ tests/                                Pester suite, 326 tests
+└─ tests/                                Pester suite, 441 tests
 ```
 
 Machine-local state lives outside the skill folder:
@@ -324,7 +324,7 @@ psadt-package.json                       identity · gate decisions · research 
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 326 Pester tests.
+verified against a live tenant. The helper scripts are covered by 441 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
