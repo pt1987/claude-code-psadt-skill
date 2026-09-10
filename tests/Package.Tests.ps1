@@ -108,12 +108,26 @@ Describe 'bin/install.mjs' {
     }
 }
 
-Describe 'Update-PsadtSkill tracks the packaging files' {
+Describe 'Update-PsadtSkill tracks everything an installation needs' {
+    BeforeAll {
+        $script:upd = Get-Content (Join-Path $script:root 'scripts\Update-PsadtSkill.ps1') -Raw
+    }
+
     It 'includes package.json and bin in $TrackedItems' {
         # Without this the archive update route silently drops them, and the next update on a git-less
         # machine leaves a skill whose installer is from an older version.
-        $upd = Get-Content (Join-Path $script:root 'scripts\Update-PsadtSkill.ps1') -Raw
-        $upd | Should -Match "\`$TrackedItems = @\([^)]*'package\.json'"
-        $upd | Should -Match "\`$TrackedItems = @\([^)]*'bin'"
+        $script:upd | Should -Match "\`$TrackedItems = @\([^)]*'package\.json'"
+        $script:upd | Should -Match "\`$TrackedItems = @\([^)]*'bin'"
+    }
+
+    It 'includes every top-level repo file a user is meant to receive' {
+        # $TrackedItems is an allow-list, so a new root-level document does not ship unless someone
+        # remembers to add it - and the failure is invisible: git installs stay correct while the
+        # tarball route quietly keeps the old tree. SECURITY.md is the case that motivated this test;
+        # it exists so a customer security review has something to read, which it cannot do if the
+        # file never reaches the machine.
+        foreach ($item in 'SKILL.md', 'README.md', 'CHANGELOG.md', 'LICENSE', 'SECURITY.md') {
+            $script:upd | Should -Match "\`$TrackedItems = @\([^)]*'$([regex]::Escape($item))'" -Because "$item is delivered to users"
+        }
     }
 }

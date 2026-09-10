@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/Claude%20Code-Skill-d97757?style=flat-square" alt="Claude Code Skill" />
 </p>
 
-<p align="center"><sub><a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#features">Features</a> · <a href="#first-run-setup">Setup</a> · <a href="#roadmap">Roadmap</a> · <a href="#changelog">Changelog</a></sub></p>
+<p align="center"><sub><a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#features">Features</a> · <a href="#first-run-setup">Setup</a> · <a href="#security">Security</a> · <a href="#roadmap">Roadmap</a> · <a href="#changelog">Changelog</a></sub></p>
 
 ---
 
@@ -265,7 +265,7 @@ the originals to `*.migrated` rather than deleting anything.
 
 ```
 psadt-deploy/
-├─ SKILL.md · README.md · CHANGELOG.md · LICENSE
+├─ SKILL.md · README.md · CHANGELOG.md · SECURITY.md · LICENSE
 ├─ package.json · bin/install.mjs        the npx installer (Node 18+, zero dependencies)
 ├─ scripts/
 │  │  setup + config
@@ -331,6 +331,21 @@ One open point, honestly: **the driver `pnputil` exit-code semantics are documen
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
 against `setupapi.dev.log` on a DEV VM with a real vendor-signed and a real Microsoft-signed driver is
 still open.
+
+## Security
+
+This skill installs software as SYSTEM, researches on the open web, and writes to an Intune tenant
+through an Entra app with admin consent. [`SECURITY.md`](SECURITY.md) states that risk surface next to
+the control that already covers each part of it — the dry-run-before-execute rule, the three-valued
+access check, never-delete, role assertion before the first write, certificate before DPAPI secret,
+the config home outside the skill folder, and the self-containment rule for anything that ships to a
+test client. Each control names the file that implements it and the test that enforces it, so a review
+can check the claims rather than take them.
+
+Two deliberate non-features are explained there as well: the skill does **not** declare
+`allowed-tools` (that field pre-approves tools, it does not restrict them), and content fetched during
+research is treated as data, never as instructions — see
+[`references/research-trust.md`](references/research-trust.md).
 
 ## Roadmap
 
