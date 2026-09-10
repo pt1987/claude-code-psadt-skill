@@ -1,0 +1,39 @@
+# The suite is the only thing standing between a documentation refactor and a silent behaviour change:
+# several tests are drift guards that fail when the docs and the code disagree. Until this workflow
+# existed, "the suite is green" meant "someone remembered to run it" - the last recorded result in the
+# repo was twelve commits old and gitignored.
+name: tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  pester:
+    # Windows-only on purpose: every script under test is Windows-only (package.json declares
+    # os: win32) and several resolve their config home through %LOCALAPPDATA%.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pester 5+
+        shell: pwsh
+        run: |
+          # windows-latest still ships Pester 3.4 as a built-in module, and Run-All.ps1 picks the highest
+          # installed version. Installing explicitly is the difference between running the suite and
+          # getting a wall of v3-vs-v5 syntax errors.
+          Install-Module Pester -MinimumVersion 5.0 -Force -Scope CurrentUser -SkipPublisherCheck
+          $p = Get-Module -ListAvailable Pester | Sort-Object Version -Descending | Select-Object -First 1
+          "Pester $($p.Version) on PowerShell $($PSVersionTable.PSVersion)"
+
+      - name: Run the suite
+        shell: pwsh
+        # Run-All.ps1 uses Invoke-Pester -CI, which sets a non-zero exit code when anything fails.
+        #
+        # Expect 5 SKIPPED here. tests/Get-PsadtMsiFacts.ps1 has a context that needs a real vendor MSI
+        # to probe; it self-skips when none is present, and shipping an installer in the repo is not an
+        # option. A developer machine with a package under C:\PSADT\Packages therefore reports 441
+        # passed / 0 skipped while CI reports 436 passed / 5 skipped. Both are green.
+        run: ./tests/Run-All.ps1

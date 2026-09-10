@@ -5,6 +5,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/pt1987/claude-code-psadt-skill/actions/workflows/tests.yml"><img src="https://github.com/pt1987/claude-code-psadt-skill/actions/workflows/tests.yml/badge.svg" alt="tests" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT" /></a>
   <img src="https://img.shields.io/badge/PSADT-v4.x-0a7bbb?style=flat-square" alt="PSADT v4.x" />
   <img src="https://img.shields.io/badge/Platform-Windows-0078d6?style=flat-square&logo=windows&logoColor=white" alt="Windows" />
