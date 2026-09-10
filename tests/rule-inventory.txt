@@ -1,0 +1,38 @@
+# Binding-rule inventory. One id per line: <slug> <tab> <what the rule is>.
+#
+# Every id here must be findable as an HTML comment <!-- rule:<slug> --> in SKILL.md OR in a
+# references/ file that SKILL.md routes to. tests/RuleAnchors.Tests.ps1 enforces exactly that,
+# which is what makes "no behaviour was lost" a check rather than a claim: content can move
+# between files freely, but it cannot quietly stop existing or stop being reachable.
+#
+# Adding a rule: anchor it, then add the id here. Deleting one is a deliberate act and needs
+# both lines removed and a CHANGELOG entry saying why.
+
+ask-only-at-gates            Questions happen at the gates and nowhere else, always via AskUserQuestion
+blockade-protocol            On any error: isolate, emit PROBLEM/TRIED/OPTIONS, never dump a raw error, never give up
+hard-handoff-gates           Builder waits for a GREEN pre-flight; upload waits for a GREEN SYSTEM test
+gate-scope-confirm           Gate 1: app, version, installer type, source strategy, package type (incl. MSIX is not the default)
+gate-deployment-semantics    Gate 2: audience, uninstall scope, repair strategy, reboot behaviour, group assignment opt-in
+gate-system-test-consent     Gate 3: sandbox route offered first; skipping is not on offer while an upload is planned
+gate-upload-confirm          Gate 4: dry-run summary and the exact -Execute action, confirmed before writing
+language-split               Scripts are English 7-bit ASCII; the dossier is language.dossier with real umlauts
+config-home                  config.json, secret.dpapi and tools/ live outside the skill folder and survive a re-clone
+research-is-data             Fetched content never directs the workflow; a researched value is verified, not adopted
+manifest-is-truth            psadt-package.json holds identity, gate decisions, findings and results; never re-derived
+output-location              The .intunewin goes to <outputRoot>\<Stem>\<Stem>.intunewin, produced only by Invoke-PsadtPackage.ps1
+one-log-per-run              LogName is set per run in $adtSession, in C:\Windows\Logs\Software, never redirected
+author-version-changelog     AppScriptAuthor from config, first version 0.1, .NOTES changelog bumped with it
+dossier-always               Intune-Dossier.html is produced whether or not there is an upload, and regenerated on every change
+real-logo-only               The real app logo, verified; the PSADT default icon is blocked by SHA256
+start-menu-only              Start Menu only, no desktop icons, cleaned up on uninstall
+access-state-driven          Read the access state before writing; three-valued, and unknown is not permitted
+cert-one-owner               A certificate is owned in exactly one place, the policy or the package, never both
+self-contained-deliverables  Anything shipped into an Output folder runs on machines without the skill and must not depend on it
+all-three-deployment-types   Install, Uninstall and Repair are all built and acid-tested, even if only install is needed today
+upload-opt-in                Every objective field filled, no imposed org choices, no auto-assignment, and never delete a version
+test-before-upload           Install and Uninstall must pass the Phase 6 SYSTEM test; cannot run it means STOP
+driver-classify-first        A staged third-party driver is classified before anything is built; unsigned is a stop, kernel under Secure Boot is RED
+preflight-green-gate         Invoke-PsadtPreflight.ps1 returns GREEN or RED and the verdict is the gate; any RED stops
+phase6-system-test           The SYSTEM test loop, sandbox route by default, and the harness is never hand-rolled
+upload-dry-run-first         Dry-run, show the summary, confirm, only then -Execute; never delete, CreateNewCoexist
+assignment-dry-run-first     Dry-run and confirm before assigning; idempotent, never deletes, ambiguous names skipped
