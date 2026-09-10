@@ -2,6 +2,49 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.27.1 - 2026-09-10 - The dossier described a package that did not exist
+
+### Fixed
+- **`New-PsadtReport.ps1` invented facts about the package when they were not supplied, and printed
+  them as statements.** Found while packaging two real apps to test 0.27.0. A dossier generated
+  without `-Metadata` claimed, in the document an approver reads before shipping:
+  - **`_Beschreibung folgt._`** as the Company-Portal app description. That text is copied into
+    Intune verbatim. It is not an empty state - it reads like a finished sentence, survives review
+    and ships to every device in the assignment.
+  - **`Start-ADTMsiProcess`, `Remove-ADTApplication`, "Nutzerdaten bleiben erhalten"** as the hook
+    contents, and a four-cmdlet list, for whatever package was being reported on. A WinMerge package
+    driven by `Start-ADTProcess` with Inno Setup switches was described as calling
+    `Start-ADTMsiProcess` four times. Nothing marked the list as a guess.
+
+  The file already stated the correct rule for itself - *"Default = NOT RUN (neutral) - same honesty
+  rule as pre-flight: no synthetic Success rows"* - and the identity guard already refused with *"a
+  dossier without a real app identity is a placeholder, not a deliverable"*. The rule simply had not
+  been applied to the fields that describe the package's content.
+
+  Now:
+  - The **hooks and the cmdlet list are read out of the launcher** by AST, per `*-ADTDeployment`
+    function, in source order. No launcher to read means `nicht ermittelbar / not derivable`, not a
+    plausible list. An explicit `-Metadata` value still wins.
+  - A **missing description warns** and renders an unmissable marker, and **refuses outright** when
+    `decisions.upload = true` - the same shape as the existing SYSTEM-test gate. `-AllowMissingDescription`
+    is the deliberate, visible opt-out, like `-AllowDefaultLogo` on the upload script.
+  - The **header status is derived** from the pre-flight and SYSTEM-test evidence instead of
+    defaulting to `Upload-bereit - getestet`. That default was a landmine rather than a live bug: the
+    template does not currently render `{{STATUS_DE}}`, so nobody ever saw a dossier claim "tested"
+    while stating "no SYSTEM-test results supplied (no evidence)" three sections lower. It would have
+    gone live the moment the token was wired up.
+
+- **`SKILL.md` Phase 8 did not say the description was mandatory.** It said "App description =
+  Markdown, dossier language, real umlauts" - a formatting rule for a field it never said had to be
+  supplied. It now says the report refuses without it, and that the hooks and cmdlets are derived
+  rather than authored.
+
+### Notes
+- Suite 474 -> 484. The new cases assert the absence of each invented value, that the derived cmdlet
+  list matches a launcher that calls `Start-ADTProcess` and not `Start-ADTMsiProcess`, and that the
+  upload path refuses and writes no file.
+- One pre-existing test needed a description added: an upload now has to clear two gates, not one.
+
 ## 0.27.0 - 2026-09-10 - Half the control plane was gone after the first compaction
 
 ### Fixed

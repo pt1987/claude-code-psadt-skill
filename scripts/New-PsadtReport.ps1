@@ -61,6 +61,10 @@ param(
 
     [string]$LogoPath,
 
+    # Render an explicit "not supplied" marker in place of the app description instead of refusing.
+    # Deliberate and visible, the way -AllowDefaultLogo is on the upload script - never the default.
+    [switch]$AllowMissingDescription,
+
     [switch]$PassThru
 )
 
@@ -111,6 +115,19 @@ if ($ManifestPath) {
     # the manifest, so the gate can be enforced here instead of relying on the operator remembering it.
     if ($mf.decisions.upload -eq $true -and -not $Metadata.ContainsKey('SystemTest')) {
         throw "decisions.upload is true but no SYSTEM-test result was supplied. Run Invoke-PsadtSystemTest.ps1 (Install + Uninstall) first - Phase 6 is the binding gate for upload - or set decisions.upload to false."
+    }
+
+    # The Company-Portal description is the one field in this document an end user reads, and it is
+    # copied out of here by hand. A default of "_Beschreibung folgt._" is not a neutral empty state:
+    # it renders as a finished sentence, survives review, and ships to every device in the assignment.
+    # Same rule as the identity floor above - do not invent a value that looks supplied.
+    $hasDesc = ($Metadata.ContainsKey('DescMdDe') -and -not [string]::IsNullOrWhiteSpace([string]$Metadata['DescMdDe'])) -or
+               ($Metadata.ContainsKey('DescMdEn') -and -not [string]::IsNullOrWhiteSpace([string]$Metadata['DescMdEn']))
+    if (-not $hasDesc -and -not $AllowMissingDescription) {
+        if ($mf.decisions.upload -eq $true) {
+            throw "No app description was supplied (DescMdDe / DescMdEn) and decisions.upload is true. That text goes to Company Portal verbatim - write it, or pass -AllowMissingDescription to render an explicit 'not supplied' marker instead."
+        }
+        Write-Warning "No app description supplied (DescMdDe / DescMdEn). The dossier will show an explicit 'not supplied' marker rather than placeholder prose. Fill it before any upload."
     }
 }
 
@@ -203,8 +220,10 @@ $moduleVersion = Get-Val 'ModuleVersion' $psadtVersion
 
 $subDe   = Get-Val 'SubDe' "Intune Win32 &middot; PSADT v$psadtVersion Paket-Report"
 $subEn   = Get-Val 'SubEn' "Intune Win32 &middot; PSADT v$psadtVersion package report"
-$statusDe = Get-Val 'StatusDe' 'Upload-bereit &middot; getestet'
-$statusEn = Get-Val 'StatusEn' 'Ready to upload &middot; tested'
+# $statusDe / $statusEn are DERIVED further down, once the pre-flight and SYSTEM-test evidence has
+# actually been read. They used to default to "Upload-bereit / Ready to upload - tested", which this
+# document then contradicted three sections later with "no SYSTEM-test results supplied (no evidence)".
+# The header is the line people read; a claim there has to come from the evidence, not from a literal.
 
 # ----------------------------------------------------------------------------- app-info cells
 $cat = Get-Val 'Category' $null
@@ -345,8 +364,11 @@ $vLocation = $loc = Get-Val 'Location' ''
 $vLocation = if ($loc) { Codei $loc } else { Bspan 'Output-Ordner der App' 'app output folder' }
 
 # ----------------------------------------------------------------------------- description markdown
-$descMdDe = Esc (Get-Val 'DescMdDe' "**$appName $appVersion**`n`n_Beschreibung folgt._")
-$descMdEn = Esc (Get-Val 'DescMdEn' "**$appName $appVersion**`n`n_Description to follow._")
+# No invented prose. "_Beschreibung folgt._" read like a finished field, survived review and shipped
+# to Company Portal; this marker cannot be mistaken for content. The guard above refuses outright when
+# an upload is planned.
+$descMdDe = Esc (Get-Val 'DescMdDe' "**$appName $appVersion**`n`n> **KEINE BESCHREIBUNG HINTERLEGT.** Dieses Feld wird unveraendert ins Company Portal uebernommen und muss vor dem Upload gefuellt werden (New-PsadtReport.ps1 -Metadata @{ DescMdDe = '...' }).")
+$descMdEn = Esc (Get-Val 'DescMdEn' "**$appName $appVersion**`n`n> **NO DESCRIPTION SUPPLIED.** This field is copied to Company Portal verbatim and must be filled before upload (New-PsadtReport.ps1 -Metadata @{ DescMdEn = '...' }).")
 
 # ----------------------------------------------------------------------------- return codes
 # One source of truth, shared with Invoke-IntuneWin32Upload.ps1 - see Get-PsadtReturnCodes.ps1. Two
@@ -397,23 +419,46 @@ function Format-HookItems {
         else { "              <li>$(Esc ([string]$it))</li>" }
     }) -join "`n"
 }
-$hookInstall = Format-HookItems (Get-Val 'HookInstall' @(
-    'Show-ADTInstallationWelcome (CloseProcesses, CheckDiskSpace)',
-    'Start-ADTMsiProcess / Start-ADTProcess (silent)',
-    @{ De = 'Startmen&uuml;-Verkn&uuml;pfung (kein Desktop)'; En = 'Start-menu shortcut (no desktop)' }
-))
-$hookUninstall = Format-HookItems (Get-Val 'HookUninstall' @(
-    'Start-ADTMsiProcess -Action Uninstall / Remove-ADTApplication',
-    @{ De = 'App-spezifische Leftovers entfernen'; En = 'Remove app-specific leftovers' },
-    @{ De = 'Nutzerdaten bleiben erhalten'; En = 'User data is preserved' }
-))
-$hookRepair = Format-HookItems (Get-Val 'HookRepair' @(
-    'Start-ADTMsiProcess -Action Repair (/fa) oder Reinstall',
-    @{ De = 'Dateien + Verkn&uuml;pfungen werden neu gesetzt'; En = 'Files + shortcuts are re-applied' }
-))
+# The hooks and the cmdlet list describe THIS package, so they are read out of THIS package. The
+# defaults here used to be a generic MSI package's contents - "Start-ADTMsiProcess", "user data is
+# preserved" - printed as fact for whatever was being reported on. A WinMerge package driven by
+# Start-ADTProcess with Inno switches was described as calling Start-ADTMsiProcess four times.
+# Nothing in the document said the list was a guess.
+$launcherAst = $null
+if ($ManifestPath) {
+    $launcherFile = Join-Path (Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath).Path) 'Invoke-AppDeployToolkit.ps1'
+    if (Test-Path -LiteralPath $launcherFile) {
+        $launcherAst = [System.Management.Automation.Language.Parser]::ParseFile($launcherFile, [ref]$null, [ref]$null)
+    }
+}
+
+function Get-HookCommands {
+    # ADT commands actually invoked inside one *-ADTDeployment function, in source order, deduplicated.
+    param($Ast, [string]$FunctionName)
+    if (-not $Ast) { return $null }
+    $fn = $Ast.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $FunctionName }, $true) |
+        Select-Object -First 1
+    if (-not $fn) { return $null }
+    $names = $fn.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true) |
+        ForEach-Object { $_.GetCommandName() } |
+        Where-Object { $_ -and $_ -match '^[A-Za-z]+-(ADT|Psadt)' }
+    return @($names | Select-Object -Unique)
+}
+
+$hookInstallCmds   = Get-HookCommands $launcherAst 'Install-ADTDeployment'
+$hookUninstallCmds = Get-HookCommands $launcherAst 'Uninstall-ADTDeployment'
+$hookRepairCmds    = Get-HookCommands $launcherAst 'Repair-ADTDeployment'
+
+$notDerived = @(@{ De = '&ndash; nicht ermittelbar (kein Launcher gefunden), nicht &uuml;bergeben'; En = '&ndash; not derivable (no launcher found), not supplied' })
+
+$hookInstall   = Format-HookItems (Get-Val 'HookInstall'   $(if ($hookInstallCmds)   { $hookInstallCmds }   else { $notDerived }))
+$hookUninstall = Format-HookItems (Get-Val 'HookUninstall' $(if ($hookUninstallCmds) { $hookUninstallCmds } else { $notDerived }))
+$hookRepair    = Format-HookItems (Get-Val 'HookRepair'    $(if ($hookRepairCmds)    { $hookRepairCmds }    else { $notDerived }))
 
 # ----------------------------------------------------------------------------- cmdlets
-$cmds = Get-Val 'Cmdlets' @('Show-ADTInstallationWelcome', 'Start-ADTMsiProcess', 'Write-ADTLogEntry', 'Close-ADTSession')
+$derivedCmds = @($hookInstallCmds + $hookUninstallCmds + $hookRepairCmds | Where-Object { $_ } | Select-Object -Unique | Sort-Object)
+$cmds = Get-Val 'Cmdlets' $(if ($derivedCmds) { $derivedCmds } else { @('nicht ermittelbar / not derivable') })
 $cmdChips = @(foreach ($c in $cmds) { "          <span class=`"chip`">$(Esc $c)</span>" }) -join "`n"
 
 # ----------------------------------------------------------------------------- pre-flight
@@ -450,6 +495,36 @@ $stRows = @(foreach ($s in $st) {
 }) -join "`n"
 $stNoteDe = Get-Val 'SystemTestNoteDe' 'Keine SYSTEM-Test-Ergebnisse &uuml;bergeben &ndash; der SYSTEM-Test wurde nicht ausgef&uuml;hrt (kein Beleg).'
 $stNoteEn = Get-Val 'SystemTestNoteEn' 'No SYSTEM-test results supplied &ndash; the SYSTEM test was not run (no evidence).'
+
+# ----------------------------------------------------------------------------- header status
+# Derived, never asserted. The rule the SYSTEM-test table and the pre-flight KPI already follow -
+# "no synthetic Success rows" - applies with most force to the badge at the top of the page, because
+# that is the line an approver reads before deciding to ship. An explicit StatusDe/StatusEn in
+# -Metadata still wins; what is gone is the default that claimed "tested" with nothing behind it.
+$stWasRun = @($st | Where-Object { [string]$_.Result -ne 'not run' }).Count -gt 0
+$stFailed = @($st | Where-Object { $_.Cls -eq 'b-fail' }).Count -gt 0
+if ($pfHasFail) {
+    $statusDefaultDe = 'Nicht upload-bereit &middot; Pre-flight ROT'
+    $statusDefaultEn = 'Not ready to upload &middot; pre-flight RED'
+}
+elseif ($stFailed) {
+    $statusDefaultDe = 'Nicht upload-bereit &middot; SYSTEM-Test fehlgeschlagen'
+    $statusDefaultEn = 'Not ready to upload &middot; SYSTEM test failed'
+}
+elseif (-not $stWasRun) {
+    $statusDefaultDe = 'Nicht getestet &middot; kein SYSTEM-Test'
+    $statusDefaultEn = 'Not tested &middot; no SYSTEM test'
+}
+elseif ($pfAllNeut) {
+    $statusDefaultDe = 'Getestet &middot; Pre-flight nicht ausgef&uuml;hrt'
+    $statusDefaultEn = 'Tested &middot; pre-flight not run'
+}
+else {
+    $statusDefaultDe = 'Upload-bereit &middot; getestet'
+    $statusDefaultEn = 'Ready to upload &middot; tested'
+}
+$statusDe = Get-Val 'StatusDe' $statusDefaultDe
+$statusEn = Get-Val 'StatusEn' $statusDefaultEn
 
 # ----------------------------------------------------------------------------- token map
 $logoSrc = Get-LogoDataUri -Path $LogoPath -AppName $appName

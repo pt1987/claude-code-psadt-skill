@@ -198,7 +198,9 @@ Describe 'New-PsadtReport -ManifestPath (0.21.0)' {
         $m.decisions = @{ upload = $true }
         & $script:writeMf $m
         $st = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'OK' })
-        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st } -OutputPath $script:outHtml } | Should -Not -Throw
+        # A description is supplied too, because an upload has to clear BOTH gates since 0.27.1. This
+        # test is about the SYSTEM-test gate; the description gate has its own tests further down.
+        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**Test**'; DescMdEn = '**Test**' } -OutputPath $script:outHtml } | Should -Not -Throw
     }
 
     It 'throws for a manifest path that does not exist' {
@@ -323,5 +325,131 @@ Describe 'Return codes in the rendered dossier' {
         $html = Get-Content $script:rcOut -Raw
         $html | Should -Match '<tr data-rc-type="softReboot">'
         $html | Should -Not -Match 'rc-token'
+    }
+}
+
+
+Describe 'The dossier never invents a fact about the package (0.27.1)' {
+    # SCOPE NOTE: the failure this guards against shipped. A dossier generated without -Metadata
+    # described a generic MSI package: the Company-Portal text read "_Beschreibung folgt._", the hook
+    # lists claimed Start-ADTMsiProcess and "user data is preserved", and the cmdlet list named four
+    # cmdlets nobody had checked. For a WinMerge package driven by Start-ADTProcess with Inno
+    # switches, that was four printed occurrences of a cmdlet the package never calls.
+    #
+    # None of it was marked as a guess. The document exists so an approver can decide whether to
+    # ship; a plausible invention there is worse than a blank, because a blank gets filled.
+
+    BeforeEach {
+        $script:pkg = Join-Path ([System.IO.Path]::GetTempPath()) ("psadtpkg_" + [guid]::NewGuid().ToString('N'))
+        New-Item $script:pkg -ItemType Directory -Force | Out-Null
+        $script:manifest = Join-Path $script:pkg 'psadt-package.json'
+        @{
+            schema = 1
+            app = @{ vendor = 'ACME'; name = 'Widget'; version = '1.0'; arch = 'x64'; lang = 'EN'; revision = 1 }
+            decisions = @{ upload = $false }
+        } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $script:manifest -Encoding UTF8
+    }
+
+    AfterEach {
+        if (Test-Path $script:pkg) { Remove-Item $script:pkg -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    Context 'the app description' {
+        It 'never renders invented prose in place of a missing description' {
+            & $script:gen -ManifestPath $script:manifest -OutputPath $script:out -WarningAction SilentlyContinue
+            $html = Get-Content $script:out -Raw
+            $html | Should -Not -Match 'Beschreibung folgt'
+            $html | Should -Not -Match 'Description to follow'
+        }
+
+        It 'says plainly that no description was supplied' {
+            & $script:gen -ManifestPath $script:manifest -OutputPath $script:out -WarningAction SilentlyContinue
+            $html = Get-Content $script:out -Raw
+            $html | Should -Match 'KEINE BESCHREIBUNG HINTERLEGT'
+        }
+
+        It 'warns when the description is missing' {
+            $warnings = @()
+            & $script:gen -ManifestPath $script:manifest -OutputPath $script:out -WarningVariable warnings -WarningAction SilentlyContinue
+            ($warnings -join ' ') | Should -Match 'description'
+        }
+
+        It 'REFUSES outright when an upload is planned and writes no file' {
+            # An earlier It in this Context wrote to the same path; the assertion below is about THIS
+            # run producing nothing, so start from a known-absent file.
+            if (Test-Path $script:out) { Remove-Item $script:out -Force }
+            @{
+                schema = 1
+                app = @{ vendor = 'ACME'; name = 'Widget'; version = '1.0'; arch = 'x64'; lang = 'EN'; revision = 1 }
+                decisions = @{ upload = $true }
+            } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $script:manifest -Encoding UTF8
+            { & $script:gen -ManifestPath $script:manifest -OutputPath $script:out -Metadata @{
+                SystemTest = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'ok'; Cls = 'b-ok'; Result = 'pass' })
+            } } | Should -Throw -ExpectedMessage '*description*'
+            Test-Path $script:out | Should -BeFalse
+        }
+
+        It 'accepts -AllowMissingDescription as a deliberate, visible choice' {
+            { & $script:gen -ManifestPath $script:manifest -OutputPath $script:out -AllowMissingDescription } | Should -Not -Throw
+            (Get-Content $script:out -Raw) | Should -Match 'KEINE BESCHREIBUNG HINTERLEGT'
+        }
+    }
+
+    Context 'the hooks and the cmdlet list' {
+        BeforeEach {
+            # A launcher that calls Start-ADTProcess and NOT Start-ADTMsiProcess - the exact shape the
+            # old defaults got wrong.
+            @'
+$adtSession = @{ AppName = 'Widget' }
+function Install-ADTDeployment {
+    Show-ADTInstallationWelcome -CloseProcesses 'widget'
+    Start-ADTProcess -FilePath 'setup.exe' -ArgumentList '/VERYSILENT'
+}
+function Uninstall-ADTDeployment {
+    Start-ADTProcess -FilePath 'unins000.exe' -ArgumentList '/VERYSILENT'
+}
+function Repair-ADTDeployment {
+    Start-ADTProcess -FilePath 'setup.exe' -ArgumentList '/VERYSILENT'
+}
+'@ | Set-Content -LiteralPath (Join-Path $script:pkg 'Invoke-AppDeployToolkit.ps1') -Encoding UTF8
+        }
+
+        It 'reports the cmdlets the launcher actually calls, not a generic MSI list' {
+            & $script:gen -ManifestPath $script:manifest -OutputPath $script:out -WarningAction SilentlyContinue
+            $html = Get-Content $script:out -Raw
+            $html | Should -Match 'Start-ADTProcess'
+            $html | Should -Not -Match 'Start-ADTMsiProcess'
+        }
+
+        It 'does not assert uninstall behaviour nobody stated' {
+            & $script:gen -ManifestPath $script:manifest -OutputPath $script:out -WarningAction SilentlyContinue
+            $html = Get-Content $script:out -Raw
+            $html | Should -Not -Match 'Nutzerdaten bleiben erhalten'
+            $html | Should -Not -Match 'User data is preserved'
+        }
+
+        It 'says "not derivable" when there is no launcher to read' {
+            Remove-Item (Join-Path $script:pkg 'Invoke-AppDeployToolkit.ps1') -Force
+            & $script:gen -ManifestPath $script:manifest -OutputPath $script:out -WarningAction SilentlyContinue
+            (Get-Content $script:out -Raw) | Should -Match 'nicht ermittelbar'
+        }
+
+        It 'still lets an explicit -Metadata value win' {
+            & $script:gen -ManifestPath $script:manifest -OutputPath $script:out -WarningAction SilentlyContinue -Metadata @{
+                Cmdlets = @('Get-ADTApplication')
+            }
+            (Get-Content $script:out -Raw) | Should -Match 'Get-ADTApplication'
+        }
+    }
+
+    Context 'the header status' {
+        It 'is derived from the evidence rather than claiming "tested" by default' {
+            # The literal default used to say "Upload-bereit - getestet" while the same document said
+            # "no SYSTEM-test results supplied (no evidence)" three sections lower. The template does
+            # not currently render this token, which is why nobody saw it - a landmine, not a bug yet.
+            $src = Get-Content (Join-Path $PSScriptRoot '..\scripts\New-PsadtReport.ps1') -Raw
+            $src | Should -Not -Match "Get-Val 'StatusDe' 'Upload-bereit"
+            $src | Should -Match '\$statusDefaultDe'
+        }
     }
 }

@@ -428,6 +428,22 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 Recent releases below; the complete history is in **[CHANGELOG.md](CHANGELOG.md)** (nothing is ever removed
 from either).
 
+### 0.27.1 - 10.09.2026
+- **Fixed: das Dossier erfand Fakten über das Paket und druckte sie als Aussage.** Beim Paketieren zweier
+  echter Apps zum Test von 0.27.0 aufgefallen. Ohne `-Metadata` behauptete der Report `_Beschreibung folgt._`
+  als Company-Portal-Text — der wird unverändert nach Intune übernommen und liest sich wie ein fertiges Feld —
+  sowie `Start-ADTMsiProcess` und „Nutzerdaten bleiben erhalten" als Hook-Inhalt, für welches Paket auch immer
+  gerade berichtet wurde. Ein WinMerge-Paket, das ausschließlich `Start-ADTProcess` mit Inno-Switches aufruft,
+  wurde so viermal mit einem Cmdlet beschrieben, das es nie verwendet. Nichts kennzeichnete das als Vermutung.
+- **Hooks und Cmdlet-Liste werden jetzt per AST aus dem echten Launcher gelesen**, je `*-ADTDeployment`-Funktion.
+  Kein Launcher vorhanden: „nicht ermittelbar" statt einer plausiblen Liste. Ein explizites `-Metadata` gewinnt
+  weiterhin.
+- **Eine fehlende Beschreibung warnt und wird sichtbar markiert — und wird bei `decisions.upload = true`
+  verweigert**, in derselben Form wie das bestehende SYSTEM-Test-Gate. `-AllowMissingDescription` ist der
+  bewusste, sichtbare Ausweg.
+- **Der Header-Status wird aus den Belegen abgeleitet** statt auf „Upload-bereit · getestet" zu defaulten.
+- **SKILL.md Phase 8** sagt jetzt, dass die Beschreibung Pflicht ist; vorher stand dort nur, wie sie zu
+  formatieren wäre. Suite 474 → 484.
 ### 0.27.0 - 10.09.2026
 - **Fixed: after auto-compaction, half of SKILL.md was gone.** Claude Code re-attaches only the **first
   5000 tokens** of an invoked skill after a summary. SKILL.md was ~10 10900, so the cut fell at line 198 — the

@@ -243,9 +243,13 @@ Return codes come from `scripts/Get-PsadtReturnCodes.ps1` - the SINGLE source of
 Intune accepts exactly `success`, `softReboot`, `hardReboot`, `retry`, `failed`; **there is no "Ignored"**, and an
 invalid type THROWS rather than rendering. Pass only the INSTALLER-SPECIFIC codes as
 `@{ Code; Type; De; En }` - they merge over the mandatory `0, 1707, 3010, 1641, 1618, 60001, 60008` table, never
-replace it. Record them once as `research.returnCodes` in the manifest and dossier + upload both pick them up. App description = Markdown, dossier language, real umlauts (structure/template:
-guide F.2). Logo fetch + verify + MSI-icon fallback: guide Appendix J. WinGet dossier additions
-(WinGet >= 1.7.10582 requirement, registry/file detection note): guide Appendix I.6.
+replace it. Record them once as `research.returnCodes` in the manifest and dossier + upload both pick them up.
+**Pass `-Metadata` with the app description.** `DescMdDe`/`DescMdEn` are Markdown, in the dossier language,
+with real umlauts, and that text is copied into Company Portal verbatim - the report REFUSES to render
+without it when `decisions.upload = true`, and marks it as missing otherwise. It is not a field the
+generator can invent for you; nor are the hooks and cmdlet list, which it reads out of the launcher.
+Structure: App. F.2, keys: F.0. Logo fetch + verify + MSI-icon fallback: App. J. WinGet dossier
+additions (WinGet >= 1.7.10582 requirement, registry/file detection note): App. I.6.
 
 <!-- rule:upload-dry-run-first -->
 **Phase 9 - Direct Graph upload (opt-in).** Gate 4. ALWAYS dry-run first (read-only) → show summary +
