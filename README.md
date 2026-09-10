@@ -200,14 +200,32 @@ The app's **native installer is always the default**. Everything else is opt-in 
 npx psadt-deploy-skill
 ```
 
-Installs into `~/.claude/skills/psadt-deploy` and runs the setup doctor. Flags: `--dir <path>` ·
-`--project` (into `./.claude/skills`) · `--ref <branch|tag>` · `--no-setup`. Node 18+ and Windows; the
-installer itself has zero dependencies and the package carries only `bin/` — the skill is fetched from
-GitHub at install time.
+Installs the **newest release** into `~/.claude/skills/psadt-deploy` and runs the setup doctor. Flags:
+`--dir <path>` · `--project` (into `./.claude/skills`) · `--ref <tag|branch>` · `--no-setup`. Node 18+ and
+Windows; the installer itself has zero dependencies and the package carries only `bin/` — the skill is
+fetched from GitHub at install time.
 
-Re-running it updates an existing installation, and so does saying *"update skill"* to Claude Code
-(`git pull --ff-only` for a clone, otherwise a branch-zip overwrite of tracked files only — machine-local
-state is never touched).
+### Which version you get
+
+The default is the newest **release tag**, not `main`. This skill registers an Entra application with
+admin consent and writes to an Intune tenant; installing whatever last landed on `main` is not a
+defensible default for that.
+
+```powershell
+npx psadt-deploy-skill                 # newest release (default)
+npx psadt-deploy-skill --ref v0.26.7   # pin an exact release
+npx psadt-deploy-skill --ref main      # the development branch, deliberately
+```
+
+**For managed environments:** pin a tag, read the diff between it and the next one before moving, then
+lift the pin. Releases are tagged `vX.Y.Z` and match the [Changelog](#changelog); tags exist from
+**v0.24.0** onward — earlier versions predate the current history and cannot be tagged retroactively.
+
+Re-running the installer updates an existing installation, and so does saying *"update skill"* to Claude
+Code. What counts as an update depends on what you installed: on a **pinned release** it is the next
+release tag — unreleased work on `main` is deliberately invisible, because that is what pinning means. On
+a **branch** installation it is the next commit, as before. Either way the update overwrites tracked
+repository files only; `config.json`, `secret.dpapi` and `tools/` are never touched.
 
 **Or clone it yourself** — the repo root *is* the skill folder:
 
@@ -218,8 +236,9 @@ pwsh "$env:USERPROFILE\.claude\skills\psadt-deploy\scripts\Initialize-PsadtSkill
 
 `npx skills add pt1987/claude-code-psadt-skill` works too, since `SKILL.md` sits in the repository root.
 
-No git on the machine? The installer falls back to the branch tarball and Windows' own `tar.exe`, so the
-one-liner still works.
+No git on the machine? The installer falls back to the GitHub tarball and Windows' own `tar.exe`, so the
+one-liner still works — including with `--ref <tag>`, which is the combination a locked-down machine
+actually needs.
 
 The skill activates automatically when you ask Claude Code to build an Intune package, or when you work in
 a folder containing `Invoke-AppDeployToolkit.ps1`.

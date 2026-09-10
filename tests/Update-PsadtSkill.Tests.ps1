@@ -52,6 +52,51 @@ Describe 'Update-PsadtSkill' {
         $r.Error           | Should -Match 'GitHub'
     }
 
+    Context 'a release-pinned installation' {
+        # The installer now defaults to the newest release tag, so most installations are pinned. Judging
+        # those against main would report them as behind every time an unreleased commit lands - which is
+        # the opposite of what pinning is for. tooling.skillRef is how a pinned install is recognised.
+        BeforeEach {
+            Mock -CommandName Invoke-RestMethod -ParameterFilter { $Uri -like '*/tags*' } -MockWith {
+                @(
+                    @{ name = 'v0.26.7'; commit = @{ sha = 'sha267' } }
+                    @{ name = 'v0.9.0';  commit = @{ sha = 'sha090' } }   # out of order on purpose
+                    @{ name = 'v0.26.1'; commit = @{ sha = 'sha261' } }
+                    @{ name = 'not-a-release'; commit = @{ sha = 'nope' } }
+                )
+            }
+        }
+
+        It 'compares against the newest release tag and counts releases, not commits' {
+            @{ version = 1; tooling = @{ skillRef = 'v0.26.1'; skillCommit = 'sha261' } } | ConvertTo-Json |
+                Set-Content (Join-Path $script:root 'config.json')
+            $r = & $script:run @{}
+            $r.Track           | Should -Be 'release'
+            $r.LocalRef        | Should -Be 'v0.26.1'
+            $r.RemoteRef       | Should -Be 'v0.26.7'   # NOT v0.9.0: sorted as a version, not as text
+            $r.UpdateAvailable | Should -BeTrue
+            $r.Behind          | Should -Be 1           # one release newer in the list
+        }
+
+        It 'is UpToDate on the newest release even though main has moved on' {
+            @{ version = 1; tooling = @{ skillRef = 'v0.26.7'; skillCommit = 'sha267' } } | ConvertTo-Json |
+                Set-Content (Join-Path $script:root 'config.json')
+            $r = & $script:run @{}
+            $r.UpdateAvailable | Should -BeFalse
+            $r.Action          | Should -Be 'UpToDate'
+            # The whole point: a pinned install must not consult the branch at all.
+            Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Uri -like '*/commits/*' }
+        }
+
+        It 'falls back to branch tracking when the ref is a branch' {
+            @{ version = 1; tooling = @{ skillRef = 'main'; skillCommit = 'newsha123' } } | ConvertTo-Json |
+                Set-Content (Join-Path $script:root 'config.json')
+            $r = & $script:run @{}
+            $r.Track    | Should -Be 'branch'
+            $r.Action   | Should -Be 'UpToDate'
+        }
+    }
+
     It 'applies via the archive method and records the applied commit' {
         @{ version = 1; tooling = @{ skillCommit = 'oldsha000' } } | ConvertTo-Json | Set-Content (Join-Path $script:root 'config.json')
         Mock -CommandName Invoke-WebRequest -MockWith { }
