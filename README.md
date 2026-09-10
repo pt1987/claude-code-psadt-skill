@@ -170,7 +170,7 @@ The app's **native installer is always the default**. Everything else is opt-in 
   right log (`AppWorkload.log`, the PSADT session log, `setupapi.dev.log` for drivers).
 - **Self-update** — `scripts/Update-PsadtSkill.ps1` compares against GitHub, shows what changed, and
   updates in place on your confirmation (`git pull --ff-only` for a clone, otherwise a branch-zip overwrite
-  of tracked files only). Machine-local state is never touched. Say *"update skill"* or *"psadt update"*.
+  of tracked files only). Machine-local state is never touched. Say *"psadt update"*.
 - **441 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
   disagree.
 
@@ -221,7 +221,7 @@ npx psadt-deploy-skill --ref main      # the development branch, deliberately
 lift the pin. Releases are tagged `vX.Y.Z` and match the [Changelog](#changelog); tags exist from
 **v0.24.0** onward — earlier versions predate the current history and cannot be tagged retroactively.
 
-Re-running the installer updates an existing installation, and so does saying *"update skill"* to Claude
+Re-running the installer updates an existing installation, and so does saying *"psadt update"* to Claude
 Code. What counts as an update depends on what you installed: on a **pinned release** it is the next
 release tag — unreleased work on `main` is deliberately invisible, because that is what pinning means. On
 a **branch** installation it is the next commit, as before. Either way the update overwrites tracked
@@ -242,6 +242,27 @@ actually needs.
 
 The skill activates automatically when you ask Claude Code to build an Intune package, or when you work in
 a folder containing `Invoke-AppDeployToolkit.ps1`.
+
+### What is deliberately not in the skill frontmatter
+
+`SKILL.md` declares `name`, `description` and `license`, and nothing else. The omissions are choices, not
+oversights:
+
+- **`paths`** would look like the right way to express "activates in a folder containing
+  `Invoke-AppDeployToolkit.ps1`". It is the opposite: the field *limits* activation to files matching the
+  globs. Setting it would switch the skill off for the most common request there is — packaging an app in
+  an empty folder, where `Invoke-AppDeployToolkit.ps1` does not exist yet because Phase 3 is what creates
+  it. The folder case is covered by the last sentence of the description instead.
+- **`allowed-tools`** grants tools up front; it does not restrict them. For a skill that installs software
+  as SYSTEM and writes to a tenant, being asked per call is the point. See [`SECURITY.md`](SECURITY.md).
+- **`metadata.version`** is ignored by Claude Code, and the version already lives in `CHANGELOG.md`,
+  `package.json` (kept in sync by a test) and on the website. A fourth place to forget on release day, for
+  no behaviour, is not worth it.
+- **`shell`** only matters for `!` command injection in `SKILL.md`, which this skill does not use — and a
+  failing `!` command aborts the *entire* skill invocation, so an `Initialize-PsadtSkill` call wired up that
+  way would be a single point of failure for every packaging request.
+- **`context: fork` / `agent`** would isolate the skill in a subagent. It orchestrates its own sub-agents
+  and needs the main context to hold the decision gates.
 
 ## First-run setup
 

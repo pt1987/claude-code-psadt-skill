@@ -1,6 +1,7 @@
 ---
 name: psadt-deploy
-description: Use when the user wants to build, package, test, troubleshoot, or deploy a PSADT v4.x Intune Win32 app. Triggers - "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "Invoke-AppDeployToolkit.ps1 debug", "IntuneWinAppUtil", "update skill" / "psadt update", "psadt setup" / "psadt doctor" / "psadt einrichten", or when working in a folder with Invoke-AppDeployToolkit.ps1/.exe or a PSAppDeployToolkit module.
+description: Builds, packages, tests and deploys PSADT v4.x Intune Win32 apps end to end. Use when packaging an app for Intune, debugging Invoke-AppDeployToolkit.ps1, or working with IntuneWinAppUtil - triggers "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "psadt setup" / "psadt doctor" / "psadt einrichten", "psadt update" - even if the user never says "PSADT". Also when working in a folder that contains Invoke-AppDeployToolkit.ps1/.exe or a PSAppDeployToolkit module.
+license: MIT
 ---
 
 # PSADT v4.x Deployment Skill
@@ -179,7 +180,7 @@ Context follow-ups (coexistence, processes-to-close, architecture) come situatio
 
 ## Self-update
 
-On user request ("update skill" / "psadt update" / "/update-skill"); at Phase 0 the doctor already reports it
+On user request ("psadt update" / "/update-skill"); at Phase 0 the doctor already reports it
 as its `SkillUpdate` check (quiet, non-blocking). `pwsh scripts/Update-PsadtSkill.ps1` is read-only and
 commit-based (`HEAD` vs `origin/<branch>`, or the commits-API sha vs the recorded `tooling.skillCommit`; the
 CHANGELOG version is context only). If `UpdateAvailable`, show `LocalVersion -> RemoteVersion` + `Behind` +
