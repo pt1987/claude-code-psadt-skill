@@ -120,3 +120,32 @@ AppWorkload.log sequence:
 "unknown exit code"); map `0 / 1707` success and `3010 / 1641` reboot. See Phase 8 / the upload `returnCodes`.
 
 ---
+
+## A.0 Symptom -> suspect -> fix (the quick table)
+
+Moved out of `SKILL.md` when the control plane went on a context budget: after auto-compaction only
+the first 5000 tokens of a skill are re-attached, and a lookup table that far down the file was gone
+exactly when a long troubleshooting session needed it. It is one fetch away here instead.
+
+| Symptom | Primary suspect | Fix / verify |
+|---|---|---|
+| `0x80070001`, no PSADT logs | encoding (em-dash) or top-level throw | Phase 5 checks; guide A.2 |
+| `0x8000EA68` (60008), empty PSADT log | Import-Module / Open-ADTSession throws | guide A.2 |
+| `0x8000EA61` (60001) + stacktrace | runtime error in the Install hook | stack shows the line |
+| `60001 InvalidFilePathParameterValue` on Uninstall/Repair | GUID passed to `-FilePath` | use `-ProductCode '{GUID}'`; guide G |
+| App stuck on "Installing" in Company Portal | IME state cache / process hang | guide A.2 cleanup sequence |
+| `0x80070002` | launcher cannot find the .ps1 | `-s` during packaging was wrong |
+| `0x80070643` (1603) MSI fatal error | perms / disk / **pending reboot** / bad property / failed custom action | clear pending reboot, read the `/l*v` MSI log; guide A.4 |
+| `0x80070666` (1638) "another version installed" | older ProductCode still present | uninstall old first, or ship a real upgrade; guide A.4 |
+| exit 1605 on uninstall | product already gone | treat as success (map 1605); guide A.4 |
+| detection failed after a successful install | detection-script bug (contract / 32-64-bit reg) | run `.\Detect-*.ps1; $LASTEXITCODE` on target |
+| SYSTEM test: every step `ExitCode=0 Success=False` | ran under pwsh 7 (PSScheduledJob is WinPS-5.1-only) | re-run under powershell.exe 5.1; guide G |
+| upload `must have at least one detection rule` (rule WAS sent) | needs the unified `rules`, `@odata.type` first | `[ordered]@{}`; guide H |
+| upload `commitFileFailed` after blocks "OK" | `Invoke-RestMethod -Body <byte[]>` corrupts the blob | HttpClient/ByteArrayContent; guide H |
+| `displayVersion` empty after upload | v1.0 backend drops it | write on `/beta`; guide H |
+| upload `403` on probe/create | app consent missing/ineffective | `Test-PsadtIntuneAccess.ps1` for the exact gap, then `New-PsadtEntraApp.ps1` |
+| token `AADSTS7000222` / secret "cannot be decrypted" | secret expired / DPAPI bound to a re-installed profile | `New-PsadtEntraApp.ps1` stores a fresh secret |
+| detection rule rejected (`property may not be set ... used for app detection`) | requirement-only props on a detection rule | keep only `ruleType,enforceSignatureCheck,runAs32Bit,scriptContent`; guide H.2 |
+| upload `BadRequest: Unknown MinimumSupportedWindowsRelease` | `-MinWindowsRelease` value the backend rejects (e.g. `21H2`/`22H2`) | use a backend-accepted ID `1607..2004`; set a higher min in the portal; guide H.11 |
+| assignment `Group assignment is not enabled` | `intune.groups` absent/`enabled=false` in the resolved config | configure `intune.groups` (App. M); run `Initialize-PsadtSkill.ps1` to see WHICH config was resolved |
+| assignment denied on group lookup/create (`Authorization`) | upload app lacks `GroupMember.Read.All` / `Group.Create` | `New-PsadtEntraApp.ps1 -IncludeGroupManagement` (Global Admin); guide M.1 |
