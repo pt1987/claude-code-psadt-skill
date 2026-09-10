@@ -3,6 +3,15 @@
 The direct Intune upload (SKILL.md Phase 9) authenticates as an **app-only** Entra application with the
 Microsoft Graph **application** permission `DeviceManagementApps.ReadWrite.All`.
 
+## Contents
+
+- [0. The permission matrix (single source of truth)](#0-the-permission-matrix-single-source-of-truth)
+- [1. Create the app registration](#1-create-the-app-registration)
+- [2. Add the application permission + grant admin consent](#2-add-the-application-permission--grant-admin-consent)
+- [3. Create a credential (choose one)](#3-create-a-credential-choose-one)
+- [4. Feed it into the skill config](#4-feed-it-into-the-skill-config)
+- [5. Verify](#5-verify)
+
 ## 0. The permission matrix (single source of truth)
 
 Every permission this skill can use, and nothing else. Guide Appendix M.1 and N.4 point here rather than

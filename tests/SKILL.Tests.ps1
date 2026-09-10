@@ -9,7 +9,13 @@
 BeforeAll {
     $script:skillRoot = Split-Path $PSScriptRoot -Parent
     $script:skillMd = Get-Content -LiteralPath (Join-Path $script:skillRoot 'SKILL.md') -Raw
-    $script:guide = Get-Content -LiteralPath (Join-Path $script:skillRoot 'references/PSADTv4-Deployment-Guide.md') -Raw
+    # The guide used to be one file. It is now one file per appendix, but each still opens with its
+    # original "## Appendix X: ..." heading, so this guard keeps working on the concatenation and
+    # keeps meaning the same thing: does SKILL.md point at appendices that exist?
+    $script:guide = (
+        Get-ChildItem -LiteralPath (Join-Path $script:skillRoot 'references') -Filter 'appendix-*.md' |
+            ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
+    ) -join "`n"
 }
 
 Describe 'SKILL.md routes to appendices that actually exist' {

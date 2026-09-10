@@ -5,13 +5,14 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/pt1987/claude-code-psadt-skill/actions/workflows/tests.yml"><img src="https://github.com/pt1987/claude-code-psadt-skill/actions/workflows/tests.yml/badge.svg" alt="tests" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT" /></a>
   <img src="https://img.shields.io/badge/PSADT-v4.x-0a7bbb?style=flat-square" alt="PSADT v4.x" />
   <img src="https://img.shields.io/badge/Platform-Windows-0078d6?style=flat-square&logo=windows&logoColor=white" alt="Windows" />
   <img src="https://img.shields.io/badge/Claude%20Code-Skill-d97757?style=flat-square" alt="Claude Code Skill" />
 </p>
 
-<p align="center"><sub><a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#features">Features</a> · <a href="#first-run-setup">Setup</a> · <a href="#roadmap">Roadmap</a> · <a href="#changelog">Changelog</a></sub></p>
+<p align="center"><sub><a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#features">Features</a> · <a href="#first-run-setup">Setup</a> · <a href="#security">Security</a> · <a href="#roadmap">Roadmap</a> · <a href="#changelog">Changelog</a></sub></p>
 
 ---
 
@@ -67,7 +68,8 @@ gates, the research findings, every phase's result and the artifacts produced. T
 every later phase reads and updates it, and pre-flight fails without it. That is what stops two packages of
 the same app from disagreeing about their own version.
 
-Depth lives in `references/PSADTv4-Deployment-Guide.md` (Phases 0–12 + Appendices A–Q); `SKILL.md` stays the
+Depth lives in `references/` (phases 0–12 + appendices A–Q, one file per domain — see
+`references/README.md`); `SKILL.md` stays the
 control plane.
 
 ## Features
@@ -169,8 +171,8 @@ The app's **native installer is always the default**. Everything else is opt-in 
   right log (`AppWorkload.log`, the PSADT session log, `setupapi.dev.log` for drivers).
 - **Self-update** — `scripts/Update-PsadtSkill.ps1` compares against GitHub, shows what changed, and
   updates in place on your confirmation (`git pull --ff-only` for a clone, otherwise a branch-zip overwrite
-  of tracked files only). Machine-local state is never touched. Say *"update skill"* or *"psadt update"*.
-- **326 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
+  of tracked files only). Machine-local state is never touched. Say *"psadt update"*.
+- **441 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
   disagree.
 
 ## Requirements
@@ -199,14 +201,32 @@ The app's **native installer is always the default**. Everything else is opt-in 
 npx psadt-deploy-skill
 ```
 
-Installs into `~/.claude/skills/psadt-deploy` and runs the setup doctor. Flags: `--dir <path>` ·
-`--project` (into `./.claude/skills`) · `--ref <branch|tag>` · `--no-setup`. Node 18+ and Windows; the
-installer itself has zero dependencies and the package carries only `bin/` — the skill is fetched from
-GitHub at install time.
+Installs the **newest release** into `~/.claude/skills/psadt-deploy` and runs the setup doctor. Flags:
+`--dir <path>` · `--project` (into `./.claude/skills`) · `--ref <tag|branch>` · `--no-setup`. Node 18+ and
+Windows; the installer itself has zero dependencies and the package carries only `bin/` — the skill is
+fetched from GitHub at install time.
 
-Re-running it updates an existing installation, and so does saying *"update skill"* to Claude Code
-(`git pull --ff-only` for a clone, otherwise a branch-zip overwrite of tracked files only — machine-local
-state is never touched).
+### Which version you get
+
+The default is the newest **release tag**, not `main`. This skill registers an Entra application with
+admin consent and writes to an Intune tenant; installing whatever last landed on `main` is not a
+defensible default for that.
+
+```powershell
+npx psadt-deploy-skill                 # newest release (default)
+npx psadt-deploy-skill --ref v0.26.7   # pin an exact release
+npx psadt-deploy-skill --ref main      # the development branch, deliberately
+```
+
+**For managed environments:** pin a tag, read the diff between it and the next one before moving, then
+lift the pin. Releases are tagged `vX.Y.Z` and match the [Changelog](#changelog); tags exist from
+**v0.24.0** onward — earlier versions predate the current history and cannot be tagged retroactively.
+
+Re-running the installer updates an existing installation, and so does saying *"psadt update"* to Claude
+Code. What counts as an update depends on what you installed: on a **pinned release** it is the next
+release tag — unreleased work on `main` is deliberately invisible, because that is what pinning means. On
+a **branch** installation it is the next commit, as before. Either way the update overwrites tracked
+repository files only; `config.json`, `secret.dpapi` and `tools/` are never touched.
 
 **Or clone it yourself** — the repo root *is* the skill folder:
 
@@ -217,11 +237,33 @@ pwsh "$env:USERPROFILE\.claude\skills\psadt-deploy\scripts\Initialize-PsadtSkill
 
 `npx skills add pt1987/claude-code-psadt-skill` works too, since `SKILL.md` sits in the repository root.
 
-No git on the machine? The installer falls back to the branch tarball and Windows' own `tar.exe`, so the
-one-liner still works.
+No git on the machine? The installer falls back to the GitHub tarball and Windows' own `tar.exe`, so the
+one-liner still works — including with `--ref <tag>`, which is the combination a locked-down machine
+actually needs.
 
 The skill activates automatically when you ask Claude Code to build an Intune package, or when you work in
 a folder containing `Invoke-AppDeployToolkit.ps1`.
+
+### What is deliberately not in the skill frontmatter
+
+`SKILL.md` declares `name`, `description` and `license`, and nothing else. The omissions are choices, not
+oversights:
+
+- **`paths`** would look like the right way to express "activates in a folder containing
+  `Invoke-AppDeployToolkit.ps1`". It is the opposite: the field *limits* activation to files matching the
+  globs. Setting it would switch the skill off for the most common request there is — packaging an app in
+  an empty folder, where `Invoke-AppDeployToolkit.ps1` does not exist yet because Phase 3 is what creates
+  it. The folder case is covered by the last sentence of the description instead.
+- **`allowed-tools`** grants tools up front; it does not restrict them. For a skill that installs software
+  as SYSTEM and writes to a tenant, being asked per call is the point. See [`SECURITY.md`](SECURITY.md).
+- **`metadata.version`** is ignored by Claude Code, and the version already lives in `CHANGELOG.md`,
+  `package.json` (kept in sync by a test) and on the website. A fourth place to forget on release day, for
+  no behaviour, is not worth it.
+- **`shell`** only matters for `!` command injection in `SKILL.md`, which this skill does not use — and a
+  failing `!` command aborts the *entire* skill invocation, so an `Initialize-PsadtSkill` call wired up that
+  way would be a single point of failure for every packaging request.
+- **`context: fork` / `agent`** would isolate the skill in a subagent. It orchestrates its own sub-agents
+  and needs the main context to hold the decision gates.
 
 ## First-run setup
 
@@ -264,7 +306,7 @@ the originals to `*.migrated` rather than deleting anything.
 
 ```
 psadt-deploy/
-├─ SKILL.md · README.md · CHANGELOG.md · LICENSE
+├─ SKILL.md · README.md · CHANGELOG.md · SECURITY.md · LICENSE
 ├─ package.json · bin/install.mjs        the npx installer (Node 18+, zero dependencies)
 ├─ scripts/
 │  │  setup + config
@@ -300,10 +342,12 @@ psadt-deploy/
 │  ├─ _GraphCommon.ps1                   shared Graph helpers (retry, errors, token roles)
 │  └─ _GraphInteractive.ps1              shared WAM sign-in
 ├─ references/
-│  ├─ PSADTv4-Deployment-Guide.md        Phases 0-12 + Appendices A-Q
+│  ├─ README.md                          the reference map (label -> file)
+│  ├─ phases-0-6.md · phases-7-12.md     the twelve phases
+│  ├─ appendix-a-errors.md … -q-drivers.md  one file per appendix
 │  ├─ Report-Template.html               the fixed dossier template
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
-└─ tests/                                Pester suite, 326 tests
+└─ tests/                                Pester suite, 441 tests
 ```
 
 Machine-local state lives outside the skill folder:
@@ -324,12 +368,27 @@ psadt-package.json                       identity · gate decisions · research 
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 326 Pester tests.
+verified against a live tenant. The helper scripts are covered by 441 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
 against `setupapi.dev.log` on a DEV VM with a real vendor-signed and a real Microsoft-signed driver is
 still open.
+
+## Security
+
+This skill installs software as SYSTEM, researches on the open web, and writes to an Intune tenant
+through an Entra app with admin consent. [`SECURITY.md`](SECURITY.md) states that risk surface next to
+the control that already covers each part of it — the dry-run-before-execute rule, the three-valued
+access check, never-delete, role assertion before the first write, certificate before DPAPI secret,
+the config home outside the skill folder, and the self-containment rule for anything that ships to a
+test client. Each control names the file that implements it and the test that enforces it, so a review
+can check the claims rather than take them.
+
+Two deliberate non-features are explained there as well: the skill does **not** declare
+`allowed-tools` (that field pre-approves tools, it does not restrict them), and content fetched during
+research is treated as data, never as instructions — see
+[`references/research-trust.md`](references/research-trust.md).
 
 ## Roadmap
 

@@ -21,7 +21,7 @@
     Markdown), and the output file is written as UTF-8.
 
 .PARAMETER Metadata
-    Hashtable with the package metadata. See the README / SKILL.md Appendix F for the full key list.
+    Hashtable with the package metadata. See references/appendix-f-dossier-template.md (F.0) for the full key list.
 
 .PARAMETER MetadataPath
     Path to a JSON file with the same shape as -Metadata (alternative to -Metadata).

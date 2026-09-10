@@ -75,6 +75,32 @@ Describe 'bin/install.mjs' {
         $script:bin | Should -Match "'clone', '--depth', '1'"
         $script:bin | Should -Match '--strip-components=1'
     }
+    It 'defaults to the newest release tag rather than main' {
+        # This skill registers an Entra app with admin consent and writes to a tenant. Installing
+        # whatever last landed on main is not a defensible default for that, so the default is resolved
+        # from the tag list; main stays reachable through --ref.
+        $script:bin | Should -Match "/tags\?per_page="
+        $script:bin | Should -Not -Match "flagValue\('--ref'\) \|\| 'main'"
+    }
+    It 'builds the tarball URL from a bare ref, so a TAG resolves' {
+        # refs/heads/<ref> only ever resolves branches: every --ref v0.x.y returned HTTP 404 on the
+        # tarball route while working on both git routes - and the tarball route is exactly the one a
+        # managed machine without git lands on, which is exactly the machine that should be pinning.
+        $script:bin | Should -Not -Match 'tar\.gz/refs/heads/'
+        $script:bin | Should -Match 'codeload\.github\.com/\$\{REPO\}/tar\.gz/\$\{ref\}'
+    }
+    It 'never calls process.exit after a fetch has run' {
+        # process.exit() with a pooled undici socket open aborts with a libuv assertion and exit code
+        # 127 instead of the requested code, so a mistyped --ref looked like an installer crash and any
+        # wrapper reading the exit code got the wrong number. Everything after the first fetch unwinds
+        # out of main() instead.
+        # Assert on the CODE, not the words: the file explains the choice in comments, so "process.exit"
+        # legitimately appears in prose both inside and after main(). Strip line comments first.
+        $body = $script:bin.Substring($script:bin.IndexOf('async function main()'))
+        $code = ($body -split "`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n"
+        $code | Should -Not -Match 'process\.exit\('
+        $script:bin | Should -Match 'class InstallFailure extends Error'
+    }
     It 'does NOT reimplement the config home - it spawns the scripts that own it' {
         $script:bin | Should -Match 'Set-PsadtConfig\.ps1'
         $script:bin | Should -Match 'Initialize-PsadtSkill\.ps1'
@@ -108,12 +134,32 @@ Describe 'bin/install.mjs' {
     }
 }
 
-Describe 'Update-PsadtSkill tracks the packaging files' {
+Describe 'Update-PsadtSkill tracks everything an installation needs' {
+    BeforeAll {
+        $script:upd = Get-Content (Join-Path $script:root 'scripts\Update-PsadtSkill.ps1') -Raw
+    }
+
     It 'includes package.json and bin in $TrackedItems' {
         # Without this the archive update route silently drops them, and the next update on a git-less
         # machine leaves a skill whose installer is from an older version.
-        $upd = Get-Content (Join-Path $script:root 'scripts\Update-PsadtSkill.ps1') -Raw
-        $upd | Should -Match "\`$TrackedItems = @\([^)]*'package\.json'"
-        $upd | Should -Match "\`$TrackedItems = @\([^)]*'bin'"
+        $script:upd | Should -Match "\`$TrackedItems = @\([^)]*'package\.json'"
+        $script:upd | Should -Match "\`$TrackedItems = @\([^)]*'bin'"
+    }
+
+    It 'includes every top-level repo file a user is meant to receive' {
+        # $TrackedItems is an allow-list, so a new root-level document does not ship unless someone
+        # remembers to add it - and the failure is invisible: git installs stay correct while the
+        # tarball route quietly keeps the old tree. SECURITY.md is the case that motivated this test;
+        # it exists so a customer security review has something to read, which it cannot do if the
+        # file never reaches the machine.
+        foreach ($item in 'SKILL.md', 'README.md', 'CHANGELOG.md', 'LICENSE', 'SECURITY.md') {
+            $script:upd | Should -Match "\`$TrackedItems = @\([^)]*'$([regex]::Escape($item))'" -Because "$item is delivered to users"
+        }
+    }
+
+    It 'includes every top-level directory a user is meant to receive' {
+        foreach ($item in 'references', 'scripts', 'tests', 'bin', 'evals') {
+            $script:upd | Should -Match "\`$TrackedItems = @\([^)]*'$([regex]::Escape($item))'" -Because "$item is delivered to users"
+        }
     }
 }
