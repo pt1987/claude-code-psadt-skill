@@ -664,7 +664,7 @@ The cheap version: generate the artefacts without booting the automated loop, th
 sandbox with nothing in it but the installer.
 
 ```powershell
-# Generate only - no run, no Startup trigger, no automated loop.
+# Generate only - no VM is started, nothing runs, no automated loop.
 pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg> -GenerateOnly
 ```
 

@@ -2,6 +2,59 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.29.0 - 2026-09-11 - The sandbox ran nothing as SYSTEM and blamed the package
+
+Found while packaging Google Chrome for Intune - the first sandbox run on this host after 0.28.0. Five
+faults were stacked on top of each other, and every one of them hid the next: the run died before its
+first action, then every action timed out with no cause, then every action exited 60008 with no log, then
+60008 again for a different reason. Each was measured inside the guest with a standalone probe before it
+was fixed; nothing here was taken from a comment, a thread or a plausible theory.
+
+### Fixed
+- **The Startup-folder trigger from 0.28.0 could not run a single task as SYSTEM.** Explorer launches a
+  Startup item, and the resulting runner passes `IsInRole(Administrator)` yet cannot drive the Task
+  Scheduler: `schtasks /Create` and `/Run` both return exit 0 while the task never executes, and
+  `Register-ScheduledTask` is refused outright ("Cannot connect to CIM server. Access denied"). Every
+  deployment action then hit its full timeout with no cause, and the evidence pointed at the package.
+  `<LogonCommand>` is back - the five GREEN runs on this host before 0.28.0 all used it. What
+  [microsoft/Windows-Sandbox#125](https://github.com/microsoft/Windows-Sandbox/issues/125) describes is
+  left to the host's `DONE.txt` timeout, which already says "the runner never started".
+- **`schtasks`' own stderr notice killed the run before the first action.** The ONCE trigger is
+  deliberately in the past, so `schtasks` writes "/ST is earlier than current time" on every step. In
+  Windows PowerShell 5.1 that raises a terminating `NativeCommandError` under
+  `$ErrorActionPreference = 'Stop'` - and a `2>file` redirect does NOT prevent it, it only chooses where
+  the ErrorRecord is written (measured; the 0.28.0 comment claimed otherwise). The preference is lowered
+  around the three `schtasks` calls and around the final `shutdown.exe`; the exit-code checks stay.
+- **The sandbox image lacked a localized resource PSADT needs just to load.** PSADT imports
+  `Microsoft.PowerShell.Archive` at import time; the guest had no `de-DE\ArchiveResources.psd1` while
+  the de-DE host has it, and WinPS 5.1 throws instead of falling back to another culture. Every launcher
+  exited 60008 before writing one log line - for any package, not just this one. The host's culture
+  folders for the modules PSADT imports are shipped in the work folder and laid down in the guest
+  wherever they are missing (`GuestPrepare`).
+- **WMI refused SYSTEM inside the guest.** `Initialize-ADTModule` queries `Win32_ComputerSystem` and got
+  `0x80070005`, so `Open-ADTSession` threw - 60008 again, even after the import had been fixed. The same
+  guest image had passed on 2026-09-08; the host's cumulative updates of 2026-09-11 are the only change
+  in between. `GuestPrepare` verifies WMI and salvages, then resets, the repository
+  (`winmgmt /resetrepository` is what worked). Both are safe in a VM that is discarded minutes later.
+
+### Added
+- **Three canaries run before the loop.** `SystemTaskCanary` runs `whoami` as SYSTEM;
+  `PsadtModuleCanary` imports the package's toolkit AND opens a Silent session as SYSTEM. Each fails in
+  seconds with the real error text and names a HARNESS/environment fault, so a broken guest can no
+  longer look like a broken package. Elevation alone was proven necessary but not sufficient.
+- **A 60008 action is re-run once through `powershell.exe -File`** and its stderr recorded on the step
+  (`diagnostic`). `Invoke-AppDeployToolkit.exe` discards the `.ps1`'s stderr, and 60008 means nothing
+  was deployed, so the re-run is side-effect-free. It took two probe VMs to read that one line by hand.
+- **A heartbeat in the guest console.** Every SYSTEM action draws nothing on the desktop; the runner now
+  prints progress every ten seconds and sets the window title, so a healthy two-minute install no
+  longer looks identical to a hang to anyone watching the VM.
+- Suite 493 -> 501.
+
+### Changed
+- The `-GuestSettleDelaySeconds` wait moved into the LogonCommand (`cmd /c ping ...`) and is XML-escaped
+  on the way into the `.wsb`: an unescaped `&` there makes the whole configuration unparseable, and the
+  sandbox then boots with no mapped folders at all. The suite caught it before it shipped.
+
 ## 0.28.0 - 2026-09-11 - The sandbox booted without its mapped folders and said nothing
 
 Ported from [#17](https://github.com/pt1987/claude-code-psadt-skill/pull/17) by @CSN-TechX, found while
