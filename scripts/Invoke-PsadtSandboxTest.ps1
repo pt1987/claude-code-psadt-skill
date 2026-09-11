@@ -263,16 +263,36 @@ function Invoke-AsSystem {
     # that notice is the design working, so it is suppressed rather than designed away with a
     # near-future /ST. A formatted time would be culture-dependent on top: 'HH:mm' renders as 15.02
     # under fi-FI, which schtasks rejects with "Invalid start time value", creating no task at all.
-    # $ErrorActionPreference is 'Stop' here and WinPS 5.1 turns a native command's stderr merged via
-    # 2>&1 into terminating ErrorRecords, so stderr goes to a file instead of through the pipeline.
+    # $ErrorActionPreference is 'Stop' here, and in WinPS 5.1 a native command writing to stderr raises
+    # a terminating NativeCommandError REGARDLESS of a '2>file' redirect - the redirect chooses where the
+    # ErrorRecord is written, not whether one is raised. Suppressing the notice therefore needs the
+    # preference lowered around the call itself; with 2>file alone the very first step dies on schtasks'
+    # own "/ST is earlier than current time" warning, which this design provokes deliberately on EVERY
+    # step. Measured on de-DE 2026-09-11: verdict ERROR after 0.7 min, before a single action ran.
+    # The exit-code checks below are what actually decide success, and they are unaffected.
     $schtasksErr = Join-Path $work "$Label.schtasks.err"
-    & schtasks.exe /Create /TN $taskName /TR "`"$cmdFile`"" /SC ONCE /ST 00:00 /RU 'SYSTEM' /RL HIGHEST /F 2>$schtasksErr | Out-Null
+    & {
+        $ErrorActionPreference = 'Continue'
+        & schtasks.exe /Create /TN $taskName /TR "`"$cmdFile`"" /SC ONCE /ST 00:00 /RU 'SYSTEM' /RL HIGHEST /F 2>$schtasksErr | Out-Null
+    }
     if ($LASTEXITCODE -ne 0) { throw (Get-SchtasksFailure -Operation 'Create' -TaskName $taskName -Code $LASTEXITCODE -ErrFile $schtasksErr) }
-    & schtasks.exe /Run /TN $taskName 2>$schtasksErr | Out-Null
+    & {
+        $ErrorActionPreference = 'Continue'
+        & schtasks.exe /Run /TN $taskName 2>$schtasksErr | Out-Null
+    }
     if ($LASTEXITCODE -ne 0) { throw (Get-SchtasksFailure -Operation 'Run' -TaskName $taskName -Code $LASTEXITCODE -ErrFile $schtasksErr) }
 
+    # Everything below runs as SYSTEM through the scheduled task, which draws nothing on the guest
+    # desktop. A heartbeat is therefore the only way an operator watching the VM can tell a working
+    # install from a hung one - and telling those two apart by staring at an idle screen is exactly
+    # what cost hours on 2026-09-11.
+    try { $Host.UI.RawUI.WindowTitle = "PSADT Sandbox - $Label (running as SYSTEM)" } catch { }
+    Write-Host ("-> {0}: started as SYSTEM at {1}" -f $Label, (Get-Date -Format 'HH:mm:ss')) -ForegroundColor Cyan
+
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $startedAt = Get-Date
     $raw = $null
+    $tick = 0
     while ((Get-Date) -lt $deadline) {
         if (Test-Path -LiteralPath $codeFile) {
             $raw = Get-Content -LiteralPath $codeFile -Raw -ErrorAction SilentlyContinue
@@ -280,8 +300,19 @@ function Invoke-AsSystem {
         }
         Start-Sleep -Seconds 2
         $raw = $null
+        $tick++
+        if (($tick % 5) -eq 0) {
+            $secs = [int]((Get-Date) - $startedAt).TotalSeconds
+            Write-Host ("   {0}: still running - {1}s of max {2}s" -f $Label, $secs, $TimeoutSeconds) -ForegroundColor DarkGray
+        }
     }
-    & schtasks.exe /Delete /TN $taskName /F | Out-Null
+    # Same stderr trap as /Create and /Run: a task that is already gone makes schtasks write to stderr,
+    # which would end the whole run here - during CLEANUP, after the action itself already succeeded.
+    # Nothing about this call's outcome changes the verdict, so it neither throws nor is checked.
+    & {
+        $ErrorActionPreference = 'Continue'
+        & schtasks.exe /Delete /TN $taskName /F 2>&1 | Out-Null
+    }
 
     if (-not $raw) { return [pscustomobject]@{ ExitCode = $null; Output = ''; TimedOut = $true } }
 
@@ -309,7 +340,26 @@ function Invoke-Deployment {
     $exe = Join-Path $pkg 'Invoke-AppDeployToolkit.exe'
     $r = Invoke-AsSystem -Label $Label -CommandLine "`"$exe`" -DeploymentType $DeploymentType -DeployMode Silent" -TimeoutSeconds $actionTimeout
     $ok = (-not $r.TimedOut) -and ($successExitCodes -contains $r.ExitCode)
-    Add-Step $Label @{ exitCode = $r.ExitCode; timedOut = $r.TimedOut; success = $ok }
+    $step = @{ exitCode = $r.ExitCode; timedOut = $r.TimedOut; success = $ok }
+
+    # 60008 is the launcher's own "Initialization failed" code: the toolkit could not be imported or
+    # the session could not be opened, so nothing was deployed and no PSADT log was written. The .exe
+    # runs the .ps1 hidden and discards its stderr, so all that ever reaches this loop is the number -
+    # on 2026-09-11 it took two separate probe VMs to read the one line behind it. Because nothing ran,
+    # re-running the action ONCE through powershell.exe -File is side-effect-free, and it captures the
+    # error text the .exe threw away. 60001 is deliberately excluded: there the hook already executed
+    # and the PSADT log holds the cause.
+    if (-not $r.TimedOut -and $r.ExitCode -eq 60008) {
+        $ps1 = Join-Path $pkg 'Invoke-AppDeployToolkit.ps1'
+        $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $d = Invoke-AsSystem -Label "$Label.Diagnostic" -CommandLine "`"$psExe`" -NoProfile -ExecutionPolicy Bypass -File `"$ps1`" -DeploymentType $DeploymentType -DeployMode Silent" -TimeoutSeconds $actionTimeout
+        $diag = (('' + $d.Output) -replace '\s+', ' ').Trim()
+        if ($diag.Length -gt 1200) { $diag = $diag.Substring(0, 1200) + ' ...' }
+        $step.diagnostic = "$Label exited 60008 (initialization failed, nothing deployed). Re-run via powershell.exe -File said: $diag"
+        Write-Host "   !! $($step.diagnostic)" -ForegroundColor Yellow
+    }
+
+    Add-Step $Label $step
     Add-Assertion "$Label exit code" $ok "exit=$($r.ExitCode) timedOut=$($r.TimedOut)"
     return $r
 }
@@ -343,20 +393,145 @@ try {
     Start-Transcript -LiteralPath (Join-Path $results 'sandbox-transcript.txt') -Force | Out-Null
 
     # Every deployment action below goes through schtasks /RU SYSTEM /RL HIGHEST, which needs the full
-    # administrator token. <LogonCommand> supplied one implicitly; a Startup-folder item is launched by
-    # Explorer and inherits the token Explorer holds, so this stopped being true by construction when
-    # the trigger moved. Fail here in one second rather than let all seven actions fail identically
-    # further down, where the evidence points at the package instead.
+    # administrator token that <LogonCommand> supplies.
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $isElevated = ([Security.Principal.WindowsPrincipal]$identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     Add-Step 'Elevation' @{ elevated = $isElevated; identity = $identity.Name }
     if (-not $isElevated) {
-        throw "The sandbox runner is not elevated, so schtasks /RU SYSTEM /RL HIGHEST cannot work. The Startup-folder trigger handed it a filtered token."
+        throw "The sandbox runner is not elevated, so schtasks /RU SYSTEM /RL HIGHEST cannot work."
     }
+
+    # Elevation is NECESSARY BUT NOT SUFFICIENT, and believing otherwise is what made 2026-09-11
+    # expensive. A runner started from the guest's Startup folder passed the check above and still could
+    # not make the Task Scheduler run ANYTHING: schtasks /Create and /Run both returned exit 0 while the
+    # task never executed, and the cmdlet route was refused outright ("Cannot connect to CIM server.
+    # Access denied"). All seven deployment actions then died on identical timeouts that named no cause,
+    # and the evidence pointed at the package instead of at the harness.
+    #
+    # So prove the mechanism ONCE, in seconds, before spending twenty minutes per action on it. whoami
+    # is the smallest command that answers the only question that matters: did something actually run,
+    # and did it run as SYSTEM?
+    $canary = Invoke-AsSystem -Label 'SystemTaskCanary' -CommandLine 'whoami.exe' -TimeoutSeconds 90
+    $canaryWho = ('' + $canary.Output).Trim()
+    Add-Step 'SystemTaskCanary' @{ exitCode = $canary.ExitCode; timedOut = $canary.TimedOut; ranAs = $canaryWho }
+    if ($canary.TimedOut -or $canaryWho -notmatch '(?i)system') {
+        throw ("The sandbox cannot run a scheduled task as SYSTEM, so no deployment action could " +
+            "succeed here. A canary task that only runs whoami.exe " +
+            $(if ($canary.TimedOut) { 'never produced any output' } else { "reported '$canaryWho' instead of SYSTEM" }) +
+            ". This is a HARNESS/environment fault, not a fault in the package under test. The usual " +
+            "cause is the runner being started with a token that cannot drive the Task Scheduler - " +
+            "check that the .wsb still uses <LogonCommand> rather than a Startup-folder trigger.")
+    }
+
+    # --- Guest preparation: PowerShell module resources the sandbox image is missing -----------------
+    # PSADT imports Microsoft.PowerShell.Archive when it loads. That module localises its messages via
+    # Import-LocalizedData, and Windows PowerShell 5.1 does NOT fall back to another culture when the
+    # resource folder for the current UI culture is absent - the import throws, and every
+    # Invoke-AppDeployToolkit.ps1 dies in its Initialization block with 60008 before writing one log
+    # line. The sandbox base image on a de-DE host had exactly that hole on 2026-09-11: module present,
+    # de-DE\ArchiveResources.psd1 absent, while the host itself carried the file. A real device has its
+    # language pack, so this is a guest artefact - and the guest is patched to look like a real device.
+    # The host's culture folders for the modules PSADT imports were copied into the work folder at
+    # generation time; they are laid down here wherever the guest lacks them. Administrators hold Modify
+    # on these folders. Should a copy still fail, the PSADT module canary below reports the real error.
+    $resSrc = Join-Path $mapped 'ps-module-resources'
+    $modRoot = Join-Path $env:WinDir 'System32\WindowsPowerShell\v1.0\Modules'
+    $shimmed = New-Object System.Collections.Generic.List[string]
+    if (Test-Path -LiteralPath $resSrc) {
+        foreach ($mod in (Get-ChildItem -LiteralPath $resSrc -Directory)) {
+            $dstMod = Join-Path $modRoot $mod.Name
+            if (-not (Test-Path -LiteralPath $dstMod)) { continue }   # module not in the image - nothing to localise
+            foreach ($culture in (Get-ChildItem -LiteralPath $mod.FullName -Directory)) {
+                $dst = Join-Path $dstMod $culture.Name
+                if (Test-Path -LiteralPath $dst) { continue }
+                try {
+                    Copy-Item -LiteralPath $culture.FullName -Destination $dst -Recurse -Force -ErrorAction Stop
+                    $shimmed.Add("$($mod.Name)\$($culture.Name)")
+                } catch {
+                    Write-Host "   !! could not lay down $($mod.Name)\$($culture.Name): $($_.Exception.Message)"
+                }
+            }
+            # Culture-neutral fallback at the module root: Import-LocalizedData ends its search in the base
+            # directory, so this resolves even a guest UI culture the host does not carry.
+            $anyRes = Get-ChildItem -LiteralPath $mod.FullName -Recurse -File -Filter '*.psd1' | Select-Object -First 1
+            if ($anyRes -and -not (Test-Path -LiteralPath (Join-Path $dstMod $anyRes.Name))) {
+                try {
+                    Copy-Item -LiteralPath $anyRes.FullName -Destination $dstMod -Force -ErrorAction Stop
+                    $shimmed.Add("$($mod.Name)\$($anyRes.Name) (root fallback)")
+                } catch { }
+            }
+        }
+    }
+    # WMI/CIM must answer SYSTEM: Initialize-ADTModule queries root\cimv2:Win32_ComputerSystem for the
+    # hardware platform, and on 2026-09-11 that query came back 0x80070005 (Access denied) inside the
+    # guest - for SYSTEM and for the elevated runner alike - so Open-ADTSession threw and every action
+    # exited 60008 even after the module import had been repaired. The same guest image had passed on
+    # 2026-09-08; the host's cumulative updates of 2026-09-11 are the only change in between. The WMI
+    # repository carries the namespace security descriptors, so it is salvaged and, failing that, reset.
+    # Both are safe here: the VM is discarded when the run ends. The outcome is recorded either way and
+    # the session canary below turns a still-broken WMI into a named failure instead of 7 x 60008.
+    $wmiState = 'unknown'
+    try {
+        $svc = Get-Service -Name 'Winmgmt' -ErrorAction Stop
+        if ($svc.StartType -eq 'Disabled') { Set-Service -Name 'Winmgmt' -StartupType Automatic }
+        if ($svc.Status -ne 'Running') { Start-Service -Name 'Winmgmt' -ErrorAction Stop }
+        $null = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        $wmiState = 'OK'
+    } catch {
+        $firstError = $_.Exception.Message
+        $wmiState = "denied ($firstError)"
+        foreach ($attempt in @('salvage', 'reset')) {
+            try {
+                Write-Host "   !! WMI refused Win32_ComputerSystem ($firstError) - trying winmgmt /${attempt}repository" -ForegroundColor Yellow
+                & { $ErrorActionPreference = 'Continue'; & winmgmt.exe "/${attempt}repository" 2>&1 | Out-Null }
+                Restart-Service -Name 'Winmgmt' -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 5
+                $null = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+                $wmiState = "OK after winmgmt /${attempt}repository (was: $firstError)"
+                break
+            } catch {
+                $wmiState = "STILL denied after winmgmt /${attempt}repository ($($_.Exception.Message))"
+            }
+        }
+    }
+    Add-Step 'GuestPrepare' @{ uiCulture = (Get-UICulture).Name; wmi = $wmiState; resourcesShimmed = $(if ($shimmed.Count) { $shimmed -join ', ' } else { 'none needed' }) }
 
     # The mapped package folder is read-only and PSADT unblocks files under its own root, so work on a copy.
     Copy-Item -LiteralPath $pkgSrc -Destination $pkg -Recurse -Force
     Get-ChildItem -LiteralPath $pkg -Recurse -File | Unblock-File -ErrorAction SilentlyContinue
+
+    # --- PSADT module canary: can the package's toolkit be IMPORTED as SYSTEM in this guest? ---------
+    # Invoke-AppDeployToolkit.exe swallows the .ps1's stderr, so a failing toolkit import shows up only
+    # as a bare 60008 on every action and no log anywhere - exactly how 2026-09-11 presented, and it took
+    # a separate probe VM to read the one line that explained it. Import the toolkit once, as SYSTEM,
+    # with stderr captured, and stop with the REAL error text before the loop starts.
+    # Two stages, because they failed for two different reasons on the same day: the IMPORT (missing
+    # localized resource, fixed by GuestPrepare) and then OPEN-ADTSESSION (WMI refused to SYSTEM). The
+    # canary session is Silent, named so it cannot be mistaken for the package, and its log is removed
+    # again on success so it never lands in the package's evidence.
+    $modCanaryScript = Join-Path $work 'PsadtModuleCanary.ps1'
+    @(
+        "`$ErrorActionPreference = 'Stop'"
+        "try { Import-Module -Name '$pkg\PSAppDeployToolkit\PSAppDeployToolkit.psd1' -Force; Write-Output 'PSADT_MODULE_OK' }"
+        "catch { Write-Output ('PSADT_MODULE_FAILED: ' + `$_.Exception.Message); exit 1 }"
+        "try { `$null = Open-ADTSession -AppVendor 'PSADT' -AppName 'SandboxCanary' -AppVersion '1.0' -DeploymentType Install -DeployMode Silent -LogName 'PsadtSandboxCanary.log' -PassThru; Write-Output 'PSADT_SESSION_OK'; Close-ADTSession -ExitCode 0 -NoShellExit }"
+        "catch { Write-Output ('PSADT_SESSION_FAILED: ' + `$_.Exception.Message); exit 2 }"
+    ) | Set-Content -LiteralPath $modCanaryScript -Encoding ASCII
+    $psExeCanary = Join-Path $env:WinDir 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $mc = Invoke-AsSystem -Label 'PsadtModuleCanary' -CommandLine "`"$psExeCanary`" -NoProfile -ExecutionPolicy Bypass -File `"$modCanaryScript`"" -TimeoutSeconds 300
+    $mcOut = (('' + $mc.Output) -replace '\s+', ' ').Trim()
+    Add-Step 'PsadtModuleCanary' @{ exitCode = $mc.ExitCode; timedOut = $mc.TimedOut; result = $(if ($mcOut.Length -gt 600) { $mcOut.Substring(0, 600) } else { $mcOut }) }
+    if ($mc.TimedOut -or $mcOut -notmatch 'PSADT_SESSION_OK') {
+        $stage = if ($mcOut -notmatch 'PSADT_MODULE_OK') { 'imported' } else { 'opened as a session' }
+        throw ("The package's PSAppDeployToolkit cannot be $stage as SYSTEM inside this guest, so every " +
+            "deployment action would exit 60008 without writing a log. Real error: " +
+            $(if ($mc.TimedOut) { 'the canary never returned' } else { $mcOut }) +
+            ". A missing localized resource (e.g. ArchiveResources.psd1) means the sandbox image lacks a " +
+            "language-pack file a real device has; 'Win32_ComputerSystem ... 0x80070005' means WMI refuses SYSTEM " +
+            "in this guest - see the GuestPrepare step for what was attempted. Both are HARNESS/environment " +
+            "faults, not faults in the package under test.")
+    }
+    Remove-Item -LiteralPath (Join-Path $env:WinDir 'Logs\Software\PsadtSandboxCanary.log') -Force -ErrorAction SilentlyContinue
 
     Invoke-Deployment -Label 'Install'   -DeploymentType 'Install'   | Out-Null
     Test-Paths -Label 'present after install' -Paths $pathsPresentAfterInstall -ShouldExist $true
@@ -410,19 +585,42 @@ finally {
     # The cost of shutting down here is that the RDP-style client is left showing a connection-lost dialog -
     # which the host disposes of separately (Stop-SandboxInstance), so the user never sees it.
     Start-Sleep -Seconds 5   # let the mapped-folder writes above reach the host
-    & shutdown.exe /s /t 0
+
+    # Same stderr trap as the schtasks calls: $ErrorActionPreference is 'Stop', and in WinPS 5.1 a
+    # native command writing to stderr raises a terminating NativeCommandError. This is the LAST
+    # statement of the run and the one that tears the VM down - if it throws, the guest never shuts
+    # itself down, the vmmemWindowsSandbox worker keeps holding the mapped folder, and the next run
+    # is refused because Windows permits only one sandbox instance. Exactly that orphan blocked a
+    # re-run on 2026-09-11.
+    & {
+        $ErrorActionPreference = 'Continue'
+        & shutdown.exe /s /t 0 2>&1 | Out-Null
+    }
 }
 '@
 
-# Windows auto-executes only recognised extensions (.exe/.bat/.cmd/.lnk/.vbs) placed DIRECTLY in the
-# Startup folder, and a bare .ps1 loose in there additionally makes Explorer raise its own "how do you
-# want to open this file" prompt. So the runner lives in a 'runner' subfolder and only the one-line
-# trigger .cmd stays loose in Startup.
-$guestStartup = 'C:\Users\WDAGUtilityAccount\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup'
-$guestRunner  = Join-Path $guestStartup 'runner\Run-PsadtSandboxTest.ps1'
+# The work folder keeps its default mapping - the guest desktop - and the runner is started by the
+# .wsb LogonCommand.
+#
+# 0.28.0 replaced LogonCommand with a Startup-folder trigger to work around
+# microsoft/Windows-Sandbox#125 (LogonCommand never spawns a process on some Sandbox app versions).
+# Wherever LogonCommand DOES work, that workaround is worse than the bug it avoids, and it fails
+# silently: a Startup item is launched by Explorer, and although the resulting process still passes an
+# IsInRole(Administrator) check, its token cannot drive the Task Scheduler. Measured inside the guest
+# on 2026-09-11 (Sandbox app 0.8.107.0, guest 10.0.26100), with a standalone probe:
+#   * schtasks.exe /Create AND /Run both return exit 0 while the task NEVER executes - no marker file
+#     is ever written, so every deployment action reports a bare timeout that names no cause;
+#   * Register-ScheduledTask / Get-ScheduledTaskInfo fail with "Cannot connect to CIM server. Access
+#     denied", so the cmdlet route is not an alternative on that token either.
+# Under LogonCommand the very same schtasks calls work: five GREEN runs on this host, 2026-09-07 to
+# 2026-09-10, against the same Sandbox app version. LogonCommand therefore stays. #125 belongs where
+# it is already handled - the host times out waiting for DONE.txt and says the runner never started -
+# rather than being traded for a failure mode that looks like a broken package.
+$guestDesktop = 'C:\Users\WDAGUtilityAccount\Desktop'
+$guestRunner  = "$guestDesktop\$workLeaf\Run-PsadtSandboxTest.ps1"
 
 $runner = $runnerTemplate.
-    Replace('__MAPPEDROOT__', $guestStartup).
+    Replace('__MAPPEDROOT__', "$guestDesktop\$workLeaf").
     Replace('__PACKAGELEAF__', $packageLeaf).
     Replace('__DETECTIONSCRIPT__', ($DetectionScript -replace "'", "''")).
     Replace('__SUCCESSCODES__', ('@(' + ($SuccessExitCodes -join ', ') + ')')).
@@ -431,24 +629,45 @@ $runner = $runnerTemplate.
     Replace('__PATHSABSENTINSTALL__', (ConvertTo-PsArrayLiteral $PathsAbsentAfterInstall)).
     Replace('__PATHSABSENTUNINSTALL__', (ConvertTo-PsArrayLiteral $PathsAbsentAfterUninstall))
 
-$runnerPath = Join-Path $workFolder 'runner\Run-PsadtSandboxTest.ps1'
-New-Item -ItemType Directory -Path (Split-Path $runnerPath -Parent) -Force | Out-Null
+$runnerPath = Join-Path $workFolder 'Run-PsadtSandboxTest.ps1'
 [System.IO.File]::WriteAllText($runnerPath, $runner, [System.Text.UTF8Encoding]::new($true))
 
-# --- 4b. Startup-folder trigger (works around microsoft/Windows-Sandbox#125) ------------------------
-# On the affected Windows Sandbox app version, <LogonCommand> silently never executes at all - not
-# hidden, not delayed, the process is never spawned - while MappedFolders keeps working normally. The
-# documented workaround is to map a host folder straight onto the guest's Startup folder: that path is
-# driven by Windows' own logon mechanism rather than by the Sandbox app's LogonCommand code path, so
-# the bug does not reach it. The work folder itself is mapped there instead of adding a third mapping.
-$triggerLine = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$guestRunner`""
+# --- 4a. PowerShell module resources for the guest --------------------------------------------------
+# The sandbox base image can lack the localized resource folders (<culture>\*.psd1) of modules that
+# PSADT imports at load - measured 2026-09-11: Microsoft.PowerShell.Archive without de-DE\ on a de-DE
+# host that has it. Windows PowerShell 5.1 then throws on import instead of falling back, and every
+# launcher exits 60008 before its first log line. The host has whatever its language pack installed, so
+# its culture folders are shipped along and the runner lays them down inside the guest (GuestPrepare).
+# Only the modules PSADT's own import list names are considered; the psd1 filter keeps this to resource
+# files, never module code.
+$modRootHost = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\Modules'
+$resDest = Join-Path $workFolder 'ps-module-resources'
+foreach ($modName in 'Microsoft.PowerShell.Archive', 'Dism', 'International', 'NetAdapter', 'ScheduledTasks') {
+    $modDir = Join-Path $modRootHost $modName
+    if (-not (Test-Path -LiteralPath $modDir)) { continue }
+    foreach ($cultureDir in (Get-ChildItem -LiteralPath $modDir -Directory | Where-Object { $_.Name -match '^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$' })) {
+        if (-not (Get-ChildItem -LiteralPath $cultureDir.FullName -File -Filter '*.psd1' -ErrorAction SilentlyContinue)) { continue }
+        $target = Join-Path (Join-Path $resDest $modName) $cultureDir.Name
+        New-Item -ItemType Directory -Path $target -Force | Out-Null
+        Copy-Item -Path (Join-Path $cultureDir.FullName '*.psd1') -Destination $target -Force
+    }
+}
+
+# --- 4b. LogonCommand line -------------------------------------------------------------------------
+# Deliberately NOT -WindowStyle Hidden: the console this opens inside the VM is the only thing an
+# operator watching the sandbox can see, and every deployment action below runs as SYSTEM through a
+# scheduled task, which by design draws nothing on the desktop. Without a visible window the VM looks
+# idle for minutes during a perfectly healthy install, which is indistinguishable from a hang.
+$logonCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$guestRunner`""
 if ($GuestSettleDelaySeconds -gt 0) {
     # ping, not timeout: timeout needs a console it owns and aborts with "input redirection is not
     # supported" when it does not have one.
-    $triggerLine = "ping.exe -n $($GuestSettleDelaySeconds + 1) 127.0.0.1 > nul & " + $triggerLine
+    # The delay has to happen BEFORE the runner is launched, not inside it: the runner .ps1 itself lives
+    # in the mapped folder, so a mount that has not settled yet breaks the launch, not just the first read.
+    # Note the '&' - the value is XML-escaped on the way into the .wsb below, without which the whole
+    # configuration fails to parse and Windows Sandbox starts with no mapped folders at all.
+    $logonCommand = "cmd.exe /c `"ping.exe -n $($GuestSettleDelaySeconds + 1) 127.0.0.1 > nul & $logonCommand`""
 }
-$triggerScript = "@echo off`r`n$triggerLine`r`n"
-[System.IO.File]::WriteAllText((Join-Path $workFolder 'StartupTrigger.cmd'), $triggerScript, [System.Text.ASCIIEncoding]::new())
 
 # --- 5. Generate the .wsb configuration -------------------------------------------------------------
 $wsbPath = Join-Path $workRoot "$stem.wsb"
@@ -464,10 +683,12 @@ $wsb = @"
     </MappedFolder>
     <MappedFolder>
       <HostFolder>$workFolder</HostFolder>
-      <SandboxFolder>$guestStartup</SandboxFolder>
       <ReadOnly>false</ReadOnly>
     </MappedFolder>
   </MappedFolders>
+  <LogonCommand>
+    <Command>$([System.Security.SecurityElement]::Escape($logonCommand))</Command>
+  </LogonCommand>
 </Configuration>
 "@
 [System.IO.File]::WriteAllText($wsbPath, $wsb, [System.Text.UTF8Encoding]::new($false))

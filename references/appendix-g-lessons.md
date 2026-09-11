@@ -223,3 +223,53 @@ service reads from or writes to, and do it in the SERVICE as well - a package-on
 entirely whenever the service creates the folder first.
 
 ---
+
+### 2026-09-11 - Google Chrome: the sandbox ran nothing as SYSTEM and blamed the package
+
+The first sandbox run on this host after 0.28.0. The package was fine from the start - it went GREEN on
+the first run whose harness actually worked (14 steps, 9.9 minutes, no failed assertion). Getting there
+took five stacked faults, each hiding the next, and about two hours. What made it expensive was not any
+one fault but reading each symptom as a package problem.
+
+**1. `elevated=True` is not evidence that anything can run as SYSTEM.** 0.28.0 had moved the runner from
+`<LogonCommand>` to a Startup-folder trigger and added an `IsInRole(Administrator)` assertion to guard
+the change. The assertion passed - and `schtasks /Create` + `/Run` returned exit 0 while the task never
+ran; `Register-ScheduledTask` said "Cannot connect to CIM server. Access denied". Explorer's token is not
+the token the Task Scheduler wants. **General lesson**: a precondition check must exercise the mechanism
+it guards, not a proxy for it. The harness now runs `whoami` as SYSTEM before anything else.
+
+**2. `2>file` does not suppress a native command's stderr under `$ErrorActionPreference='Stop'`.** The
+0.28.0 comment asserted it did; a ten-line probe under `powershell.exe` showed `THREW - NativeCommandError`.
+The redirect chooses where the ErrorRecord goes, not whether one is raised. **General lesson**: a comment
+that explains why code is safe is a claim. When the run dies exactly where the comment says it cannot,
+measure the claim before touching anything else.
+
+**3. A guest that looks like the host is not the host.** Two things the host had, the sandbox image did
+not: `Microsoft.PowerShell.Archive\de-DE\ArchiveResources.psd1` (PSADT imports that module at load, and
+WinPS 5.1 throws rather than falling back), and a WMI service that answers SYSTEM (`Win32_ComputerSystem`
+-> `0x80070005`, which `Initialize-ADTModule` needs). Both had worked on 2026-09-08; both broke with the
+host's cumulative updates of 2026-09-11, from which the sandbox image is built. Both surfaced as the same
+60008. **General lesson**: when every package fails identically, the environment is the suspect, not the
+package - and a guest image changes every Patch Tuesday even though nothing in the repository did.
+
+**4. `Invoke-AppDeployToolkit.exe` discards the `.ps1`'s stderr.** 60008 is "Initialization failed" and
+is raised before the first log line, so the `.exe` route leaves exactly one number and nothing else. It
+took two separate probe VMs to read the two lines that explained the two 60008s. The harness now re-runs
+a 60008 action once through `powershell.exe -File` with stderr captured, and its PSADT canary opens a
+real Silent session as SYSTEM so the next environment fault is named before the loop starts.
+
+**5. Never edit the package while the sandbox is running against it.** The package folder is mapped
+read-only into the VM and copied at the start of the run; a launcher edit mid-run produced a result that
+would have mixed old and new code. That run had to be thrown away. **General lesson**: finish every edit,
+re-run pre-flight, re-pack - then start the test, and touch nothing until the verdict.
+
+**6. A SYSTEM action draws nothing.** Twenty minutes of an idle-looking VM screen are indistinguishable
+from a hang, and "I see nothing happening" was correct - both when the tasks really did not run and later
+when the install was working. The runner now prints a heartbeat every ten seconds and sets the console
+title; the LogonCommand deliberately does not hide that window.
+
+**7. One probe VM beats an hour of reasoning.** Every fault above was settled by a three-minute sandbox
+that ran one command and wrote one text file back. The reasoning that preceded each probe was mostly
+wrong in detail and would have produced another blind full run.
+
+---

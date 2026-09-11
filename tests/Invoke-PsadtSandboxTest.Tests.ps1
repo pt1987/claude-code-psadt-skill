@@ -272,11 +272,119 @@ Describe 'Invoke-PsadtSandboxTest' {
             $script:sysRunner | Should -Match "Get-SchtasksFailure -Operation 'Run'"
         }
 
-        It 'fails fast when the Startup trigger handed it a filtered token' {
-            # schtasks /RU SYSTEM /RL HIGHEST needs the full administrator token. LogonCommand supplied
-            # one implicitly; an Explorer-launched Startup item does not guarantee it.
+        It 'lowers ErrorActionPreference around the schtasks calls so their stderr cannot abort the run' {
+            # The ONCE trigger is deliberately in the past, so schtasks writes "/ST is earlier than
+            # current time" to STDERR on EVERY step. In WinPS 5.1 a native command's stderr raises a
+            # terminating NativeCommandError whenever $ErrorActionPreference is 'Stop', and a '2>file'
+            # redirect does NOT prevent that - it only chooses where the ErrorRecord is written. With
+            # the redirect alone the runner died on its very first step: measured on a de-DE host
+            # 2026-09-11, verdict ERROR after 0.7 minutes with no action executed.
+            # The exit-code checks above remain the real failure signal, so nothing is hidden.
+            $createBlock = [regex]::Match($script:sysRunner, "(?s)\&\s*\{[^}]*?schtasks\.exe\s+/Create.*?\}").Value
+            $createBlock | Should -Match "ErrorActionPreference\s*=\s*'Continue'"
+
+            $runBlock = [regex]::Match($script:sysRunner, "(?s)\&\s*\{[^}]*?schtasks\.exe\s+/Run.*?\}").Value
+            $runBlock | Should -Match "ErrorActionPreference\s*=\s*'Continue'"
+
+            $deleteBlock = [regex]::Match($script:sysRunner, "(?s)\&\s*\{[^}]*?schtasks\.exe\s+/Delete.*?\}").Value
+            $deleteBlock | Should -Match "ErrorActionPreference\s*=\s*'Continue'"
+        }
+
+        It 'guards the guest shutdown against the same stderr trap' {
+            # shutdown.exe is the LAST statement of the run and the one that tears the VM down. If its
+            # stderr raised a terminating error, the guest would never shut itself down, the
+            # vmmemWindowsSandbox worker would keep the mapped folder open, and the NEXT run would be
+            # refused - Windows permits exactly one sandbox instance. Observed as an orphaned VM on
+            # 2026-09-11, which blocked the re-run until it was cleaned up by hand.
+            $shutdownBlock = [regex]::Match($script:sysRunner, "(?s)\&\s*\{[^}]*?shutdown\.exe.*?\}").Value
+            $shutdownBlock | Should -Match "ErrorActionPreference\s*=\s*'Continue'"
+        }
+
+        It 'fails fast when the runner was handed a filtered token' {
+            # schtasks /RU SYSTEM /RL HIGHEST needs the full administrator token.
             $script:sysRunner | Should -Match 'WindowsBuiltInRole\]::Administrator'
             $script:sysRunner | Should -Match 'not elevated'
+        }
+
+        It 'proves a SYSTEM task actually RUNS before spending the full loop on it' {
+            # Elevation is necessary but not sufficient, and that gap cost a whole afternoon on
+            # 2026-09-11: a Startup-folder-launched runner passed the IsInRole check yet could not make
+            # the Task Scheduler run anything - schtasks returned exit 0 and the task never executed, so
+            # all seven actions timed out identically and the evidence pointed at the package.
+            # The canary answers the only question that matters, in seconds rather than hours.
+            $script:sysRunner | Should -Match "Label 'SystemTaskCanary'"
+            $script:sysRunner | Should -Match 'whoami\.exe'
+            $script:sysRunner | Should -Match "notmatch '\(\?i\)system'"
+            # and it must name the harness, not the package, as the culprit
+            $script:sysRunner | Should -Match 'HARNESS/environment fault'
+        }
+
+        It 'lays down missing PowerShell module resources in the guest before the first PSADT import' {
+            # Measured 2026-09-11: the sandbox image lacked de-DE\ArchiveResources.psd1 for
+            # Microsoft.PowerShell.Archive, which PSADT imports at load. WinPS 5.1 throws instead of
+            # falling back, so every launcher exited 60008 with no log - on every package, not just one.
+            $script:sysRunner | Should -Match 'ps-module-resources'
+            $script:sysRunner | Should -Match "Add-Step 'GuestPrepare'"
+            # the shim must run BEFORE the package is copied and any toolkit import happens
+            $script:sysRunner.IndexOf("Add-Step 'GuestPrepare'") | Should -BeLessThan $script:sysRunner.IndexOf('Copy-Item -LiteralPath $pkgSrc')
+        }
+
+        It 'repairs WMI for SYSTEM before the first PSADT session is opened' {
+            # Measured 2026-09-11: Initialize-ADTModule queries Win32_ComputerSystem and the guest
+            # answered 0x80070005 for SYSTEM, so Open-ADTSession threw - 60008 on every action, even
+            # after the module import itself had been fixed. The repository holds the namespace ACLs.
+            $script:sysRunner | Should -Match 'Win32_ComputerSystem'
+            $script:sysRunner | Should -Match 'Winmgmt'
+            $script:sysRunner | Should -Match 'salvage'
+            $script:sysRunner | Should -Match 'resetrepository|/\$\{attempt\}repository'
+            $script:sysRunner | Should -Match 'wmi = \$wmiState'
+        }
+
+        It 'imports the package toolkit AND opens a session once as SYSTEM, stopping with the real error text' {
+            # Invoke-AppDeployToolkit.exe swallows the .ps1 stderr, so an import or session failure is
+            # otherwise a bare 60008 on every action. Two stages, because they failed for two different
+            # reasons on the same day (missing localized resource, then WMI access denied).
+            $script:sysRunner | Should -Match "Label 'PsadtModuleCanary'"
+            $script:sysRunner | Should -Match 'PSADT_MODULE_OK'
+            $script:sysRunner | Should -Match 'Open-ADTSession'
+            $script:sysRunner | Should -Match 'PSADT_SESSION_OK'
+            $script:sysRunner | Should -Match 'Real error'
+            # the canary's own log must not end up in the package evidence
+            $script:sysRunner | Should -Match 'PsadtSandboxCanary\.log'
+            $script:sysRunner | Should -Match 'Remove-Item -LiteralPath \(Join-Path \$env:WinDir .Logs\\Software\\PsadtSandboxCanary\.log'
+            # and it runs after the copy (it imports from the copied package) but before the first action
+            $script:sysRunner.IndexOf("Label 'PsadtModuleCanary'") | Should -BeGreaterThan $script:sysRunner.IndexOf('Copy-Item -LiteralPath $pkgSrc')
+            $script:sysRunner.IndexOf("Label 'PsadtModuleCanary'") | Should -BeLessThan $script:sysRunner.IndexOf("Invoke-Deployment -Label 'Install'")
+        }
+
+        It 'ships the host''s module culture resources in the work folder' {
+            $hostArchive = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Archive'
+            $hostCultures = @(Get-ChildItem -LiteralPath $hostArchive -Directory -ErrorAction SilentlyContinue | Where-Object { Get-ChildItem -LiteralPath $_.FullName -Filter '*.psd1' -File -ErrorAction SilentlyContinue })
+            if ($hostCultures.Count -eq 0) { Set-ItResult -Skipped -Because 'this host has no culture resource folder for Microsoft.PowerShell.Archive'; return }
+            $gen = & $script:script -PackagePath $script:pkg -GenerateOnly
+            foreach ($c in $hostCultures) {
+                (Join-Path $gen.SandboxWorkFolder "ps-module-resources\Microsoft.PowerShell.Archive\$($c.Name)\ArchiveResources.psd1") | Should -Exist
+            }
+        }
+
+        It 're-runs a 60008 action once through powershell.exe to capture the stderr the .exe discards' {
+            # 60008 = the launcher's Initialization block threw: nothing was deployed, no PSADT log exists,
+            # and Invoke-AppDeployToolkit.exe swallowed the .ps1's stderr. Re-running via -File is
+            # side-effect-free in that case and is the ONLY way the real error text reaches result.json.
+            $script:sysRunner | Should -Match '\$r\.ExitCode -eq 60008'
+            $script:sysRunner | Should -Match 'Invoke-AppDeployToolkit\.ps1'
+            $script:sysRunner | Should -Match '\.Diagnostic'
+            $script:sysRunner | Should -Match 'step\.diagnostic'
+            # 60001 must NOT trigger it - the hook already ran and a re-run would deploy twice
+            $script:sysRunner | Should -Not -Match '-eq 60001'
+        }
+
+        It 'shows a heartbeat while a SYSTEM action runs' {
+            # A SYSTEM scheduled task draws nothing on the guest desktop, so without this the VM looks
+            # frozen for minutes during a healthy install - indistinguishable from a hang to anyone
+            # watching the sandbox window.
+            $script:sysRunner | Should -Match 'still running'
+            $script:sysRunner | Should -Match 'WindowTitle'
         }
 
         It 'retries a captured output that reads back empty' {
@@ -301,43 +409,43 @@ Describe 'Invoke-PsadtSandboxTest' {
             ($folders | Where-Object { $_.HostFolder -like '*_PsadtSandboxTest' }).ReadOnly | Should -Be 'false'
         }
 
-        It 'carries no LogonCommand - it silently never executes on the affected Sandbox app version' {
-            # microsoft/Windows-Sandbox#125: the process is never spawned at all, while MappedFolders
-            # keeps working. A LogonCommand here would look correct and do nothing.
+        It 'starts the runner through LogonCommand' {
+            # 0.28.0 swapped LogonCommand for a Startup-folder trigger to dodge
+            # microsoft/Windows-Sandbox#125 (LogonCommand never spawns on some Sandbox app versions).
+            # Measured on 2026-09-11, that trade is a bad one wherever LogonCommand works: a
+            # Startup-launched runner inherits Explorer's token, and with it schtasks /Create and /Run
+            # both return exit 0 while the task NEVER executes (and the ScheduledTasks cmdlets are
+            # refused with "Cannot connect to CIM server. Access denied"). Every action then times out
+            # blaming the package. #125 is caught by the host's DONE.txt timeout instead.
             $xml = [xml](Get-Content -LiteralPath $script:gen.WsbPath -Raw)
-            $xml.Configuration.LogonCommand | Should -BeNullOrEmpty
+            $xml.Configuration.LogonCommand.Command | Should -Match 'Run-PsadtSandboxTest\.ps1'
         }
 
-        It 'maps the work folder onto the guest Startup folder rather than the Desktop' {
+        It 'does not hide the guest console window' {
+            # The console is the only visible sign of life in the VM: every deployment action runs as
+            # SYSTEM via a scheduled task and draws nothing on the desktop.
+            $xml = [xml](Get-Content -LiteralPath $script:gen.WsbPath -Raw)
+            $xml.Configuration.LogonCommand.Command | Should -Not -Match '(?i)-WindowStyle\s+Hidden'
+        }
+
+        It 'leaves the work folder at its default desktop mapping' {
+            # No SandboxFolder override: the guest sees it as C:\Users\WDAGUtilityAccount\Desktop\<leaf>,
+            # which is where the runner template and the LogonCommand both expect it.
             $xml = [xml](Get-Content -LiteralPath $script:gen.WsbPath -Raw)
             $folders = @($xml.Configuration.MappedFolders.MappedFolder)
             $work = $folders | Where-Object { $_.HostFolder -like '*_PsadtSandboxTest' }
-            $work.SandboxFolder | Should -Be 'C:\Users\WDAGUtilityAccount\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup'
+            $work.SandboxFolder | Should -BeNullOrEmpty
+            $script:gen.RunnerPath | Should -Match '_PsadtSandboxTest.Run-PsadtSandboxTest\.ps1$'
         }
 
-        It 'starts the runner from a trigger .cmd placed loose in the work folder' {
-            # Only .exe/.bat/.cmd/.lnk/.vbs are auto-executed from Startup, so the entry point has to
-            # be the .cmd; the .ps1 it launches lives one level down.
-            $triggerPath = Join-Path $script:gen.SandboxWorkFolder 'StartupTrigger.cmd'
-            $triggerPath | Should -Exist
-            (Get-Content -LiteralPath $triggerPath -Raw) | Should -Match 'Run-PsadtSandboxTest\.ps1'
-        }
-
-        It 'keeps the runner .ps1 out of the Startup root, where Explorer prompts for it' {
-            # A bare .ps1 sitting directly in Startup makes Explorer raise its own "how do you want to
-            # open this file" dialog, even though the .cmd already launches it correctly.
-            $script:gen.RunnerPath | Should -Match 'runner.Run-PsadtSandboxTest\.ps1$'
-            (Join-Path $script:gen.SandboxWorkFolder 'Run-PsadtSandboxTest.ps1') | Should -Not -Exist
-        }
-
-        It 'waits inside the trigger only when a settle delay was asked for' {
-            $plain = Get-Content -LiteralPath (Join-Path $script:gen.SandboxWorkFolder 'StartupTrigger.cmd') -Raw
-            $plain | Should -Not -Match 'ping\.exe'
+        It 'waits before starting the runner only when a settle delay was asked for' {
+            $xml = [xml](Get-Content -LiteralPath $script:gen.WsbPath -Raw)
+            $xml.Configuration.LogonCommand.Command | Should -Not -Match 'ping\.exe'
 
             $delayed = & $script:script -PackagePath $script:pkg -GenerateOnly -GuestSettleDelaySeconds 20
-            $text = Get-Content -LiteralPath (Join-Path $delayed.SandboxWorkFolder 'StartupTrigger.cmd') -Raw
+            $dx = [xml](Get-Content -LiteralPath $delayed.WsbPath -Raw)
             # ping, not timeout: timeout aborts without a console it owns.
-            $text | Should -Match 'ping\.exe -n 21 127\.0\.0\.1'
+            $dx.Configuration.LogonCommand.Command | Should -Match 'ping\.exe -n 21 127\.0\.0\.1'
         }
     }
 

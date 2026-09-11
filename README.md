@@ -429,6 +429,19 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.29.0 - 2026-09-11
+- **Fixed: the 0.28.0 Startup-folder trigger could not run a single task as SYSTEM.** The runner passed
+  the elevation check, yet `schtasks /Create` and `/Run` returned 0 while the task never executed - every
+  action timed out blaming the package. `<LogonCommand>` is back; #125 is left to the host's DONE.txt timeout.
+- **Fixed: `schtasks`' stderr notice ended the run before the first action** - in WinPS 5.1 a `2>file`
+  redirect does not stop the terminating `NativeCommandError`; the preference is lowered around the call.
+- **Fixed: the sandbox image lacked `de-DE\ArchiveResources.psd1`**, which PSADT needs just to import,
+  and **WMI refused SYSTEM** (`Win32_ComputerSystem` -> `0x80070005`), which `Open-ADTSession` needs.
+  Both surfaced as 60008 on every action with no log. `GuestPrepare` ships the host's module resources
+  into the guest and repairs the WMI repository.
+- **Added: three canaries before the loop** (SYSTEM task, toolkit import, toolkit session), **a 60008
+  action is re-run once via `powershell.exe -File` to capture the stderr the `.exe` discards**, and a
+  **heartbeat in the guest console** so a healthy install no longer looks like a hang. Suite 493 -> 501.
 ### 0.28.0 - 2026-09-11
 - **Fixed: a space in the `.wsb` path silently disabled every custom mapped folder.** `Start-Process
   -ArgumentList` does not quote its elements, so Windows Sandbox booted with the built-in shares only -
@@ -448,19 +461,3 @@ second copy to keep in sync.
 - **Added: an unbundled runtime prerequisite is researched in Phase 2 and decided at Gate 1**, and a
   manual interactive test is offered after a GREEN Phase 6 - the loop proves the package works, never
   that the app does. Suite 484 -> 493.
-### 0.27.1 - 2026-09-10
-- **Fixed: the dossier invented facts about the package and printed them as statements.** Found while
-  packaging two real apps to test 0.27.0. Without `-Metadata`, the report claimed `_Beschreibung folgt._`
-  as the Company-Portal text — which is copied into Intune verbatim and reads like a finished field —
-  plus `Start-ADTMsiProcess` and "Nutzerdaten bleiben erhalten" as the hook contents, for whatever package
-  happened to be reported on. A WinMerge package that only ever calls `Start-ADTProcess` with Inno Setup
-  switches was described four times as using a cmdlet it never touches. Nothing marked any of it as a guess.
-- **Hooks and the cmdlet list are now read out of the real launcher by AST**, per `*-ADTDeployment`
-  function. No launcher to read means `nicht ermittelbar / not derivable` instead of a plausible list. An
-  explicit `-Metadata` value still wins.
-- **A missing description warns and is marked visibly — and is refused outright when
-  `decisions.upload = true`**, in the same shape as the existing SYSTEM-test gate.
-  `-AllowMissingDescription` is the deliberate, visible opt-out.
-- **The header status is derived from the evidence** instead of defaulting to `Upload-bereit - getestet`.
-- **SKILL.md Phase 8** now says the description is mandatory; before, it only said how to format it.
-  Suite 474 → 484.
