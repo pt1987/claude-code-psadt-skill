@@ -26,5 +26,8 @@ _pester.out
 # Local planning / specs (superpowers) - NEVER commit, stays local
 docs/superpowers/
 
+# Per-machine Claude Code permission overrides - personal, never part of the shipped skill
+.claude/settings.local.json
+
 # Migrated legacy config/secret left behind by Initialize-PsadtSkill.ps1 -Fix (kept, never deleted)
 *.migrated
