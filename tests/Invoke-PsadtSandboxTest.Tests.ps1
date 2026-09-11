@@ -249,6 +249,43 @@ Describe 'Invoke-PsadtSandboxTest' {
         }
     }
 
+    Context 'runner: running an action as SYSTEM' {
+        BeforeEach { $script:sysRunner = Get-Content -LiteralPath (& $script:script -PackagePath $script:pkg -GenerateOnly).RunnerPath -Raw }
+
+        It 'keeps the ONCE trigger in the past so it can never fire on its own' {
+            # /Run starts the task; the trigger only exists because /Create demands one. A near-future
+            # /ST silences the stderr notice by ARMING a real trigger, which can re-launch the same
+            # deployment .cmd as SYSTEM while the action is still running.
+            $script:sysRunner | Should -Match '/SC ONCE /ST 00:00'
+        }
+
+        It 'never formats the start time through the current culture' {
+            # 'HH:mm' takes ':' as the culture's TimeSeparator: under fi-FI it renders 15.02, and
+            # schtasks rejects that with "Invalid start time value" and creates no task at all.
+            $script:sysRunner | Should -Not -Match "ToString\('HH:mm'\)"
+        }
+
+        It 'checks the exit code of both schtasks calls' {
+            # Unchecked, any failure to create or start the task presents as the action timing out
+            # $actionTimeout seconds later - the one symptom that says nothing about the cause.
+            $script:sysRunner | Should -Match "Get-SchtasksFailure -Operation 'Create'"
+            $script:sysRunner | Should -Match "Get-SchtasksFailure -Operation 'Run'"
+        }
+
+        It 'fails fast when the Startup trigger handed it a filtered token' {
+            # schtasks /RU SYSTEM /RL HIGHEST needs the full administrator token. LogonCommand supplied
+            # one implicitly; an Explorer-launched Startup item does not guarantee it.
+            $script:sysRunner | Should -Match 'WindowsBuiltInRole\]::Administrator'
+            $script:sysRunner | Should -Match 'not elevated'
+        }
+
+        It 'retries a captured output that reads back empty' {
+            # A transiently unreadable .out file (Defender scanning it) is otherwise indistinguishable
+            # from a detection script reporting "absent".
+            $script:sysRunner | Should -Match 'for \(\$i = 0; \$i -lt 3; \$i\+\+\)'
+        }
+    }
+
     Context 'generated .wsb' {
         BeforeEach { $script:gen = & $script:script -PackagePath $script:pkg -GenerateOnly }
 
@@ -264,9 +301,43 @@ Describe 'Invoke-PsadtSandboxTest' {
             ($folders | Where-Object { $_.HostFolder -like '*_PsadtSandboxTest' }).ReadOnly | Should -Be 'false'
         }
 
-        It 'starts the runner from the mapped work folder' {
+        It 'carries no LogonCommand - it silently never executes on the affected Sandbox app version' {
+            # microsoft/Windows-Sandbox#125: the process is never spawned at all, while MappedFolders
+            # keeps working. A LogonCommand here would look correct and do nothing.
             $xml = [xml](Get-Content -LiteralPath $script:gen.WsbPath -Raw)
-            $xml.Configuration.LogonCommand.Command | Should -Match 'Run-PsadtSandboxTest\.ps1'
+            $xml.Configuration.LogonCommand | Should -BeNullOrEmpty
+        }
+
+        It 'maps the work folder onto the guest Startup folder rather than the Desktop' {
+            $xml = [xml](Get-Content -LiteralPath $script:gen.WsbPath -Raw)
+            $folders = @($xml.Configuration.MappedFolders.MappedFolder)
+            $work = $folders | Where-Object { $_.HostFolder -like '*_PsadtSandboxTest' }
+            $work.SandboxFolder | Should -Be 'C:\Users\WDAGUtilityAccount\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup'
+        }
+
+        It 'starts the runner from a trigger .cmd placed loose in the work folder' {
+            # Only .exe/.bat/.cmd/.lnk/.vbs are auto-executed from Startup, so the entry point has to
+            # be the .cmd; the .ps1 it launches lives one level down.
+            $triggerPath = Join-Path $script:gen.SandboxWorkFolder 'StartupTrigger.cmd'
+            $triggerPath | Should -Exist
+            (Get-Content -LiteralPath $triggerPath -Raw) | Should -Match 'Run-PsadtSandboxTest\.ps1'
+        }
+
+        It 'keeps the runner .ps1 out of the Startup root, where Explorer prompts for it' {
+            # A bare .ps1 sitting directly in Startup makes Explorer raise its own "how do you want to
+            # open this file" dialog, even though the .cmd already launches it correctly.
+            $script:gen.RunnerPath | Should -Match 'runner.Run-PsadtSandboxTest\.ps1$'
+            (Join-Path $script:gen.SandboxWorkFolder 'Run-PsadtSandboxTest.ps1') | Should -Not -Exist
+        }
+
+        It 'waits inside the trigger only when a settle delay was asked for' {
+            $plain = Get-Content -LiteralPath (Join-Path $script:gen.SandboxWorkFolder 'StartupTrigger.cmd') -Raw
+            $plain | Should -Not -Match 'ping\.exe'
+
+            $delayed = & $script:script -PackagePath $script:pkg -GenerateOnly -GuestSettleDelaySeconds 20
+            $text = Get-Content -LiteralPath (Join-Path $delayed.SandboxWorkFolder 'StartupTrigger.cmd') -Raw
+            # ping, not timeout: timeout aborts without a console it owns.
+            $text | Should -Match 'ping\.exe -n 21 127\.0\.0\.1'
         }
     }
 

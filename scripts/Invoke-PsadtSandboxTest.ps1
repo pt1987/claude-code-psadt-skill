@@ -63,6 +63,12 @@ param(
 
     [ValidateRange(2048, 32768)][int]$MemoryInMB = 6144,
 
+    # Guest-side wait, inside the Startup trigger, before the runner starts reading the mapped folder.
+    # Some hosts see the mapped-folder mount land empty when the guest uses it too soon after logon; this
+    # pause happens after the guest has logged on, giving the mount extra time to settle. 0 disables it.
+    # Host-specific rather than a fixed cost - tune it down once a working value is known.
+    [ValidateRange(0, 900)][int]$GuestSettleDelaySeconds = 0,
+
     # Leave the VM running at the end instead of shutting it down. For looking at a failure by hand.
     [switch]$KeepSandboxOpen,
 
@@ -176,7 +182,7 @@ $runnerTemplate = @'
 # Drives the full Phase 6 loop with every deployment action executed as NT AUTHORITY\SYSTEM.
 $ErrorActionPreference = 'Stop'
 
-$mapped   = 'C:\Users\WDAGUtilityAccount\Desktop\__WORKLEAF__'
+$mapped   = '__MAPPEDROOT__'
 $pkgSrc   = 'C:\Users\WDAGUtilityAccount\Desktop\__PACKAGELEAF__'
 $results  = Join-Path $mapped 'results'
 $work     = 'C:\PsadtSandboxWork'
@@ -206,6 +212,23 @@ function Add-Assertion {
     if (-not $Ok) { $script:report.failedAssertions += $Name }
 }
 
+function Get-SchtasksFailure {
+    <#
+      Both schtasks calls used to be piped to Out-Null with no exit-code check, so ANY failure to
+      create or start the task presented as the action timing out $actionTimeout seconds later - the
+      one symptom that says nothing about the cause. The likeliest real cause is a token problem:
+      /RU SYSTEM /RL HIGHEST needs the full administrator token, and a Startup-folder item does not
+      always carry one.
+    #>
+    param([string]$Operation, [string]$TaskName, [int]$Code, [string]$ErrFile)
+
+    $detail = ''
+    if (Test-Path -LiteralPath $ErrFile) {
+        $detail = (('' + (Get-Content -LiteralPath $ErrFile -Raw -ErrorAction SilentlyContinue)) -replace '\s+', ' ').Trim()
+    }
+    "schtasks /$Operation failed for '$TaskName' (exit $Code). $detail"
+}
+
 function Invoke-AsSystem {
     <#
       Runs one command line as SYSTEM through a scheduled task and returns { ExitCode, Output, TimedOut }.
@@ -233,8 +256,20 @@ function Invoke-AsSystem {
         "echo %ERRORLEVEL% > `"$codeFile`""
     ) | Set-Content -LiteralPath $cmdFile -Encoding ASCII
 
-    & schtasks.exe /Create /TN $taskName /TR "`"$cmdFile`"" /SC ONCE /ST 00:00 /RU 'SYSTEM' /RL HIGHEST /F | Out-Null
-    & schtasks.exe /Run /TN $taskName | Out-Null
+    # /Run starts the task immediately, so the ONCE trigger exists only because /Create demands one.
+    # 00:00 is in the past ON PURPOSE: a trigger that can never fire by itself cannot re-launch this
+    # deployment .cmd as SYSTEM behind the loop's back while the action is still running. schtasks says
+    # so on STDERR ("Task may not run because /ST is earlier than current time") on every single step -
+    # that notice is the design working, so it is suppressed rather than designed away with a
+    # near-future /ST. A formatted time would be culture-dependent on top: 'HH:mm' renders as 15.02
+    # under fi-FI, which schtasks rejects with "Invalid start time value", creating no task at all.
+    # $ErrorActionPreference is 'Stop' here and WinPS 5.1 turns a native command's stderr merged via
+    # 2>&1 into terminating ErrorRecords, so stderr goes to a file instead of through the pipeline.
+    $schtasksErr = Join-Path $work "$Label.schtasks.err"
+    & schtasks.exe /Create /TN $taskName /TR "`"$cmdFile`"" /SC ONCE /ST 00:00 /RU 'SYSTEM' /RL HIGHEST /F 2>$schtasksErr | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw (Get-SchtasksFailure -Operation 'Create' -TaskName $taskName -Code $LASTEXITCODE -ErrFile $schtasksErr) }
+    & schtasks.exe /Run /TN $taskName 2>$schtasksErr | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw (Get-SchtasksFailure -Operation 'Run' -TaskName $taskName -Code $LASTEXITCODE -ErrFile $schtasksErr) }
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $raw = $null
@@ -250,8 +285,22 @@ function Invoke-AsSystem {
 
     if (-not $raw) { return [pscustomobject]@{ ExitCode = $null; Output = ''; TimedOut = $true } }
 
+    # The .cmd writes the output file and the exit-code file on two consecutive lines, but that does not
+    # guarantee the output file's bytes are visible to THIS process the moment the exit-code file is:
+    # Defender briefly locking a freshly-written file for a scan is enough to turn the -ErrorAction
+    # SilentlyContinue read into a silently EMPTY result, which a detection step then reads as "not
+    # detected". Observed exactly that - a step captured stdout as '' while the same file, re-read when
+    # the evidence was copied out at the end of the run, held the real result all along. The retry
+    # separates a genuinely empty result (stays empty across every attempt - the normal case for an
+    # absent app) from a transiently unreadable one (fills in within an attempt or two).
     [string]$out = ''
-    if (Test-Path -LiteralPath $outFile) { $out = '' + (Get-Content -LiteralPath $outFile -Raw -ErrorAction SilentlyContinue) }
+    if (Test-Path -LiteralPath $outFile) {
+        for ($i = 0; $i -lt 3; $i++) {
+            $out = '' + (Get-Content -LiteralPath $outFile -Raw -ErrorAction SilentlyContinue)
+            if ($out) { break }
+            Start-Sleep -Milliseconds 300
+        }
+    }
     return [pscustomobject]@{ ExitCode = [int]$raw.Trim(); Output = $out; TimedOut = $false }
 }
 
@@ -292,6 +341,18 @@ function Test-Paths {
 try {
     New-Item -ItemType Directory -Path $results, $work -Force | Out-Null
     Start-Transcript -LiteralPath (Join-Path $results 'sandbox-transcript.txt') -Force | Out-Null
+
+    # Every deployment action below goes through schtasks /RU SYSTEM /RL HIGHEST, which needs the full
+    # administrator token. <LogonCommand> supplied one implicitly; a Startup-folder item is launched by
+    # Explorer and inherits the token Explorer holds, so this stopped being true by construction when
+    # the trigger moved. Fail here in one second rather than let all seven actions fail identically
+    # further down, where the evidence points at the package instead.
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $isElevated = ([Security.Principal.WindowsPrincipal]$identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    Add-Step 'Elevation' @{ elevated = $isElevated; identity = $identity.Name }
+    if (-not $isElevated) {
+        throw "The sandbox runner is not elevated, so schtasks /RU SYSTEM /RL HIGHEST cannot work. The Startup-folder trigger handed it a filtered token."
+    }
 
     # The mapped package folder is read-only and PSADT unblocks files under its own root, so work on a copy.
     Copy-Item -LiteralPath $pkgSrc -Destination $pkg -Recurse -Force
@@ -353,8 +414,15 @@ finally {
 }
 '@
 
+# Windows auto-executes only recognised extensions (.exe/.bat/.cmd/.lnk/.vbs) placed DIRECTLY in the
+# Startup folder, and a bare .ps1 loose in there additionally makes Explorer raise its own "how do you
+# want to open this file" prompt. So the runner lives in a 'runner' subfolder and only the one-line
+# trigger .cmd stays loose in Startup.
+$guestStartup = 'C:\Users\WDAGUtilityAccount\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup'
+$guestRunner  = Join-Path $guestStartup 'runner\Run-PsadtSandboxTest.ps1'
+
 $runner = $runnerTemplate.
-    Replace('__WORKLEAF__', $workLeaf).
+    Replace('__MAPPEDROOT__', $guestStartup).
     Replace('__PACKAGELEAF__', $packageLeaf).
     Replace('__DETECTIONSCRIPT__', ($DetectionScript -replace "'", "''")).
     Replace('__SUCCESSCODES__', ('@(' + ($SuccessExitCodes -join ', ') + ')')).
@@ -363,8 +431,24 @@ $runner = $runnerTemplate.
     Replace('__PATHSABSENTINSTALL__', (ConvertTo-PsArrayLiteral $PathsAbsentAfterInstall)).
     Replace('__PATHSABSENTUNINSTALL__', (ConvertTo-PsArrayLiteral $PathsAbsentAfterUninstall))
 
-$runnerPath = Join-Path $workFolder 'Run-PsadtSandboxTest.ps1'
+$runnerPath = Join-Path $workFolder 'runner\Run-PsadtSandboxTest.ps1'
+New-Item -ItemType Directory -Path (Split-Path $runnerPath -Parent) -Force | Out-Null
 [System.IO.File]::WriteAllText($runnerPath, $runner, [System.Text.UTF8Encoding]::new($true))
+
+# --- 4b. Startup-folder trigger (works around microsoft/Windows-Sandbox#125) ------------------------
+# On the affected Windows Sandbox app version, <LogonCommand> silently never executes at all - not
+# hidden, not delayed, the process is never spawned - while MappedFolders keeps working normally. The
+# documented workaround is to map a host folder straight onto the guest's Startup folder: that path is
+# driven by Windows' own logon mechanism rather than by the Sandbox app's LogonCommand code path, so
+# the bug does not reach it. The work folder itself is mapped there instead of adding a third mapping.
+$triggerLine = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$guestRunner`""
+if ($GuestSettleDelaySeconds -gt 0) {
+    # ping, not timeout: timeout needs a console it owns and aborts with "input redirection is not
+    # supported" when it does not have one.
+    $triggerLine = "ping.exe -n $($GuestSettleDelaySeconds + 1) 127.0.0.1 > nul & " + $triggerLine
+}
+$triggerScript = "@echo off`r`n$triggerLine`r`n"
+[System.IO.File]::WriteAllText((Join-Path $workFolder 'StartupTrigger.cmd'), $triggerScript, [System.Text.ASCIIEncoding]::new())
 
 # --- 5. Generate the .wsb configuration -------------------------------------------------------------
 $wsbPath = Join-Path $workRoot "$stem.wsb"
@@ -380,12 +464,10 @@ $wsb = @"
     </MappedFolder>
     <MappedFolder>
       <HostFolder>$workFolder</HostFolder>
+      <SandboxFolder>$guestStartup</SandboxFolder>
       <ReadOnly>false</ReadOnly>
     </MappedFolder>
   </MappedFolders>
-  <LogonCommand>
-    <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Users\WDAGUtilityAccount\Desktop\$workLeaf\Run-PsadtSandboxTest.ps1</Command>
-  </LogonCommand>
 </Configuration>
 "@
 [System.IO.File]::WriteAllText($wsbPath, $wsb, [System.Text.UTF8Encoding]::new($false))
@@ -405,7 +487,11 @@ $sandboxExe = Join-Path $env:WINDIR 'System32\WindowsSandbox.exe'
 if (-not (Test-Path -LiteralPath $sandboxExe)) { throw "WindowsSandbox.exe not found at '$sandboxExe'." }
 
 Write-Verbose "Starting Windows Sandbox with $wsbPath"
-Start-Process -FilePath $sandboxExe -ArgumentList $wsbPath | Out-Null
+# Start-Process does not quote -ArgumentList elements itself. A path containing a space - routine as
+# soon as the Windows username has one, which also puts one in %LOCALAPPDATA% - is split into several
+# argv entries, so WindowsSandbox.exe receives a garbled config path and boots with NO custom
+# MappedFolders at all. It reports no error while doing it, which reads exactly like an upstream bug.
+Start-Process -FilePath $sandboxExe -ArgumentList "`"$wsbPath`"" | Out-Null
 
 $hostDeadline = (Get-Date).AddMinutes($TotalTimeoutMinutes)
 $sawSandbox = $false

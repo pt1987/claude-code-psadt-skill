@@ -36,3 +36,4 @@ preflight-green-gate         Invoke-PsadtPreflight.ps1 returns GREEN or RED and 
 phase6-system-test           The SYSTEM test loop, sandbox route by default, and the harness is never hand-rolled
 upload-dry-run-first         Dry-run, show the summary, confirm, only then -Execute; never delete, CreateNewCoexist
 assignment-dry-run-first     Dry-run and confirm before assigning; idempotent, never deletes, ambiguous names skipped
+runtime-prerequisite        An unbundled runtime the app needs is researched in Phase 2 and decided at Gate 1; a GREEN loop proves the package, not the app
