@@ -50,11 +50,16 @@ researched defaults; recommended option first.
    > you do, because `Add-AppxPackage` under SYSTEM reports success while registering the app for
    > nobody.
 
+   Plus any **external runtime prerequisite** Phase 2 found: separate package + Intune dependency
+   (recommended) / bundle it / document as manual / skip. Options + why: phase 1.4.
+
 <!-- rule:gate-deployment-semantics -->
 2. **Deployment semantics** - target audience (Required / Available / both, + AAD groups), uninstall "what
    goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641). Pre-select defaults from
    the installer type. Group assignment is **opt-in**: only when the user wants it here do you create/assign
    Entra groups (Phase 10, config `intune.groups`, guide Appendix M); the default is upload-without-assignment.
+   An **NSIS MultiUser** installer also needs its scope chosen here - all-users (recommended, matches a
+   System-context install) or current-user, which moves the detection rule into the profile. App. L.7.
 <!-- rule:gate-system-test-consent -->
 3. **SYSTEM-test consent** - it installs the real software as SYSTEM. Offer the Windows Sandbox route
    FIRST (`Invoke-PsadtSandboxTest.ps1`: whole loop, ~6 min, host untouched, no elevation), the DEV-VM
@@ -165,7 +170,9 @@ at the end. Resolve scope via gates 1 + 2 only, every option pre-filled from res
 
 **Phase 2 - Research fan-out (parallel sub-agents, no asking back).** Dispatch the three Researcher
 roles concurrently and show the findings table before scaffold. Record per deployment type: switch,
-expected exit codes, log path, known leftovers.
+expected exit codes, log path, known leftovers. **Also whether the app needs a runtime it does not
+bundle** - a GREEN Phase 6 proves the PACKAGE works, never that the app does; surface it at Gate 1
+(phase 1.4).
 **For an MSI the probe IS the research: `pwsh scripts/Get-PsadtMsiFacts.ps1 -Path <msi> -AsText`** -
 identity, signature, SHA256, features, decoded upgrade flags, shortcuts, file versions, registry rows and
 the Icon table in one call. Read it BEFORE web-searching anything; never hand-roll it (App. G).
@@ -190,12 +197,10 @@ user data) and async-retry loops for services: phase 4. WinGet hooks: App. I.3. 
 rule (a GUID passed to `-FilePath` throws `InvalidFilePathParameterValue` -> 60001) applies to Uninstall
 AND Repair - Repair is the usual miss. Custom helpers always go in
 `PSAppDeployToolkit.Extensions.psm1`, never the launcher.
-**If the installer stages a 3rd-party driver** (the Windows device-software prompt blocks a SYSTEM-silent
-install), classify it first: `pwsh scripts/Get-DriverSignatureInfo.ps1 -Path <extracted content>`.
-MicrosoftSigned -> pre-stage with pnputil in Pre-Install. VendorSigned -> certificate deliverable now
-(prefer the Intune policy), then pre-stage. Unsigned -> STOP, there is no packaging trick. Kernel-mode +
-vendor signature is RED, not a warning: TrustedPublisher silences the prompt but never satisfies Code
-Integrity. Tree: App. Q.
+**If the installer stages a 3rd-party driver** (the device-software prompt blocks a SYSTEM-silent
+install), classify it FIRST: `pwsh scripts/Get-DriverSignatureInfo.ps1 -Path <extracted content>`.
+**Unsigned is a hard stop, and kernel-mode with a vendor signature is RED, not a warning.** Verdict
+table, the pnputil staging route and the certificate options: App. Q.1.
 
 <!-- rule:preflight-green-gate -->
 **Phase 5 - Pre-flight (Reviewer gate).** `scripts/Invoke-PsadtPreflight.ps1 -PackagePath <pkg>` returns
@@ -210,24 +215,22 @@ Company-Portal uninstall returns 0x80070001). Per-check explanations and the enc
 - and that decision is recorded as `decisions.upload` in the manifest, which is what the dossier enforces.
 Each run appends to `results.systemTest[]` + `artifacts.logs[]`.
 
-**Default route: `pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg>`.** It runs the WHOLE loop -
-Install, detection, Uninstall, detection, Reinstall, Repair, final Uninstall - inside one throwaway
-Windows Sandbox, every action as SYSTEM, and returns `{ Verdict, Steps, FailedAssertions, Assertions,
-ResultPath, LogFolder }`. No elevation on the host, host untouched, ~6 minutes. The verdict is keyed on
-the DETECTION SCRIPT (what Intune evaluates); package facts go in as `-PathsPresentAfterInstall` /
-`-PathsAbsentAfterInstall` / `-PathsAbsentAfterUninstall`. Needs the optional feature
-`Containers-DisposableClientVM` (the script prints the one-time enable command). Not usable when the app
-needs domain join, a real TPM or GPU - fall back to the per-action route.
+**Default route: `pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg>`.** The WHOLE loop inside
+one throwaway Windows Sandbox, every action as SYSTEM. No elevation on the host, host untouched,
+~6 minutes. The verdict is keyed on the DETECTION SCRIPT - what Intune evaluates. Prerequisite, the
+`-Paths*` package assertions and when the sandbox is the wrong host: phase 6.1.
 
 **Never hand-roll this harness.** Running actions as SYSTEM and reading their exit codes back looks like
 ten lines of `schtasks` and is not: App. G has three bugs that each silently burned a full VM run.
 
+**After GREEN, offer a manual interactive test** for an unfamiliar app/vendor or a suspected runtime
+prerequisite - situational, not a gate. A missing runtime, a first-run wizard or an absent licence all
+leave the loop GREEN, because nothing in it ever launches the app. How: phase 6.4.
+
 **Per-action route (DEV VM, or when the sandbox cannot host the app).** `Invoke-PsadtSystemTest.ps1` runs
-ONE action as SYSTEM and returns `{ DeploymentType, ExitCode, Success, DetectionState, LogPath, LogTail,
-ErrorLines, Elevated }`; it fixes nothing - YOU drive the loop, hard cap 5 iterations. Needs an ELEVATED
-session + WinPS 5.1 on a DEV VM (Gate 3 consent + snapshot first). Loop: Install -> verify detection ->
-Uninstall -> verify clean -> Reinstall. Converged -> leave the machine uninstalled. Cap reached or no
-elevation -> blockade protocol, STOP before any upload. Prerequisites + diagnosis: phase 6, App. A, App. G.
+ONE action as SYSTEM and fixes nothing - **YOU drive the loop, hard cap 5 iterations**, on an ELEVATED
+WinPS 5.1 session (Gate 3 consent + snapshot first). The loop, the convergence rule and the blockade
+exit: phase 6.2. Diagnosis: App. A, App. G.
 
 **Phase 7 - Package.** `pwsh scripts/Invoke-PsadtPackage.ps1 -PackagePath <pkg>` - one command, never a
 hand-typed `IntuneWinAppUtil` line. It derives the name from the manifest, packs via a private temp `-o`,

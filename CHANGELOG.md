@@ -2,6 +2,78 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.28.0 - 2026-09-11 - The sandbox booted without its mapped folders and said nothing
+
+Ported from [#17](https://github.com/pt1987/claude-code-psadt-skill/pull/17) by @CSN-TechX, found while
+packaging real apps for Intune. The branch predated the 0.27.0 reference split, so the documentation half
+landed in `references/appendix-l-installers.md` rather than the guide file it was written against.
+
+### Fixed
+- **A space anywhere in the `.wsb` path silently disabled every custom mapped folder.**
+  `Start-Process -ArgumentList $wsbPath` does not quote its elements, so the path was split across
+  several argv entries and `WindowsSandbox.exe` booted with the built-in shares only - no error, no
+  warning, just a guest that could not see the package. A Windows username with a space in it is enough
+  to trigger it, and it puts a space in `%LOCALAPPDATA%` too, which is where the work folder lives. The
+  symptom reads exactly like an upstream Sandbox bug, which is how it survived this long.
+- **`<LogonCommand>` never ran at all on the affected Sandbox app version**
+  ([microsoft/Windows-Sandbox#125](https://github.com/microsoft/Windows-Sandbox/issues/125)) - the
+  process is not spawned, while `MappedFolders` keeps working. The work folder is now mapped straight
+  onto the guest's Startup folder, which Windows' own logon path populates, and a one-line
+  `StartupTrigger.cmd` starts the runner. The runner `.ps1` sits in a `runner\` subfolder: Startup
+  auto-executes only `.exe/.bat/.cmd/.lnk/.vbs`, and a bare `.ps1` loose in there additionally makes
+  Explorer raise its own "how do you want to open this file" prompt.
+- **A transient read could report a real result as empty.** The action's `.cmd` writes the output file
+  and the exit-code file on consecutive lines, but the bytes of the first are not guaranteed visible to
+  the reading process the moment the second is - Defender briefly locking a fresh file is enough. A
+  detection step captured `stdout: ""` and was read as "not detected", while the same file re-read at
+  the end of the run held the real answer. The read now retries, which separates a genuinely empty
+  result (the normal case for an absent app) from an unreadable one.
+
+### Changed
+- **`schtasks` failures are no longer invisible.** Neither the `/Create` nor the `/Run` call checked its
+  exit code, so any failure to create or start the SYSTEM task presented as the action timing out 900
+  seconds later - the one symptom that says nothing about the cause. Both are checked and the real
+  message is raised.
+- **The runner verifies it is elevated before the first action.** `schtasks /RU SYSTEM /RL HIGHEST`
+  needs the full administrator token. `<LogonCommand>` supplied one implicitly; an Explorer-launched
+  Startup item does not guarantee it. Without the check, a filtered token would have made all seven
+  actions fail identically and pointed the evidence at the package.
+- **The noisy `/ST` warning is suppressed rather than designed away.** The PR silenced it by moving the
+  trigger to now+1min. That arms a real ONCE trigger - which can re-launch the same deployment `.cmd`
+  as SYSTEM while the action is still running, since `MultipleInstancesPolicy` defaults to `IgnoreNew`
+  and only covers overlap - and `(Get-Date).ToString('HH:mm')` is culture-dependent on top: under fi-FI
+  it renders `15.02`, which `schtasks` rejects with "Invalid start time value", creating no task at all.
+  `00:00` stays, deliberately in the past, and its stderr notice goes to a file.
+- **New `-GuestSettleDelaySeconds`** (default 0), for hosts where the mapped folder is not ready the
+  instant the guest logs on. Implemented with `ping -n` rather than `timeout`, which aborts without a
+  console it owns.
+
+### Added
+- **NSIS MultiUser (`MultiUser.nsh`) is documented as its own trap** (App. L.1 / L.2 / L.7). Built with
+  the MultiUser plugin, a bare `/S` fails `.onInit`'s command-line validation and exits in well under a
+  second, before a single file is written, with no stdout and no stderr at all. The fix is `/allusers`
+  or `/currentuser` alongside `/S`; `/allusers` is the default for a System-context Intune install, and
+  `/currentuser` moves the detection rule into the user profile. The observed exit code is recorded as
+  one data point, not a signature - the reliable tell is the shape: genuine NSIS, sub-second exit, no
+  output, nothing written. It is now a **Gate 2** decision.
+- **An external runtime prerequisite is researched in Phase 2 and decided at Gate 1** (phase 1.4, rule
+  `runtime-prerequisite`). A package can pass every gate GREEN while the installed app is inert, because
+  no phase in this skill ever launches the application: Phase 5 parses it, Phase 6 drives the detection
+  script, Phase 11 watches the delivery. Options: separate package + Intune app dependency
+  (recommended), bundle it, document as manual, or skip - recorded either way.
+- **A manual interactive test is offered after a GREEN Phase 6 verdict** (phase 6.4), situationally -
+  for an unfamiliar app or vendor, anything flagged in 1.4, or the first package of a new app family.
+  GREEN means the package installs, detects, uninstalls, reinstalls and repairs. It does not mean the
+  app works: a missing runtime, a first-run wizard, an absent licence and a broken default config all
+  leave it GREEN.
+
+### Notes
+- Suite 484 -> 493.
+- SKILL.md gained four control-plane decisions and stayed inside the compaction budget by **moving three
+  blocks into the appendices that already own them**, not by shortening anything: the driver decision
+  tree to App. Q.1, the sandbox route detail to phase 6.1, and the per-action loop to phase 6.2 (which
+  never carried it - it existed only in SKILL.md). Phase 6 ends at byte 17 456 of 17 500.
+
 ## 0.27.1 - 2026-09-10 - The dossier described a package that did not exist
 
 ### Fixed

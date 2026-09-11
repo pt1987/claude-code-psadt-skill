@@ -25,6 +25,9 @@ the natural detection rule.
 - File metadata/strings: `(Get-Item setup.exe).VersionInfo`; a `strings`-style scan for marker text.
 - **Inno Setup:** EXE contains `Inno Setup` / `JR.Inno.Setup`; uninstaller `unins000.exe`.
 - **NSIS:** EXE contains `Nullsoft.NSIS` / `NullsoftInst`; uninstaller `Uninstall.exe` / `uninst.exe`.
+  A PE-metadata scan (`file`, or any equivalent) reports it directly as `Nullsoft Installer self-extracting
+  archive`, which is cheaper and less ambiguous than a strings grep. Then check whether it is a
+  **MultiUser** build (L.7) BEFORE trusting a bare `/S`.
 - **InstallShield:** `setup.exe` + `*.cab` / `data1.hdr` / `0x0409.ini`; strings `InstallShield` / `ISSetupStream`;
   `ISInternalDescription "Setup Launcher"`. Basic-MSI vs InstallScript: extract (7-Zip) - an embedded `.msi`
   + `Windows Installer` strings => Basic MSI; `data1.cab`/`setup.inx`/`_isres*` => InstallScript.
@@ -62,7 +65,7 @@ the natural detection rule.
 | **InstallShield (Basic MSI)** | `setup.exe /s /v"/qn"` | ProductCode | `/v"/norestart"` | `/v"/l*v log"` | ProductCode | |
 | **InstallShield (InstallScript)** | `setup.exe /s /f1"setup.iss"` | `setup.exe /s /x /f1"uninstall.iss"` | (ISS-driven) | `/f2"log"` | registry / file | record the `.iss` with `setup.exe /r /f1"setup.iss"` |
 | **Inno Setup** | `setup.exe /VERYSILENT /SUPPRESSMSGBOXES /SP- /NORESTART` | `unins000.exe /VERYSILENT /NORESTART` | `/NORESTART` (**mandatory**, see L.7) | `/LOG="log"` | QuietUninstallString / registry | `/SILENT` shows a progress bar, `/VERYSILENT` none; `/SUPPRESSMSGBOXES` only works WITH one of them |
-| **NSIS** | `setup.exe /S` | `Uninstall.exe /S _?=<installdir>` (see L.7) | (installer-specific) | `/D=path` (last arg, unquoted) | registry / file | `/S` is case-SENSITIVE; a bare `Uninstall.exe /S` returns BEFORE it is done |
+| **NSIS** | `setup.exe /S` (add `/allusers` or `/currentuser` if MultiUser - see L.7) | `Uninstall.exe /S _?=<installdir>` (see L.7) | (installer-specific) | `/D=path` (last arg, unquoted) | registry / file | `/S` is case-SENSITIVE; a bare `Uninstall.exe /S` returns BEFORE it is done |
 | **Advanced Installer** | `msiexec /i pkg.msi /qn` | `msiexec /x {ProductCode} /qn` | `/norestart` | `/l*v "log"` | MSI ProductCode | plain MSI underneath; a fresh ProductCode per build is typical - re-probe every time (**L.6**) |
 | **WiX Burn bundle** | `bundle.exe /quiet /norestart` | `bundle.exe /uninstall /quiet` | `/norestart` | `/log "log"` | registry (BundleProviderKey) / file version | wraps MSIs; a single ProductCode is unreliable |
 | **Squirrel (Electron)** | `Setup.exe --silent` | `%LocalAppData%\<App>\Update.exe --uninstall -s` | n/a | n/a | file version under `%LocalAppData%` | usually PER-USER; a System/Win32 install needs care |
@@ -193,6 +196,31 @@ must be removed by the package afterwards.
   NSIS install lands in the default directory anyway.
 - **`/NCRC`** skips the CRC check, unless the script used `CRCCheck force` - in which case the flag is
   ignored rather than honoured.
+
+**NSIS MultiUser (`MultiUser.nsh`): a bare `/S` aborts instantly and installs nothing.** A large and
+growing share of NSIS installers are built with the MultiUser plugin so one installer can target either
+scope. When the script defines `MULTIUSER_INSTALLMODE_COMMANDLINE`, running it silently WITHOUT an
+explicit scope switch fails the command-line validation in `.onInit` and the process exits immediately -
+typically well under a second, before a single file is written, with **no stdout and no stderr at all**
+regardless of window mode.
+
+- **Fix:** pass `/allusers` (machine-wide) or `/currentuser` (per-user) alongside `/S`. Default to
+  **`/allusers`** for an Intune System-context deployment; use `/currentuser` only when the app is
+  deliberately per-user. Case matters for the bare `/S` only (L.2), not for the mode switch.
+- **This is the tell:** an installer confirmed as genuine NSIS (L.1) that nevertheless fails
+  near-instantly under `/S` alone, with no captured output and no partial install artefacts, is very
+  likely MultiUser-gated. Confirm behaviourally with `/S /allusers` before concluding the switch table's
+  plain `/S` is wrong for that build.
+- **`/currentuser` installs are invisible to a `C:\Program Files\...` detection rule by design** - they
+  land under the user's own profile. If `/currentuser` is chosen, the detection rule has to look there.
+  Do not read "nothing under Program Files" as a failed install without checking for exit code 0 first.
+
+> Measured 2026-09-11 on one vendor's installer: an instant, output-free failure reproduced identically
+> under SYSTEM, under a fully interactive admin session, and via a raw scheduled task that bypassed
+> PSADT entirely - which rules out account, session and window creation and leaves the missing switch.
+> The observed exit code was `666660`. Treat the exact number as one data point, not as a signature:
+> MultiUser scripts are free to choose their own abort code. The reliable signature is the SHAPE -
+> genuine NSIS, sub-second exit, no output, nothing written.
 
 ### L.8 MSIX / AppX - staging vs registration, and why SYSTEM breaks the obvious call
 

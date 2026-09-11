@@ -12,6 +12,7 @@
 - [1.1 Check the current PSADT version](#11-check-the-current-psadt-version)
 - [1.2 Intake questions about the app (before a single line of code exists)](#12-intake-questions-about-the-app-before-a-single-line-of-code-exists)
 - [1.3 Web research on the specific installer](#13-web-research-on-the-specific-installer)
+- [1.4 External runtime prerequisites the installer does not bundle](#14-external-runtime-prerequisites-the-installer-does-not-bundle)
 - [3.1 Load the module, generate the scaffold](#31-load-the-module-generate-the-scaffold)
 - [3.2 What the scaffold produces](#32-what-the-scaffold-produces)
 - [3.3 First verification of the scaffold](#33-first-verification-of-the-scaffold)
@@ -28,6 +29,7 @@
 - [6.1 Default route: the whole loop in a Windows Sandbox](#61-default-route-the-whole-loop-in-a-windows-sandbox)
 - [6.2 Per-action route (DEV VM, or an app the sandbox cannot host)](#62-per-action-route-dev-vm-or-an-app-the-sandbox-cannot-host)
 - [6.3 Run it in parallel with Phases 7 and 8](#63-run-it-in-parallel-with-phases-7-and-8)
+- [6.4 The manual interactive test a GREEN verdict cannot replace](#64-the-manual-interactive-test-a-green-verdict-cannot-replace)
 
 ## Phase 0: Setup (Doctor)
 
@@ -254,6 +256,7 @@ Research per app - without these answers there is no successful silent install:
 | Known exit codes (success, reboot, error) | `0, 3010, ...` | |
 | Installer log file path | `<...>` | |
 | Dependency installer (if separate) | `<...>` | |
+| External runtime prerequisite (1.4) | `<...>` | |
 | Known Intune pitfalls | `<...>` | |
 | Known post-install config (registry / XML) | `<...>` | |
 
@@ -268,6 +271,34 @@ Without this table filled in: **do not package**.
 - Docs: https://docs.oracle.com/en/database/oracle/oracle-database/21/xeinw/
 - Silent install: `setup.exe /s /f1"XEInstall.rsp"` + response file
 - Known pitfall: `svc_oracle` must exist BEFORE install (which is why the script creates the service account)
+
+### 1.4 External runtime prerequisites the installer does not bundle
+
+<!-- rule:runtime-prerequisite -->
+**Research whether the app needs a separate runtime it does not carry, and surface the answer at
+Gate 1.** This is its own question because no later phase can ask it. Phase 5 parses the package,
+Phase 6 drives Install/Detect/Uninstall/Repair against the detection script, and Phase 11 watches the
+delivery - none of them ever launches the application. A package can therefore pass every gate GREEN
+while the installed app is inert, and the first person to find out is the user it was assigned to.
+
+The shape to look for: an app whose vendor ships the runtime as a *separate* download and expects it
+to be present - R for RStudio, a JRE for several Java IDEs, a specific .NET Desktop Runtime version an
+installer references but does not include. A bundled or chained runtime is not this case; the test is
+whether a clean machine that ran only this installer can actually start the app.
+
+Answer it from the vendor's system-requirements or enterprise-deployment page, not from a forum post -
+and treat the answer as a claim until something confirms it (`research-is-data`, `references/research-trust.md`).
+
+When one is found, it is a **Gate 1 option set**, never a silent decision:
+
+| Option | When |
+|---|---|
+| Separate package + Intune app dependency | **Recommended.** The runtime is versioned, reusable across apps and visible in Intune. |
+| Bundle the runtime installer into this package | One consumer, or the vendor pins an exact runtime build. |
+| Document as a manual prerequisite | The runtime is already managed elsewhere and only needs recording. |
+| Skip for now | A deliberate, recorded decision - it lands in the manifest and in the dossier. |
+
+Record the choice in the manifest with the rest of the Gate 1 answers, so the dossier reports it.
 
 ---
 
@@ -595,10 +626,49 @@ Requires an elevated session (a SYSTEM scheduled task) and Windows PowerShell 5.
 script re-execs itself into 5.1 when started from pwsh. Cannot run either route? STOP before `-Execute` and
 hand the exact command back - never upload untested.
 
+The script returns `{ DeploymentType, ExitCode, Success, DetectionState, LogPath, LogTail, ErrorLines,
+Elevated }` and **fixes nothing**. You drive the loop, and the loop is bounded:
+
+```
+Install -> verify detection -> Uninstall -> verify clean -> Reinstall
+```
+
+- **Hard cap: 5 iterations.** Not a suggestion - it is what keeps a failing package from turning into
+  an unbounded edit-and-retry session against a VM.
+- **Converged** -> run Uninstall once more and leave the machine uninstalled. A DEV VM left in the
+  installed state makes the next package's "absent" baseline a lie.
+- **Cap reached, or no elevation available** -> blockade protocol (PROBLEM / TRIED / OPTIONS), and STOP
+  before any upload. A package whose Uninstall never ran is not a finished package.
+
+Prerequisites and the diagnosis path for a failing action: Appendix A (error catalogue) and
+Appendix G (the harness bugs, and why this is not ten lines of `schtasks`).
+
 ### 6.3 Run it in parallel with Phases 7 and 8
 
 Packaging and the dossier do not depend on the test result; only the verdict *recorded in* the dossier
 does. Start the sandbox test, build the `.intunewin` and the report while it runs, then fold the result in
 and regenerate the dossier. Serialising them adds the whole test duration to the wall clock for nothing.
+
+### 6.4 The manual interactive test a GREEN verdict cannot replace
+
+**After a GREEN verdict, offer a manual interactive test.** Situational, not a fifth gate: skip it
+silently for a vendor or app family already packaged and understood. Offer it for an unfamiliar
+app or vendor, for anything flagged in 1.4, and for the first package of a new app family.
+
+What GREEN actually means is *the package installs, detects, uninstalls, reinstalls and repairs against
+the detection script*. It does not mean the application works. Invisible to the loop by construction:
+a missing external runtime (1.4), a first-run wizard that blocks on a click, an absent licence, a
+default configuration that is broken in this environment. Every one of those leaves the package GREEN.
+
+The cheap version: generate the artefacts without booting the automated loop, then hand the user a
+sandbox with nothing in it but the installer.
+
+```powershell
+# Generate only - no run, no Startup trigger, no automated loop.
+pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg> -GenerateOnly
+```
+
+Take the `.wsb` it writes, keep the package mapping, drop the work-folder mapping, and open it. The
+user installs and clicks around by hand. That is the check no assertion in this skill can make for them.
 
 ---

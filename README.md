@@ -429,52 +429,38 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
-### 0.27.1 - 10.09.2026
-- **Fixed: das Dossier erfand Fakten über das Paket und druckte sie als Aussage.** Beim Paketieren zweier
-  echter Apps zum Test von 0.27.0 aufgefallen. Ohne `-Metadata` behauptete der Report `_Beschreibung folgt._`
-  als Company-Portal-Text — der wird unverändert nach Intune übernommen und liest sich wie ein fertiges Feld —
-  sowie `Start-ADTMsiProcess` und „Nutzerdaten bleiben erhalten" als Hook-Inhalt, für welches Paket auch immer
-  gerade berichtet wurde. Ein WinMerge-Paket, das ausschließlich `Start-ADTProcess` mit Inno-Switches aufruft,
-  wurde so viermal mit einem Cmdlet beschrieben, das es nie verwendet. Nichts kennzeichnete das als Vermutung.
-- **Hooks und Cmdlet-Liste werden jetzt per AST aus dem echten Launcher gelesen**, je `*-ADTDeployment`-Funktion.
-  Kein Launcher vorhanden: „nicht ermittelbar" statt einer plausiblen Liste. Ein explizites `-Metadata` gewinnt
-  weiterhin.
-- **Eine fehlende Beschreibung warnt und wird sichtbar markiert — und wird bei `decisions.upload = true`
-  verweigert**, in derselben Form wie das bestehende SYSTEM-Test-Gate. `-AllowMissingDescription` ist der
-  bewusste, sichtbare Ausweg.
-- **Der Header-Status wird aus den Belegen abgeleitet** statt auf „Upload-bereit · getestet" zu defaulten.
-- **SKILL.md Phase 8** sagt jetzt, dass die Beschreibung Pflicht ist; vorher stand dort nur, wie sie zu
-  formatieren wäre. Suite 474 → 484.
-### 0.27.0 - 10.09.2026
-- **Fixed: after auto-compaction, half of SKILL.md was gone.** Claude Code re-attaches only the **first
-  5000 tokens** of an invoked skill after a summary. SKILL.md was ~10 10900, so the cut fell at line 198 — the
-  middle of Phase 2. In exactly the sessions long enough to compact, the skill lost Phases 3–12, the whole
-  troubleshooting table, every anti-pattern and the reference map. The fix is **ordering, not size**: the
-  operating mode, the four gates, the conventions and Phases 0–6 now sit ahead of the cut, and Phase 6 ends
-  at byte 17 457 of a 17 500-byte budget — with a test that fails if it ever crosses back.
-- **Fixed: `--ref <tag>` returned HTTP 404 on the tarball route.** The installer built
-  `tar.gz/refs/heads/<ref>`, and `refs/heads` only resolves *branches* — so pinning worked with git and failed
-  on exactly the machines without it, which are the ones most likely to need a pinned release.
-  `Update-PsadtSkill.ps1` had the same latent bug in its archive path.
-- **Fixed: a failed install exited 127 instead of 1**, with a libuv assertion after the error message. A
-  mistyped `--ref` printed a correct explanation and then looked like a crash.
-- **Changed: the default install is the newest release tag, not `main`.** This skill registers an Entra app
-  with admin consent and writes to a tenant; installing whatever last landed on a branch is not a defensible
-  default for that. `--ref main` and `--ref v0.27.0` both remain. The update check now distinguishes a
-  release-pinned installation (counts *releases* behind) from one following a branch.
-- **Changed: the 2942-line deployment guide is now nineteen files**, one per domain, with
-  `references/README.md` as the map. Section numbering is unchanged, so every "App. L.1" and "Phase 6.2"
-  still resolves.
-- **Changed (behaviour): Phase 11 no longer re-runs Phase 6.** Phase 6 answers *does the package work* (the
-  gate, in a throwaway Sandbox); Phase 11 answers *does the delivery work* (Intune test group, real device,
-  `AppWorkload.log`). A package that passes 6 and fails 11 now tells you something.
-- **Changed: `"update skill"` is gone from the description** — un-namespaced, it made this skill answer for
-  every other updatable skill on the machine. `"psadt update"` stays.
-- **Added `SECURITY.md`** — the risk surface next to the control that covers each part of it, each naming the
-  file and the test that implement it.
-- **Added: researched content is data, never instructions** (`references/research-trust.md`) — Phase 2
-  researches on the open web and the result runs as SYSTEM. The install4j case generalised.
-- **Added three guards and CI**: rule anchors proving no binding rule was lost in the move, a two-directional
-  doc cross-reference check that also reads `scripts/`, a context-budget test, and the suite on a clean
-  Windows runner for every push. Suite 441 → 474.
-- **Added `evals/`** — 20 trigger and behaviour cases. Not yet run: `claude plugin eval` is in early access.
+### 0.28.0 - 2026-09-11
+- **Fixed: a space in the `.wsb` path silently disabled every custom mapped folder.** `Start-Process
+  -ArgumentList` does not quote its elements, so Windows Sandbox booted with the built-in shares only -
+  no error, no warning. A username with a space in it is enough, and it reads exactly like an upstream
+  Sandbox bug.
+- **Fixed: `<LogonCommand>` never ran** on the affected Sandbox app version
+  ([#125](https://github.com/microsoft/Windows-Sandbox/issues/125)). The work folder is now mapped onto
+  the guest's Startup folder and a trigger `.cmd` starts the runner, which lives one level down because
+  Startup auto-executes only `.exe/.bat/.cmd/.lnk/.vbs`.
+- **Fixed: a transient read reported a real result as empty** - a detection step captured `stdout: ""`
+  while the same file, re-read at the end of the run, held the right answer. The read now retries.
+- **Changed: `schtasks` failures are checked** instead of surfacing as a 900-second timeout, and the
+  runner verifies it is elevated before the first action - a Startup item does not carry the full admin
+  token by construction the way `<LogonCommand>` did.
+- **Added: NSIS MultiUser needs an explicit `/allusers` or `/currentuser`** (App. L.7). A bare `/S`
+  exits in under a second with no output and nothing installed. Now a Gate 2 decision.
+- **Added: an unbundled runtime prerequisite is researched in Phase 2 and decided at Gate 1**, and a
+  manual interactive test is offered after a GREEN Phase 6 - the loop proves the package works, never
+  that the app does. Suite 484 -> 493.
+### 0.27.1 - 2026-09-10
+- **Fixed: the dossier invented facts about the package and printed them as statements.** Found while
+  packaging two real apps to test 0.27.0. Without `-Metadata`, the report claimed `_Beschreibung folgt._`
+  as the Company-Portal text — which is copied into Intune verbatim and reads like a finished field —
+  plus `Start-ADTMsiProcess` and "Nutzerdaten bleiben erhalten" as the hook contents, for whatever package
+  happened to be reported on. A WinMerge package that only ever calls `Start-ADTProcess` with Inno Setup
+  switches was described four times as using a cmdlet it never touches. Nothing marked any of it as a guess.
+- **Hooks and the cmdlet list are now read out of the real launcher by AST**, per `*-ADTDeployment`
+  function. No launcher to read means `nicht ermittelbar / not derivable` instead of a plausible list. An
+  explicit `-Metadata` value still wins.
+- **A missing description warns and is marked visibly — and is refused outright when
+  `decisions.upload = true`**, in the same shape as the existing SYSTEM-test gate.
+  `-AllowMissingDescription` is the deliberate, visible opt-out.
+- **The header status is derived from the evidence** instead of defaulting to `Upload-bereit - getestet`.
+- **SKILL.md Phase 8** now says the description is mandatory; before, it only said how to format it.
+  Suite 474 → 484.
