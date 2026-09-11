@@ -264,9 +264,21 @@ Describe 'Invoke-PsadtSandboxTest' {
             ($folders | Where-Object { $_.HostFolder -like '*_PsadtSandboxTest' }).ReadOnly | Should -Be 'false'
         }
 
-        It 'starts the runner from the mapped work folder' {
+        It 'has no LogonCommand - microsoft/Windows-Sandbox#125 confirms it silently never executes on the affected Sandbox app version' {
             $xml = [xml](Get-Content -LiteralPath $script:gen.WsbPath -Raw)
-            $xml.Configuration.LogonCommand.Command | Should -Match 'Run-PsadtSandboxTest\.ps1'
+            $xml.Configuration.LogonCommand | Should -BeNullOrEmpty
+        }
+
+        It 'maps the work folder onto the guest Startup folder, not the Desktop' {
+            $xml = [xml](Get-Content -LiteralPath $script:gen.WsbPath -Raw)
+            $folders = @($xml.Configuration.MappedFolders.MappedFolder)
+            $work = $folders | Where-Object { $_.HostFolder -like '*_PsadtSandboxTest' }
+            $work.SandboxFolder | Should -Be 'C:\Users\WDAGUtilityAccount\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup'
+        }
+
+        It 'starts the runner via a Startup-folder trigger placed inside the work folder' {
+            $triggerPath = Join-Path (Split-Path $script:gen.WsbPath -Parent) '_PsadtSandboxTest\StartupTrigger.cmd'
+            (Get-Content -LiteralPath $triggerPath -Raw) | Should -Match 'Run-PsadtSandboxTest\.ps1'
         }
     }
 

@@ -67,10 +67,15 @@ researched defaults; recommended option first.
    > read **App. L.8** first: under SYSTEM `Add-AppxPackage` registers the app for the SYSTEM account and
    > still reports success, `Get-AppxPackage` is the wrong detection cmdlet, and de-provisioning does not
    > remove the app from existing users.
+   **External runtime prerequisite** (Phase 2 research) is also part of this gate when one is found: separate
+   package + Intune app dependency (recommended) · bundle its installer into this package · document as a
+   manual prerequisite · skip for now.
 2. **Deployment semantics** - target audience (Required / Available / both, + AAD groups), uninstall "what
    goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641). Pre-select defaults from
    the installer type. Group assignment is **opt-in**: only when the user wants it here do you create/assign
    Entra groups (Phase 10, config `intune.groups`, guide Appendix M); the default is upload-without-assignment.
+   **NSIS MultiUser install scope** is part of this gate when the installer requires it (App. L.7): offer
+   all-users / current-user, recommended = **all-users** (machine-wide, matches Intune System-context install).
 3. **SYSTEM-test consent** - it installs the real software as SYSTEM. Offer the Windows Sandbox route
    FIRST (`Invoke-PsadtSandboxTest.ps1`: whole loop, ~6 min, host untouched, no elevation) and the DEV-VM
    route second; only the second one needs a snapshot. "Skip the test" is NOT an option to offer while
@@ -193,7 +198,14 @@ end. Resolve scope via decision gates 1 + 2 only; pre-fill every option from res
 
 **Phase 2 - Research fan-out (parallel sub-agents, no asking back).** Dispatch the three Researcher roles
 concurrently, collect into the Phase-0.3 findings table, and show it before scaffold. Record per deployment
-type: switch, expected exit codes, log path, known leftovers. **For an MSI, the probe IS the research: `pwsh scripts/Get-PsadtMsiFacts.ps1 -Path <msi> -AsText`** returns
+type: switch, expected exit codes, log path, known leftovers. **Also research whether the app has an external
+runtime prerequisite it does not bundle** - a separate language/runtime the app is inert without (R for
+RStudio, a JRE for some Java IDEs, a specific .NET Desktop Runtime not carried by the installer). A clean
+Install/Detect/Uninstall/Repair loop proves the PACKAGE works, not that the resulting app is usable - that
+gap is invisible to the automated SYSTEM test and was only caught 2026-09-10 by a manual first-run click
+through, after RStudio's install/detect/uninstall all passed GREEN with no R present. Surface a found
+prerequisite at **Gate 1**: package it separately + wire an Intune app dependency (recommended default),
+bundle its installer into this package, document as a manual prerequisite, or skip for now. **For an MSI, the probe IS the research: `pwsh scripts/Get-PsadtMsiFacts.ps1 -Path <msi> -AsText`** returns
 identity, signature, SHA256, features + component counts, decoded upgrade flags, shortcuts, directories,
 file versions, registry rows and the Icon table in ONE call. Read it before web-searching anything: it is
 what reveals an auto-updater sitting in its own feature (so `ADDLOCAL` beats post-install cleanup), a
@@ -275,6 +287,18 @@ WinPS 5.1 and belongs on a DEV VM (Gate 3 consent + snapshot first). Loop: Insta
 Uninstall → verify clean (services, tasks, reg key, install dir, firewall; neighbour products of the same
 vendor stay) → Reinstall. Converged → leave the machine uninstalled. Cap reached or no elevation → blockade
 protocol, STOP before any upload. Prerequisites + diagnosis: guide Phase 6 / Appendix A / G.
+
+**After a GREEN Phase 6 verdict, offer a manual interactive test as a situational follow-up** (not a formal
+gate - skip silently for a vendor/app family already packaged and understood). The automated loop proves
+Install/Detect/Uninstall/Repair against the DETECTION SCRIPT; it does not prove the app actually WORKS once
+launched - an external runtime prerequisite, a first-run wizard, a missing license, or a broken default config
+are all invisible to it. Recommended especially for: an unfamiliar app/vendor, anything flagged as
+possibly having a runtime prerequisite (Phase 2), or the first package of a new app family. A quick way to
+do it: a plain `.wsb` mapping only the installer (no Startup trigger, no automated loop) left open for the
+user to install and click around by hand - see `Invoke-PsadtSandboxTest.ps1`'s own generated `.wsb` for the
+mapping pattern, minus the automation. Caught 2026-09-10: RStudio's install/detect/uninstall/repair all
+passed GREEN with no R runtime present at all - the app was fully "installed" and undetectable-as-broken
+until someone actually opened it.
 
 **Phase 7 - Package.** `pwsh scripts/Invoke-PsadtPackage.ps1 -PackagePath <pkg>` - one command, never a
 hand-typed `IntuneWinAppUtil` line. It derives the name from the manifest, packs via a private temp `-o`,
