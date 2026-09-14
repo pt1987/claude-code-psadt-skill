@@ -434,6 +434,21 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.31.0 - 2026-09-14
+- **Added: the guest window shows every phase of the run at once.** Until now it showed one line, the step
+  running right now, so a run three phases in looked like one stuck on its first and a failed phase left
+  nothing to read. It is a WPF master/detail window now: tick, cross or live marker per phase, and for the
+  selected one its exit code, duration, start and end, timeout, detection result and its own transcript.
+  Still a separate process polling a file, still passive - it never drives the run and closing it stops
+  nothing.
+- **Added: `progress.json` carries a `phases[]` plan derived from `-Scenarios`.** The hardcoded `total = 14`
+  it published before was wrong for every partial run, and wrong for the full gate too, which has 15 steps.
+  The older top-level fields are unchanged.
+- **Measured in the guest before the port, not after:** WPF loads there under Windows PowerShell 5.1,
+  the real XAML parses, and the window paints at render tier 0 with no vGPU - a PNG of it came back out of
+  the VM as the proof. New guards in `tests/SandboxProgressUi.Tests.ps1` cover ASCII, parsing, XAML loading
+  and the phase plan. Suite 554 -> 569.
+
 ### 0.30.2 - 2026-09-14
 - **Changed: a vendor-specific success code has to be in BOTH lists.** A sandbox step is judged twice, by
   two independent lists that share a parameter name: PSADT's `-SuccessExitCodes` in the launcher decides
@@ -447,23 +462,3 @@ second copy to keep in sync.
   child's first window, so a progress GUI runs windowless and looks like a hang; two variables differing
   only in case are the same variable; `-like` against a literal containing `*` matches too much.
 - All 12 applications packaged with 0.30.x are GREEN, Citrix Workspace included. Suite 552 -> 554.
-
-### 0.30.1 - 2026-09-14
-- **Fixed: a scheduled task will not start on battery.** `schtasks /Create` defaults
-  `DisallowStartIfOnBatteries` and `StopIfGoingOnBatteries` to TRUE, so on an unplugged laptop the task is
-  created, `/Run` returns 0, and it then sits at status **Queued** forever. Every action reported a bare
-  timeout that named no cause, and the failure followed the POWER CABLE rather than the package. The task
-  is registered from XML now, which also drops the 72-hour execution limit `/Create` imposes.
-- **Fixed: a leftover `WindowsSandboxServer` silently broke every later run** (Windows-Sandbox#124). The
-  next sandbox came up and its scheduled tasks never executed, so a different pre-check timed out each
-  time and it read as flakiness. Broker-without-VM is now cleared at start instead of being reported as
-  "a sandbox is already running", which it is not.
-- **Fixed: the timeout diagnostics answered their own cleanup** - they ran after the task was deleted and
-  read the process table through WMI, which is broken in the guest until GuestPrepare repairs it.
-- **Added: an ARP dump whenever detection contradicts the action**, covering both HKLM views and every
-  `HKEY_USERS` subtree. It found the trap below in a single run. The progress window now also lists what
-  has already passed, with a tick per completed step.
-- **Note: an EXE installer that can install per-user must be forced to per-machine** (App. L.7, BINDING).
-  Greenshot 1.3.315 without `/ALLUSERS` installed into the SYSTEM profile and registered under
-  `HKEY_USERS\S-1-5-18`; install, uninstall, reinstall and repair all returned exit 0 while an HKLM
-  detection rule correctly said "absent". With `/ALLUSERS` the full gate is GREEN. Suite 551 -> 552.

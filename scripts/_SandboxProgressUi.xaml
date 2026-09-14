@@ -1,0 +1,618 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="PSADT Sandbox Test - progress"
+    Width="1180" Height="800" MinWidth="900" MinHeight="600"
+    WindowStyle="None" ResizeMode="CanResize"
+    WindowStartupLocation="CenterScreen"
+    Background="#161826" Foreground="#E9E9ED"
+    FontFamily="Segoe UI" FontSize="13"
+    UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+
+  <Window.Resources>
+
+    <!-- Nocturne tokens -->
+    <SolidColorBrush x:Key="Bg"          Color="#161826"/>
+    <SolidColorBrush x:Key="BgDeep"      Color="#101220"/>
+    <SolidColorBrush x:Key="Chrome"      Color="#1B1D2C"/>
+    <SolidColorBrush x:Key="Panel"       Color="#191B29"/>
+    <SolidColorBrush x:Key="Surface"     Color="#232532"/>
+    <SolidColorBrush x:Key="Text"        Color="#E9E9ED"/>
+    <SolidColorBrush x:Key="N200"        Color="#E4E7F5"/>
+    <SolidColorBrush x:Key="N300"        Color="#CFD3E5"/>
+    <SolidColorBrush x:Key="N400"        Color="#B2B6CA"/>
+    <SolidColorBrush x:Key="N500"        Color="#9397AB"/>
+    <SolidColorBrush x:Key="N600"        Color="#75798C"/>
+    <SolidColorBrush x:Key="N800"        Color="#3F424D"/>
+    <SolidColorBrush x:Key="N900"        Color="#292B31"/>
+    <SolidColorBrush x:Key="Accent"      Color="#34A894"/>
+    <SolidColorBrush x:Key="Accent200"   Color="#EFFAF7"/>
+    <SolidColorBrush x:Key="Accent300"   Color="#A4E4D6"/>
+    <SolidColorBrush x:Key="Accent400"   Color="#61CFB8"/>
+    <SolidColorBrush x:Key="Accent500"   Color="#23A48E"/>
+    <SolidColorBrush x:Key="Accent600"   Color="#17806F"/>
+    <SolidColorBrush x:Key="Accent700"   Color="#126254"/>
+    <SolidColorBrush x:Key="Accent800"   Color="#0D463C"/>
+    <SolidColorBrush x:Key="Accent900"   Color="#0A2F29"/>
+    <SolidColorBrush x:Key="FailFg"      Color="#E6909F"/>
+    <SolidColorBrush x:Key="FailBg"      Color="#35202A"/>
+    <SolidColorBrush x:Key="FailLine"    Color="#7A3A46"/>
+    <SolidColorBrush x:Key="FailBar"     Color="#8C4250"/>
+    <SolidColorBrush x:Key="CloseHover"  Color="#7A2F3A"/>
+    <FontFamily x:Key="Mono">Cascadia Mono, Consolas, Courier New</FontFamily>
+
+    <!-- Window chrome buttons -->
+    <Style x:Key="ChromeBtn" TargetType="Button">
+      <Setter Property="Width" Value="44"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{StaticResource N400}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" Background="{TemplateBinding Background}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="b" Property="Background" Value="{StaticResource N900}"/>
+                <Setter Property="Foreground" Value="{StaticResource Text}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="CloseBtn" TargetType="Button" BasedOn="{StaticResource ChromeBtn}">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" Background="{TemplateBinding Background}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="b" Property="Background" Value="{StaticResource CloseHover}"/>
+                <Setter Property="Foreground" Value="#F3F5FE"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Outlined action button (Nocturne: accent outline, never a fill) -->
+    <Style x:Key="OutlineBtn" TargetType="Button">
+      <Setter Property="Foreground" Value="{StaticResource Accent300}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="14,7"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" CornerRadius="8" Background="{TemplateBinding Background}"
+                    BorderThickness="1" BorderBrush="{StaticResource Accent700}">
+              <ContentPresenter Margin="{TemplateBinding Padding}"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="b" Property="Background" Value="{StaticResource Accent900}"/>
+                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent500}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="b" Property="Background" Value="{StaticResource Accent800}"/>
+                <Setter Property="Foreground" Value="{StaticResource Accent200}"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="GhostBtn" TargetType="Button" BasedOn="{StaticResource OutlineBtn}">
+      <Setter Property="Foreground" Value="{StaticResource N400}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" CornerRadius="8" Background="Transparent" BorderThickness="1" BorderBrush="Transparent">
+              <ContentPresenter Margin="{TemplateBinding Padding}"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="b" Property="Background" Value="{StaticResource N900}"/>
+                <Setter Property="Foreground" Value="{StaticResource Text}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Section label -->
+    <Style x:Key="Kicker" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="Foreground" Value="{StaticResource N600}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <Style x:Key="MetaValue" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="Foreground" Value="{StaticResource N200}"/>
+      <Setter Property="Margin" Value="0,5,0,0"/>
+    </Style>
+
+    <!-- Phase row -->
+    <Style x:Key="PhaseItem" TargetType="ListBoxItem">
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Border x:Name="row" Background="Transparent" BorderThickness="2,0,0,0" BorderBrush="Transparent">
+              <ContentPresenter/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="row" Property="Background" Value="{StaticResource N900}"/>
+              </Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="row" Property="Background" Value="{StaticResource Surface}"/>
+                <Setter TargetName="row" Property="BorderBrush" Value="{StaticResource Accent500}"/>
+              </Trigger>
+              <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                  <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource Self}}" Value="True"/>
+                  <Condition Binding="{Binding Status}" Value="Failed"/>
+                </MultiDataTrigger.Conditions>
+                <Setter TargetName="row" Property="BorderBrush" Value="{StaticResource FailFg}"/>
+              </MultiDataTrigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Status pill -->
+    <Style x:Key="Pill" TargetType="Border">
+      <Setter Property="CornerRadius" Value="2"/>
+      <Setter Property="Padding" Value="9,3"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Background" Value="{StaticResource Accent900}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Accent700}"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding Status}" Value="Failed">
+          <Setter Property="Background" Value="{StaticResource FailBg}"/>
+          <Setter Property="BorderBrush" Value="{StaticResource FailLine}"/>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Status}" Value="Pending">
+          <Setter Property="Background" Value="Transparent"/>
+          <Setter Property="BorderBrush" Value="{StaticResource N800}"/>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="PillText" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="10.5"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{StaticResource Accent300}"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding Status}" Value="Failed">
+          <Setter Property="Foreground" Value="{StaticResource FailFg}"/>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Status}" Value="Pending">
+          <Setter Property="Foreground" Value="{StaticResource N500}"/>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- Progress track segment -->
+    <Style x:Key="Segment" TargetType="Border">
+      <Setter Property="Height" Value="6"/>
+      <Setter Property="Margin" Value="0,0,3,0"/>
+      <Setter Property="CornerRadius" Value="2"/>
+      <Setter Property="Background" Value="{StaticResource N900}"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding Status}" Value="Done">
+          <Setter Property="Background" Value="{StaticResource Accent600}"/>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Status}" Value="Failed">
+          <Setter Property="Background" Value="{StaticResource FailBar}"/>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Status}" Value="Running">
+          <Setter Property="Background" Value="{StaticResource Accent400}"/>
+          <DataTrigger.EnterActions>
+            <BeginStoryboard Name="pulse">
+              <Storyboard RepeatBehavior="Forever">
+                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                 From="0.28" To="1" Duration="0:0:0.9" AutoReverse="True"/>
+              </Storyboard>
+            </BeginStoryboard>
+          </DataTrigger.EnterActions>
+          <DataTrigger.ExitActions>
+            <StopStoryboard BeginStoryboardName="pulse"/>
+          </DataTrigger.ExitActions>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- Themed scrollbar -->
+    <Style TargetType="ScrollBar">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Width" Value="10"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Grid Background="Transparent">
+              <Track x:Name="PART_Track" IsDirectionReversed="True">
+                <Track.DecreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False"/>
+                </Track.DecreaseRepeatButton>
+                <Track.Thumb>
+                  <Thumb>
+                    <Thumb.Template>
+                      <ControlTemplate TargetType="Thumb">
+                        <Border CornerRadius="5" Margin="2,0" Background="{StaticResource N800}"/>
+                      </ControlTemplate>
+                    </Thumb.Template>
+                  </Thumb>
+                </Track.Thumb>
+                <Track.IncreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False"/>
+                </Track.IncreaseRepeatButton>
+              </Track>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+  </Window.Resources>
+
+  <Border BorderThickness="1" BorderBrush="{StaticResource N800}" Background="{StaticResource Bg}">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="38"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+
+      <!-- Title bar -->
+      <Border x:Name="TitleBar" Grid.Row="0" Background="{StaticResource Chrome}"
+              BorderThickness="0,0,0,1" BorderBrush="{StaticResource N900}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <Border Grid.Column="0" Width="15" Height="15" CornerRadius="3" Margin="12,0,0,0" VerticalAlignment="Center">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#23A48E" Offset="0"/>
+                <GradientStop Color="#126254" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <TextBlock Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center"
+                     FontSize="12" Foreground="{StaticResource N400}"
+                     Text="PSADT Sandbox Test - progress"/>
+          <StackPanel Grid.Column="2" Orientation="Horizontal">
+            <Button x:Name="BtnMin"   Style="{StaticResource ChromeBtn}" Content="&#x2013;"/>
+            <Button x:Name="BtnMax"   Style="{StaticResource ChromeBtn}" Content="&#x25A1;"/>
+            <Button x:Name="BtnClose" Style="{StaticResource CloseBtn}"  Content="&#x2715;"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Run header -->
+      <Border Grid.Row="1" BorderThickness="0,0,0,1" BorderBrush="{StaticResource N900}" Padding="26,22,26,18">
+        <Border.Background>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#1A1C2B" Offset="0"/>
+            <GradientStop Color="#161826" Offset="1"/>
+          </LinearGradientBrush>
+        </Border.Background>
+        <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0">
+              <TextBlock Style="{StaticResource Kicker}" Text="PACKAGE UNDER TEST"/>
+              <TextBlock x:Name="PackageName" Margin="0,7,0,0" FontFamily="{StaticResource Mono}"
+                         FontSize="15" Foreground="{StaticResource N300}" TextTrimming="CharacterEllipsis"
+                         Text="waiting for the runner"/>
+              <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <TextBlock x:Name="Headline" FontSize="30" FontWeight="Medium"
+                           Foreground="{StaticResource Text}" Text="Waiting to start"/>
+                <Border x:Name="HeadPill" Margin="14,6,0,0" CornerRadius="2" Padding="9,3"
+                        BorderThickness="1" VerticalAlignment="Center"
+                        Background="{StaticResource Accent900}" BorderBrush="{StaticResource Accent700}">
+                  <TextBlock x:Name="HeadPillText" FontSize="10.5" FontWeight="SemiBold"
+                             Foreground="{StaticResource Accent300}" Text="STARTING"/>
+                </Border>
+              </StackPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="20,22,0,0" VerticalAlignment="Top">
+              <StackPanel Margin="0,0,26,0">
+                <TextBlock Style="{StaticResource Kicker}" Text="ELAPSED"/>
+                <TextBlock x:Name="Elapsed" Style="{StaticResource MetaValue}" FontSize="19" Text="0:00"/>
+              </StackPanel>
+              <StackPanel Margin="0,0,26,0">
+                <TextBlock Style="{StaticResource Kicker}" Text="PHASES"/>
+                <TextBlock x:Name="PhaseCount" Style="{StaticResource MetaValue}" FontSize="19" Text="0 / 0"/>
+              </StackPanel>
+              <StackPanel>
+                <TextBlock Style="{StaticResource Kicker}" Text="LAST UPDATE"/>
+                <TextBlock x:Name="LastUpdate" Style="{StaticResource MetaValue}" FontSize="19" Text="--:--:--"/>
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+
+          <ItemsControl x:Name="Track" Margin="0,16,-3,0" ItemsSource="{Binding Phases}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <UniformGrid Rows="1"/>
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Style="{StaticResource Segment}" ToolTip="{Binding Name}"/>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock x:Name="GroundNote" Margin="0,14,0,0" MaxWidth="820" HorizontalAlignment="Left"
+                     TextWrapping="Wrap" FontSize="12" LineHeight="19" Foreground="{StaticResource N500}"
+                     Text="Every deployment action runs as NT AUTHORITY\SYSTEM through a scheduled task and draws nothing on this desktop. A moving timer means the run is healthy - closing this window does not stop the test."/>
+        </StackPanel>
+      </Border>
+
+      <!-- Body -->
+      <Grid Grid.Row="2">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="322"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Phase list -->
+        <Border Grid.Column="0" Background="{StaticResource Panel}"
+                BorderThickness="0,0,1,0" BorderBrush="{StaticResource N900}">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0" Padding="18,13,18,11" BorderThickness="0,0,0,1" BorderBrush="{StaticResource N900}">
+              <Grid>
+                <TextBlock Style="{StaticResource Kicker}" Text="PHASES" HorizontalAlignment="Left"/>
+                <TextBlock x:Name="PhaseTotal" FontFamily="{StaticResource Mono}" FontSize="11"
+                           Foreground="{StaticResource N600}" HorizontalAlignment="Right" Text="0"/>
+              </Grid>
+            </Border>
+
+            <ListBox x:Name="PhaseList" Grid.Row="1" ItemsSource="{Binding Phases}"
+                     Background="Transparent" BorderThickness="0" Padding="0,8"
+                     ItemContainerStyle="{StaticResource PhaseItem}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="12,7,18,7">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="26"/>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Width="20" Height="20" CornerRadius="3" BorderThickness="1"
+                            VerticalAlignment="Center">
+                      <Border.Style>
+                        <!-- The defaults live in the Style, NOT as attributes on the Border. A local value
+                             beats a style trigger in WPF, so with Background=".." written above, every
+                             DataTrigger below is silently ignored and a failed phase looks exactly like a
+                             passed one. Measured 2026-09-14: all four states rendered #FF0A2F29. -->
+                        <Style TargetType="Border">
+                          <Setter Property="Background" Value="{StaticResource Accent900}"/>
+                          <Setter Property="BorderBrush" Value="{StaticResource Accent700}"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding Status}" Value="Failed">
+                              <Setter Property="Background" Value="{StaticResource FailBg}"/>
+                              <Setter Property="BorderBrush" Value="{StaticResource FailLine}"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Status}" Value="Pending">
+                              <Setter Property="Background" Value="Transparent"/>
+                              <Setter Property="BorderBrush" Value="{StaticResource N800}"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Border.Style>
+                      <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10">
+                        <TextBlock.Style>
+                          <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="&#x2713;"/>
+                            <Setter Property="Foreground" Value="{StaticResource Accent300}"/>
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                <Setter Property="Text" Value="&#x2715;"/>
+                                <Setter Property="Foreground" Value="{StaticResource FailFg}"/>
+                              </DataTrigger>
+                              <DataTrigger Binding="{Binding Status}" Value="Running">
+                                <Setter Property="Text" Value="&#x25CF;"/>
+                                <Setter Property="Foreground" Value="{StaticResource Accent400}"/>
+                              </DataTrigger>
+                              <DataTrigger Binding="{Binding Status}" Value="Pending">
+                                <Setter Property="Text" Value=""/>
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </TextBlock.Style>
+                      </TextBlock>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="10,0,8,0" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                 TextTrimming="CharacterEllipsis">
+                        <TextBlock.Style>
+                          <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource N200}"/>
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                <Setter Property="Foreground" Value="{StaticResource FailFg}"/>
+                              </DataTrigger>
+                              <DataTrigger Binding="{Binding Status}" Value="Pending">
+                                <Setter Property="Foreground" Value="{StaticResource N600}"/>
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </TextBlock.Style>
+                      </TextBlock>
+                      <TextBlock Text="{Binding Sub}" Margin="0,2,0,0" FontSize="10"
+                                 Foreground="{StaticResource N600}"/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="2" Text="{Binding DurationText}" VerticalAlignment="Center"
+                               FontFamily="{StaticResource Mono}" FontSize="11" Foreground="{StaticResource N600}"/>
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </Border>
+
+        <!-- Selected phase detail -->
+        <Grid Grid.Column="1" DataContext="{Binding SelectedItem, ElementName=PhaseList}">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+
+          <Border Grid.Row="0" Padding="22,13,22,12" BorderThickness="0,0,0,1" BorderBrush="{StaticResource N900}">
+            <Grid>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="Medium"
+                           Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
+                <Border Style="{StaticResource Pill}" Margin="12,0,0,0">
+                  <TextBlock Style="{StaticResource PillText}" Text="{Binding StatusLabel}"/>
+                </Border>
+              </StackPanel>
+              <TextBlock Text="{Binding Context}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                         FontFamily="{StaticResource Mono}" FontSize="11" Foreground="{StaticResource N600}"/>
+            </Grid>
+          </Border>
+
+          <Border Grid.Row="1" BorderThickness="0,0,0,1" BorderBrush="{StaticResource N900}">
+            <UniformGrid Rows="1">
+              <Border BorderThickness="0,0,1,0" BorderBrush="{StaticResource N900}" Padding="18,13">
+                <StackPanel>
+                  <TextBlock Style="{StaticResource Kicker}" Text="EXIT CODE"/>
+                  <TextBlock Text="{Binding ExitCodeText}">
+                    <TextBlock.Style>
+                      <Style TargetType="TextBlock" BasedOn="{StaticResource MetaValue}">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding Status}" Value="Done">
+                            <Setter Property="Foreground" Value="{StaticResource Accent300}"/>
+                          </DataTrigger>
+                          <DataTrigger Binding="{Binding Status}" Value="Failed">
+                            <Setter Property="Foreground" Value="{StaticResource FailFg}"/>
+                          </DataTrigger>
+                          <DataTrigger Binding="{Binding Status}" Value="Pending">
+                            <Setter Property="Foreground" Value="{StaticResource N600}"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </TextBlock.Style>
+                  </TextBlock>
+                </StackPanel>
+              </Border>
+              <Border BorderThickness="0,0,1,0" BorderBrush="{StaticResource N900}" Padding="18,13">
+                <StackPanel>
+                  <TextBlock Style="{StaticResource Kicker}" Text="DURATION"/>
+                  <TextBlock Style="{StaticResource MetaValue}" Text="{Binding DurationText}"/>
+                </StackPanel>
+              </Border>
+              <Border BorderThickness="0,0,1,0" BorderBrush="{StaticResource N900}" Padding="18,13">
+                <StackPanel>
+                  <TextBlock Style="{StaticResource Kicker}" Text="STARTED"/>
+                  <TextBlock Style="{StaticResource MetaValue}" Text="{Binding Started}"/>
+                </StackPanel>
+              </Border>
+              <Border BorderThickness="0,0,1,0" BorderBrush="{StaticResource N900}" Padding="18,13">
+                <StackPanel>
+                  <TextBlock Style="{StaticResource Kicker}" Text="ENDED"/>
+                  <TextBlock Style="{StaticResource MetaValue}" Text="{Binding Ended}"/>
+                </StackPanel>
+              </Border>
+              <Border BorderThickness="0,0,1,0" BorderBrush="{StaticResource N900}" Padding="18,13">
+                <StackPanel>
+                  <TextBlock Style="{StaticResource Kicker}" Text="TIMEOUT"/>
+                  <TextBlock Style="{StaticResource MetaValue}" Foreground="{StaticResource N400}" Text="{Binding Timeout}"/>
+                </StackPanel>
+              </Border>
+              <Border Padding="18,13">
+                <StackPanel>
+                  <TextBlock Style="{StaticResource Kicker}" Text="DETECTION"/>
+                  <TextBlock Style="{StaticResource MetaValue}" Text="{Binding Detection}"/>
+                </StackPanel>
+              </Border>
+            </UniformGrid>
+          </Border>
+
+          <Grid Grid.Row="2" Margin="22,12,22,8">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Style="{StaticResource Kicker}" Text="PHASE TRANSCRIPT"/>
+            <!-- Own column with trimming: a guest path is long enough to slide under the label when both
+                 sit in one cell, and two overlapping strings are worse than one truncated one. -->
+            <TextBlock Grid.Column="1" Text="{Binding LogPath}" HorizontalAlignment="Right" Margin="16,0,0,0"
+                       TextTrimming="CharacterEllipsis" ToolTip="{Binding LogPath}"
+                       FontFamily="{StaticResource Mono}" FontSize="10.5" Foreground="{StaticResource N600}"/>
+          </Grid>
+
+          <Border Grid.Row="3" Margin="22,0,22,0" CornerRadius="8" Background="{StaticResource BgDeep}"
+                  BorderThickness="1" BorderBrush="{StaticResource N900}">
+            <TextBox x:Name="LogBox" Text="{Binding Log, Mode=OneWay}"
+                     IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                     Background="Transparent" BorderThickness="0" Padding="14,12"
+                     Foreground="{StaticResource N300}" FontFamily="{StaticResource Mono}" FontSize="12"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                     SelectionBrush="{StaticResource Accent700}"/>
+          </Border>
+
+          <Grid Grid.Row="4" Margin="22,16,22,18">
+            <StackPanel Orientation="Horizontal">
+              <Button x:Name="BtnOpenLog" Style="{StaticResource OutlineBtn}" Content="Open full log"/>
+              <Button x:Name="BtnCopy"    Style="{StaticResource OutlineBtn}" Content="Copy transcript"/>
+            </StackPanel>
+            <TextBlock x:Name="FootNote" HorizontalAlignment="Right" VerticalAlignment="Center"
+                       FontSize="11.5" Foreground="{StaticResource N600}" Text="waiting for the runner"/>
+          </Grid>
+        </Grid>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>

@@ -531,4 +531,19 @@ Describe 'Invoke-PsadtSandboxTest array parameters' {
     It 'defines the expansion helper' {
         $script:SbxCode2 | Should -Match 'function Expand-CommaSeparated'
     }
+
+    It 'expands -Scenarios too, and does not let an attribute reject the comma form first' {
+        # A [ValidateSet] on $Scenarios runs at parameter binding, BEFORE any line of the body - so the
+        # documented `pwsh -File ... -Scenarios Install,Uninstall` was refused with "does not belong to
+        # the set" and the run never started (measured 2026-09-14). Names are checked after the split.
+        $script:SbxCode2 | Should -Match "\`$Scenarios = Expand-CommaSeparated \`$Scenarios"
+        $script:SbxCode2 | Should -Not -Match "ValidateSet\('Install'"
+        $script:SbxCode2 | Should -Match '\$unknownScenarios'
+    }
+
+    It 'still rejects a scenario name it does not know' {
+        # The validation has to stay real: dropping ValidateSet must not mean dropping the check.
+        $script:SbxCode2 | Should -Match "knownScenarios = @\('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall'\)"
+        $script:SbxCode2 | Should -Match 'unknown name'
+    }
 }
