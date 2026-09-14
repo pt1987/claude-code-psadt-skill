@@ -10,6 +10,8 @@
 - [2026-09-05 - Notepad++ package (official MSI, first Windows Sandbox SYSTEM test)](#2026-09-05---notepad-package-official-msi-first-windows-sandbox-system-test)
 - [2026-09-05 (same day, second package) - PuTTY 0.85: the lessons above, measured](#2026-09-05-same-day-second-package---putty-085-the-lessons-above-measured)
 - [2026-09-08 - BootForge + Windows ADK + WinPE add-on (three packages, one dependency chain)](#2026-09-08---bootforge--windows-adk--winpe-add-on-three-packages-one-dependency-chain)
+- [2026-09-11 - Google Chrome: the sandbox ran nothing as SYSTEM and blamed the package](#2026-09-11---google-chrome-the-sandbox-ran-nothing-as-system-and-blamed-the-package)
+- [2026-09-14 - Citrix Workspace + Greenshot: four faults that all blamed the package](#2026-09-14---citrix-workspace--greenshot-four-faults-that-all-blamed-the-package)
 
 ## Appendix G: Lessons Learned (from real-world incidents)
 
@@ -277,3 +279,56 @@ that ran one command and wrote one text file back. The reasoning that preceded e
 wrong in detail and would have produced another blind full run.
 
 ---
+
+### 2026-09-14 - Citrix Workspace + Greenshot: four faults that all blamed the package
+
+One afternoon, two packages, four separate causes. Every one of them presented as "the package does not
+work", and not one of them was the package.
+
+**1. The sandbox spent half an hour asking a switched-off Defender whether it trusted a file.** Three runs
+of Citrix Workspace timed out after 30 minutes with no exit code, on three different command lines.
+Microsoft's own root cause: Smart App Control is enabled in the sandbox base image while Windows Defender
+is **disabled**, so `wintrust` asks the disabled Defender to rate every signed package and sits in a retry
+loop - about **two minutes per file**, inside the MSI server process. A bootstrapper chaining a dozen
+signed MSIs therefore takes half an hour and looks exactly like a hang. `Disable-GuestSmartAppControl`
+runs first in GuestPrepare now; the same run then finished in **5.7 minutes with exit 0**.
+This also corrects the ADK entry above: it blamed Defender *scanning* every file. Defender was switched
+off the whole time, and the package size was never the problem.
+
+**2. A scheduled task will not start on battery, and says nothing.** `schtasks /Create` defaults
+`DisallowStartIfOnBatteries` and `StopIfGoingOnBatteries` to TRUE. On a laptop that is not plugged in the
+task is created, `/Run` returns 0, and the task then sits at status **Queued** forever without ever
+executing. Every deployment action reports a bare timeout that names no cause. The failure follows the
+**power cable**, not the package: the identical build had passed hours earlier while on mains. The task is
+registered from XML now, with both settings false - which also drops the 72-hour execution limit
+`/Create` imposes. Guarded by a test on those exact XML values.
+
+**3. A leftover `WindowsSandboxServer` silently breaks every later run.** After a run the VM worker exits
+but the broker can survive (microsoft/Windows-Sandbox#124, filed by a Microsoft engineer: an unhandled
+exception during teardown "blocking new launches until things are cleaned up", reproducing on
+long-running, high-throughput sessions - exactly what an automated harness is). The next sandbox starts,
+the VM comes up, and scheduled tasks simply never execute. A **different** pre-check times out on each
+attempt, which reads as flakiness. Broker-without-VM is now detected and cleared at start instead of being
+reported as "a sandbox is already running", which it is not.
+
+**4. Greenshot installed successfully, into a profile nobody uses.** Inno Setup defaults to a **per-user**
+install. Run as SYSTEM without `/ALLUSERS`, Greenshot landed in
+`C:\Windows\SysWOW64\config\systemprofile\AppData\Local\Programs\Greenshot` and registered under
+`HKEY_USERS\S-1-5-18\...\Uninstall\Greenshot_is1`. Install, uninstall, reinstall and repair all returned
+**exit 0**; detection correctly said "absent" every time, because there was nothing in HKLM. On a real
+device that ships as a green deployment where no user ever gets the application.
+
+> **BINDING: an EXE installer that can install per-user must be forced to per-machine.** Inno `/ALLUSERS`,
+> NSIS MultiUser `/allusers`, Squirrel is per-user by design (L.2). Exit code 0 does NOT mean a machine
+> install happened, and an HKLM detection rule reporting "absent" right after a successful install is the
+> signature of exactly this. Check the user hives before blaming the detection script.
+
+**What made #4 findable in one run:** the harness now captures every ARP entry from the guest - both HKLM
+views **and every HKEY_USERS subtree** - whenever a detection result contradicts the action that just
+succeeded. That dump named the system profile immediately. Before it, the same disagreement produced
+nothing but a RED verdict and a guess.
+
+**Cost:** roughly four hours, of which most went on treating symptoms. The two diagnostics that shortened
+it from hours to one run each - the timeout process/task capture and the ARP dump - both existed only
+because an earlier run had already been wasted. Build the capture before the second attempt, not the
+fifth.

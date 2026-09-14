@@ -42,7 +42,7 @@ $muted = [System.Drawing.Color]::FromArgb(140, 150, 165)
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'PSADT Sandbox Test - progress'
-$form.ClientSize = New-Object System.Drawing.Size(860, 470)
+$form.ClientSize = New-Object System.Drawing.Size(860, 620)
 $form.StartPosition = 'Manual'
 $form.Location = New-Object System.Drawing.Point(24, 24)
 $form.TopMost = $true
@@ -77,9 +77,31 @@ $form.Controls.Add($bar)
 
 $lblNote = New-Lbl 20 156 820 34 9 $muted ('Every deployment action runs as NT AUTHORITY\SYSTEM through a scheduled task and draws nothing on this desktop.' + [Environment]::NewLine + 'A moving timer below means the run is healthy. Closing this window does not stop the test.')
 
+# Completed steps, with a tick each. Without this the window shows only what is running NOW, so an
+# operator cannot tell a run that is three steps in from one that is stuck on its first - which is
+# exactly what was asked for on 2026-09-14 ("ich sehe nirgends was schon erfolgt und bestanden wurde").
+# The tick is built from its code point so this file stays 7-bit ASCII like every script here.
+$script:tick = [string][char]0x2713
+$script:cross = [string][char]0x2717
+
+$lblDoneHead = New-Lbl 20 192 820 20 9 $muted 'COMPLETED STEPS'
+$done = New-Object System.Windows.Forms.TextBox
+$done.Location = New-Object System.Drawing.Point(20, 214)
+$done.Size = New-Object System.Drawing.Size(820, 150)
+$done.Multiline = $true
+$done.ReadOnly = $true
+$done.ScrollBars = 'Vertical'
+$done.BackColor = [System.Drawing.Color]::FromArgb(10, 14, 21)
+$done.ForeColor = [System.Drawing.Color]::FromArgb(110, 220, 140)
+$done.Font = New-Object System.Drawing.Font('Consolas', 10)
+$done.BorderStyle = 'FixedSingle'
+$form.Controls.Add($done)
+
+$lblLogHead = New-Lbl 20 374 820 20 9 $muted 'LIVE TRANSCRIPT'
+
 $log = New-Object System.Windows.Forms.TextBox
-$log.Location = New-Object System.Drawing.Point(20, 196)
-$log.Size = New-Object System.Drawing.Size(820, 250)
+$log.Location = New-Object System.Drawing.Point(20, 396)
+$log.Size = New-Object System.Drawing.Size(820, 200)
 $log.Multiline = $true
 $log.ReadOnly = $true
 $log.ScrollBars = 'Vertical'
@@ -133,6 +155,15 @@ $timer.Add_Tick({
                 }
                 if ($p.detail) { $lblPkg.Text = "$($p.package)   -   $($p.detail)" }
             }
+        }
+
+        if ($p -and $p.completed) {
+            $lines = @($p.completed | ForEach-Object {
+                    $mark = if ($_.ok) { $script:tick } else { $script:cross }
+                    '{0}  {1}' -f $mark, $_.name
+                })
+            $text = ($lines -join [Environment]::NewLine)
+            if ($text -ne $done.Text) { $done.Text = $text }
         }
 
         if ($TranscriptFile -and (Test-Path -LiteralPath $TranscriptFile)) {

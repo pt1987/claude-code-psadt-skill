@@ -2,6 +2,61 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.30.1 - 2026-09-14 - A scheduled task will not start on battery, and Greenshot installed into a profile nobody uses
+
+Packaging Greenshot with 0.30.0 produced four consecutive RED runs, none of which were the package. Two
+were faults in this harness, one is a documented Windows Sandbox defect, and one is a packaging trap that
+ships a green deployment nobody receives.
+
+### Fixed
+- **A scheduled task will not start on battery.** `schtasks /Create` defaults
+  `DisallowStartIfOnBatteries` and `StopIfGoingOnBatteries` to TRUE. On a laptop that is not plugged in,
+  the task is created, `/Run` returns 0, and the task then sits at status **Queued** forever without ever
+  executing. Every deployment action reports a bare timeout that names no cause, and the failure follows
+  the POWER CABLE rather than the package - the identical build had passed hours earlier on mains. The
+  task is registered from XML now, with both settings false; that also drops the 72-hour execution limit
+  `/Create` imposes, so a long action is bounded by this harness's timeout and nothing else.
+- **A leftover `WindowsSandboxServer` silently broke every later run.** After a run the VM worker exits
+  but the broker can survive (microsoft/Windows-Sandbox#124, filed by a Microsoft engineer: an unhandled
+  exception during teardown "blocking new launches until things are cleaned up", reproducing on
+  long-running, high-throughput sessions - which is what an automated harness is). The next sandbox comes
+  up and its scheduled tasks never execute, so a DIFFERENT pre-check times out on each attempt and it
+  reads as flakiness. Broker-without-VM is now detected and cleared at start rather than reported as "a
+  sandbox is already running", which it is not.
+- **The timeout diagnostics answered their own cleanup.** They ran after the task was deleted, so the task
+  query could only ever report "the system cannot find the file specified", and they read the process
+  table through WMI - which is broken in the guest until GuestPrepare repairs it, and the first pre-check
+  runs before that. Now they run before the delete and use `Get-Process`.
+
+### Added
+- **An ARP dump whenever detection contradicts the action.** A deployment that returns exit 0 while the
+  detection rule reports "absent" is the most confusing outcome this harness can produce, and the VM is
+  discarded seconds later taking the evidence with it. Every ARP entry is now captured from both HKLM
+  views AND every `HKEY_USERS` subtree. That dump found fault #4 below in a single run.
+- **The progress window lists what has already passed**, with a tick per completed step and a cross for a
+  failed one, above the live transcript. Until now it showed only the step running right now, so a run
+  three steps in looked the same as one stuck on its first.
+
+### Changed
+- `references/appendix-l-installers.md` L.7 gains a third BINDING trap, and the engine catalog carries it
+  as a note on `inno`, `nsis` and `electron-builder`:
+  **an EXE installer that can install per-user must be forced to per-machine.** Measured on Greenshot
+  1.3.315: without `/ALLUSERS` the install landed in
+  `C:\Windows\SysWOW64\config\systemprofile\AppData\Local\Programs\` and registered under
+  `HKEY_USERS\S-1-5-18\...\Uninstall\Greenshot_is1`. Install, uninstall, reinstall and repair each
+  returned exit 0, and an HKLM detection rule correctly said "absent" every time. On a real device that
+  ships as a green deployment no user ever receives. An HKLM rule reporting "absent" right after a
+  successful install is the signature - check the user hives before touching the detection script.
+- Appendix G gains the incident, and its table of contents gains the two entries it was missing.
+
+### Notes
+- Greenshot 1.3.315 then passed the full gate: Install 14 s, Uninstall 16 s, Reinstall 14 s, Repair 16 s,
+  FinalUninstall 16 s, every detection correct, **GREEN with no failed assertion**.
+- The two diagnostics that cut this from hours to one run each - the timeout process/task capture and the
+  ARP dump - both existed only because an earlier run had already been wasted. Build the capture before
+  the second attempt, not the fifth.
+- Suite 551 -> 552.
+
 ## 0.30.0 - 2026-09-14 - The sandbox spent half an hour asking a switched-off Defender whether it trusted a file
 
 Two things came out of one afternoon of packaging Citrix Workspace, and the second one is bigger than the
