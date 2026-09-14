@@ -2,6 +2,33 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.29.1 - 2026-09-14 - The v3 mapping table sent readers to a cmdlet that does not exist
+
+Found while reviewing an externally proposed patch against this skill. The patch had the direction right
+and the details wrong: it also declared the skill "verified against PSADT 4.2.0" (which exists only as a
+release candidate), claimed `-ArgumentList` drops the MSI log, and pushed 1602 into the mandatory Intune
+table without touching the two tests that count its rows. Every claim was checked against the installed
+PSADT 4.1.8 module source, Microsoft Learn and the GitHub release list before anything changed here.
+
+### Fixed
+- **Phase 5.5 mapped `Remove-MSIApplications` to `Remove-ADTApplication`, which v4 does not have.** The
+  v4 name is `Uninstall-ADTApplication`. A "forbidden -> correct" table whose right column names nothing
+  is worse than no table, so the right column is now checked against `FunctionsToExport` of the newest
+  installed toolkit manifest (read, not imported; skipped where no toolkit is installed).
+- **Appendix A listed 60012 as the v4 deferral code.** 4.1.x has no 60012; a deferral exits with
+  `UI.DeferExitCode`, default 1602 - the number msiexec uses for "user cancelled". It stays OUT of the
+  mandatory return-code table on purpose: every install command this skill writes runs
+  `-DeployMode Silent`, where no Defer button exists, and Intune's `retry` would mean three more attempts
+  five minutes apart for a code that cannot occur.
+- **The Phase 4.3 MSI sample put the `.mst` in `SupportFiles\` and passed `-ArgumentList`.** Phase 4
+  already says transforms live in `Files\` next to the MSI; PSADT resolves a bare name against the MSI
+  folder and passes `TRANSFORMSSECURE=1`, whose rule is a transform source next to the package. The
+  `-ArgumentList` was byte-identical to the 4.1.8 config defaults and did nothing - but it REPLACES those
+  defaults when it differs, which is what `-AdditionalArgumentList` is for. The `/L*V` log is appended
+  separately either way; the patch's claim that `-ArgumentList` drops it is wrong.
+- **README still claimed 441 Pester tests** in three places; the suite passed 441 several releases ago.
+- Suite 501 -> 503.
+
 ## 0.29.0 - 2026-09-11 - The sandbox ran nothing as SYSTEM and blamed the package
 
 Found while packaging Google Chrome for Intune - the first sandbox run on this host after 0.28.0. Five

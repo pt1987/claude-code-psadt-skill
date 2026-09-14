@@ -416,7 +416,12 @@ function Install-ADTDeployment {
     Show-ADTInstallationProgress
 
     $adtSession.InstallPhase = $adtSession.DeploymentType
-    Start-ADTMsiProcess -FilePath "$($adtSession.DirFiles)\<installer>.msi" -Transforms "$($adtSession.DirSupportFiles)\<transform>.mst" -ArgumentList '/qn REBOOT=ReallySuppress'
+    # The .mst lives in Files\ next to the MSI: a bare name is resolved against the MSI folder, and PSADT
+    # passes TRANSFORMSSECURE=1, whose rule is a transform source next to the package. A full path (e.g.
+    # into SupportFiles\) is accepted, but then the transform is not at the package source.
+    # No -ArgumentList: it REPLACES the config defaults (REBOOT=ReallySuppress /QN); the /L*V log is
+    # appended separately either way. Extra MSI properties go into -AdditionalArgumentList 'PROP=value'.
+    Start-ADTMsiProcess -FilePath "$($adtSession.DirFiles)\<installer>.msi" -Transforms '<transform>.mst'
 
     $adtSession.InstallPhase = "Post-$($adtSession.DeploymentType)"
     # clean up shortcuts, set registry keys, disable the update service, etc.
@@ -539,7 +544,7 @@ Forbidden in the code:
 | `Show-InstallationPrompt` | `Show-ADTInstallationPrompt` |
 | `Show-InstallationRestartPrompt` | `Show-ADTInstallationRestartPrompt` |
 | `Get-InstalledApplication` | `Get-ADTApplication` |
-| `Remove-MSIApplications` | `Remove-ADTApplication` |
+| `Remove-MSIApplications` | `Uninstall-ADTApplication` |
 | `Test-PowerPoint` | `Test-ADTPowerPoint` |
 | `Get-LoggedOnUser` | `Get-ADTLoggedOnUser` |
 | `Block-AppExecution` | `Block-ADTAppExecution` |

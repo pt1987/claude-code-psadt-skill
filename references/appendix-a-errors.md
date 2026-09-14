@@ -23,7 +23,7 @@ Intune converts unknown positive exit codes into an HRESULT: `0x80070000 + exitc
 | `0x8000EA61` | 60001 | PSADT unhandled script error |
 | `0x8000EA68` | 60008 | PSADT init / module load failed |
 | `0x8007064B` | 1611 | MSI component qualifier not present |
-| `0x80070642` | 1602 | User cancelled |
+| `0x80070642` | 1602 | User cancelled - or, since PSADT 4.1, the user deferred (`UI.DeferExitCode` default; cannot occur under `-DeployMode Silent`) |
 | `0x80070652` | 1618 | Another install in progress |
 | `0x80070643` | 1603 | **Fatal error during installation** (perms, disk space, pending reboot, bad property) |
 | `0x80070645` | 1605 | Product not installed (on UNINSTALL this is effectively success - already gone) |
@@ -109,10 +109,10 @@ AppWorkload.log sequence:
 **PSADT v4 toolkit codes:**
 | Code | Meaning | Reaction |
 |---:|---|---|
+| 1602 | Deferral - `UI.DeferExitCode`, default since 4.1; v4 has no 60012 | the user pressed Defer; impossible in a Silent package, so it needs no Intune mapping there |
 | 60001 | Unhandled runtime error in a deployment hook | the PSADT session log has the stack trace - fix the line it names |
 | 60002-60007 | Internal toolkit / session errors | check the PSADT log; usually a bad `$adtSession` value or a cmdlet misuse |
 | 60008 | Init / Import-Module failed (session never opened) | encoding/parse, a broken module path, or a type-data collision (A.2) |
-| 60012 | Deferral / a close-process still running | user deferred, or a `-CloseProcesses` app is still open |
 | 69000-69999 | Your own custom codes (Invoke-AppDeployToolkit.ps1) | define + document them in the package return codes |
 | 70000-79999 | Your own custom codes (Extensions module) | same |
 
