@@ -2,6 +2,117 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.30.0 - 2026-09-14 - The sandbox spent half an hour asking a switched-off Defender whether it trusted a file
+
+Two things came out of one afternoon of packaging Citrix Workspace, and the second one is bigger than the
+feature that started it.
+
+The feature: Appendix L.1 has carried a BINDING rule since the Aperio incident - identify the installer by
+its *definitive* fingerprint, never by a coincidental substring. That package shipped `/S` to an install4j
+installer, which shows the language dialog and waits forever. The rule was right and unenforceable, because
+it asked a human to eyeball a strings dump. `references/research-trust.md` made the gap visible: it names a
+verifying script for every kind of value except two, "installer engine" and "silent switch". Both rows now
+name a script.
+
+The bug: every attempt to test that package in the Windows Sandbox timed out after 30 minutes with no exit
+code - three times, with three different command lines. It was never the package. Microsoft's own root
+cause, on their sandbox issue tracker: **Smart App Control is enabled in the sandbox base image while
+Windows Defender is disabled.** `wintrust` asks the disabled Defender to rate the trust of every signed
+package and sits in a retry loop, about **two minutes per file**, inside the MSI server process. A
+bootstrapper chaining a dozen signed MSIs therefore takes half an hour and looks exactly like a hang.
+Two lines in the guest remove it. The same run then finished in **5.7 minutes with exit 0 and the app
+detected**.
+
+That explains an older entry too. Appendix G recorded the ADK (about 30 MSIs) as proof that "the sandbox
+harness cannot test a heavy package at all", and blamed Defender scanning every file. Defender was switched
+off the whole time. Both the lesson and the code comment are corrected.
+
+### Added
+- **`scripts/Get-PsadtInstallerEngine.ps1`** - identifies the installer engine from the file. Markers are
+  classified DEFINITIVE or HINT and a definitive marker always wins, so the Aperio case now resolves to
+  install4j even when the binary also carries NSIS branding. It reports the marker, the byte offset and the
+  region, so the answer can be checked instead of believed. An unrecognised binary returns engine `unknown`
+  with empty evidence rather than a guess.
+- **`references/switch-catalog/engine-defaults.json`** - 19 engines with silent install, uninstall, log and
+  no-reboot switches, a detection hint, the traps as notes, and a dated source reference per entry.
+  Validated against `references/switch-catalog/schema.catalog.json`.
+- **`scripts/Get-PsadtSwitchCandidates.ps1`** - ranked candidates for an installer. Stage 0 is the per-user
+  verified-switch store, stage 1 the engine default, stage 2 winget-pkgs (opt-in, not implemented yet),
+  stage 3 the existing Researcher. Every stage reports hit **or miss with a reason**, so the dossier can
+  show what was checked rather than only what was found.
+- **Appendix L.0** - the stage table, what each confidence level means, and why the catalog does not end the
+  search.
+- **`scripts/_SandboxProgressUi.ps1`** - a top-most progress window inside the sandbox showing the current
+  step, elapsed time against the timeout, a bar and the live transcript. It runs as its own process, so it
+  no longer depends on the runner's console existing.
+- **A cancel path.** `STOP.txt` in the work folder makes the guest shut ITSELF down - measured at 5 seconds
+  - which is the only teardown that does not orphan `vmmemWindowsSandbox` and lock the work folder until a
+  reboot. The host writes it on its own timeout too, instead of walking away from a running VM.
+- **`-Scenarios`** on the sandbox test. The full Install/Uninstall/Reinstall/Repair/FinalUninstall loop
+  stays the default and the gate; a shorter set is for iteration, and a partial run is recorded as
+  `GREEN_PARTIAL` so it can never be mistaken for the gate.
+- **Timeout diagnostics.** A timed-out action now captures the guest's full process table with command
+  lines and every vendor log touched in the last two hours, before the VM is discarded. PSADT's own log
+  cannot explain a hang - PSADT is the thing waiting.
+
+### Fixed
+- **The sandbox could not test a heavy package** (see above). `Disable-GuestSmartAppControl` runs first in
+  GuestPrepare and records its state as a step.
+- **Nothing was visible inside the sandbox.** On this Sandbox build the process started by `<LogonCommand>`
+  gets no console window at all, so the heartbeat added in 0.29.0 was written to a file nobody could see.
+  The new progress window is independent of it, and the runner now MEASURES whether a console exists and
+  reports it as `consoleWindow`. The window launcher must not use `-WindowStyle Hidden`: Start-Process
+  passes the show state to the child and the first window it creates inherits it, so the form was created
+  invisible while the process ran happily. Measured both ways.
+- **The host was silent for the whole run** and now mirrors the guest's progress file.
+- **A failed VM start was reported as "the VM was closed"**, sending the operator to look for a person who
+  closed a window. The two cases are now distinguished by whether the runner ever produced output.
+- **`schtasks` and the WMI probe printed red error blocks on a healthy run.** Both are expected, handled
+  conditions; they no longer render as failures.
+- **Relative paths broke four scripts.** .NET file APIs resolve against the process working directory,
+  which PowerShell's `Set-Location` does not change, so `-PackagePath .` made the pre-flight look beside the
+  SHELL and report a complete package as broken. Fixed in the pre-flight, the SYSTEM test and the manifest
+  writer, and guarded by `tests/PathNormalisation.Tests.ps1` - which found a fourth script on its first run.
+
+### Changed
+- `SKILL.md` Phase 2 points at the script instead of the table. The swap cost 16 bytes; Phase 6 ends at
+  byte 17457 of the 17500-byte compaction budget.
+- Appendix L.2 carries each engine's catalog id in code ticks and gained five rows (MSP, electron-builder,
+  BitRock, 7-Zip SFX, WinRAR SFX); InstallAware and Wise are separate rows now. The table stays - the agent
+  reads Markdown in Phase 2, not JSON - and a drift guard binds the two in both directions.
+- Staging the package into the guest uses `robocopy /MT` instead of `Copy-Item`, and `Unblock-File` only
+  touches scripts, modules and binaries. Measured on a 481 MB package: 3.6 s to 0.6 s on local disk, and
+  1 to 2 seconds inside the guest.
+- The per-action timeout default drops from 900 to 600 seconds. An install that has not returned in ten
+  minutes is almost never still working.
+- `references/research-trust.md` names a script for "installer engine" and for "silent switch".
+- `references/phases-0-6.md` 1.3 runs the catalog before the first web query.
+- `SECURITY.md` section 3 covers the catalog: repo data, dated sources, still claims, offline by default.
+
+### Notes
+- **An engine catalog, not an application catalog.** Applications are a long tail whose entries rot
+  silently - Teams classic became MSIX, Citrix Receiver became Workspace with a different bootstrapper -
+  and a stale entry is worse than none, because the sandbox only catches it minutes later. Engines are a
+  short list that is stable for years.
+- **winget stays opt-in, including as a research source.** WinGet has never been auto-selected in this
+  skill (gate 1, App. I). Stage 2 needs `-WithWinget`, the default path makes no network call at all, and a
+  test asserts the script contains no web cmdlet.
+- **`winget show` does not print InstallerSwitches** (measured, client 1.29.290), and it only shows the
+  installer selected for the local machine. When stage 2 is built it will read the raw manifest.
+- **4 KB header fixtures would have proven nothing.** Only MSI (compound-file magic at offset 0) and WiX
+  Burn (a section name) are visible in the first pages; NSIS, Inno, InstallShield, install4j and the SFX
+  formats keep their markers in the PE overlay or the resources. On a real Inno installer the marker sat in
+  the section data. The whole file is scanned in one streaming pass instead - 460 MB in 1.1 s.
+- **`@($emptyGenericList)` throws "Argument types do not match"** - in Windows PowerShell 5.1 and pwsh 7
+  alike - and the exception surfaces at the enclosing object literal, pointing at whatever key happens to
+  sit there. The empty case is the normal one here: it is what an unrecognised installer returns.
+- **Citrix Workspace itself returns `unknown`, and that is correct.** A full scan finds no engine marker,
+  because it is a bespoke vendor bootstrapper. The catalog says so explicitly and routes to the probe run.
+  It is also the honest limit of an engine catalog.
+- Verified against the real installers on the authoring machine: eight MSIs, an Inno setup, a WiX Burn
+  bundle and a 7-Zip SFX, each identified correctly with the marker and offset reported.
+- Suite 503 -> 551.
+
 ## 0.29.1 - 2026-09-14 - The v3 mapping table sent readers to a cmdlet that does not exist
 
 Found while reviewing an externally proposed patch against this skill. The patch had the direction right

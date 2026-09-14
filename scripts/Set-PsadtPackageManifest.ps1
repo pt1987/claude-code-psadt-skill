@@ -44,6 +44,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not (Test-Path -LiteralPath $PackagePath)) { throw "PackagePath not found: $PackagePath" }
+# Absolute before use. Set-Content follows PowerShell's location, so this file is not broken by a
+# relative path today - but the manifest path derived below is handed to other scripts and quoted in
+# errors, and one script in this family resolving paths differently from the rest is exactly how the
+# 2026-09-14 pre-flight bug hid: the call that worked and the call that failed looked identical.
+$PackagePath = (Resolve-Path -LiteralPath $PackagePath).ProviderPath.TrimEnd('\')
 if (-not (Test-Path -LiteralPath (Join-Path $PackagePath 'Invoke-AppDeployToolkit.ps1'))) {
     throw "Not a PSADT package (no Invoke-AppDeployToolkit.ps1): $PackagePath"
 }

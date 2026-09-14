@@ -5,6 +5,7 @@
 
 ## Contents
 
+- [L.0 Catalog lookup (run this before reading the rest)](#l0-catalog-lookup-run-this-before-reading-the-rest)
 - [L.1 Identify the technology](#l1-identify-the-technology)
 - [L.2 Switch reference](#l2-switch-reference)
 - [L.3 Detection-rule choice](#l3-detection-rule-choice)
@@ -20,6 +21,34 @@
 Phase 2 research checks THIS table first and only web-searches to confirm the exact build's quirks. "Identify"
 = how to recognise the tech; switches are the common silent install / uninstall / no-reboot / log; "Detect" =
 the natural detection rule.
+
+### L.0 Catalog lookup (run this before reading the rest)
+
+`pwsh scripts/Get-PsadtSwitchCandidates.ps1 -Path <installer>` answers the same question this appendix
+answers, but from the bytes of the file in front of you instead of from a table you matched by eye. Run it
+first; read the sections below to understand what it told you, and for the traps a table cannot hold (L.5,
+L.7, L.8, L.9).
+
+It reports every stage, hit or miss, so the dossier can show what was CHECKED and not only what was found:
+
+| Stage | Source | Confidence | What it means |
+|---|---|---|---|
+| 0 | verified-switch store | `verified` (hash match) / `medium` (earlier version of the same product) | a run on THIS machine already proved it |
+| 1 | engine default | `low` | the documented default for the engine identified in the binary |
+| 2 | winget-pkgs | `high` (hash match) / `medium` | **opt-in only** (`-WithWinget`) - WinGet is never auto-selected in this skill (App. I) |
+| 3 | Researcher | - | the Phase 2 web fan-out, when the stages above found nothing |
+
+Stages 0 and 1 need no network. That is the point: the deterministic answer should arrive before the
+search starts, not after it.
+
+The engine defaults live in `references/switch-catalog/engine-defaults.json`. It is an ENGINE catalog, not
+an application catalog, and deliberately so: engines are a short list that is stable for years, while
+per-application switch entries rot silently as vendors change installers between versions. The L.2 table
+below carries each engine's catalog id in code ticks; `tests/SwitchCatalog.Tests.ps1` fails if the table
+and the JSON ever stop naming the same set.
+
+**None of this makes a switch true.** Every candidate is a CLAIM until a run proves it - see the BINDING
+note at the end of L.1. Confidence orders the candidates for the probe run; it never replaces it.
 
 ### L.1 Identify the technology
 - File metadata/strings: `(Get-Item setup.exe).VersionInfo`; a `strings`-style scan for marker text.
@@ -60,20 +89,26 @@ the natural detection rule.
 ### L.2 Switch reference
 | Tech | Silent install | Silent uninstall | No reboot | Log | Detect | Notes |
 |---|---|---|---|---|---|---|
-| **MSI** | `msiexec /i pkg.msi /qn` | `msiexec /x {ProductCode} /qn` | `/norestart` | `/l*v "log"` | MSI ProductCode | props as `NAME=value`; `REBOOT=ReallySuppress` |
-| **MSI-wrapped EXE** | vendor flag, often `/s /v"/qn /norestart"` | extracted MSI ProductCode | `/v"/norestart"` | `/v"/l*v log"` | ProductCode | prefer extracting the MSI (`/a` admin install or `setup.exe /extract`) |
-| **InstallShield (Basic MSI)** | `setup.exe /s /v"/qn"` | ProductCode | `/v"/norestart"` | `/v"/l*v log"` | ProductCode | |
-| **InstallShield (InstallScript)** | `setup.exe /s /f1"setup.iss"` | `setup.exe /s /x /f1"uninstall.iss"` | (ISS-driven) | `/f2"log"` | registry / file | record the `.iss` with `setup.exe /r /f1"setup.iss"` |
-| **Inno Setup** | `setup.exe /VERYSILENT /SUPPRESSMSGBOXES /SP- /NORESTART` | `unins000.exe /VERYSILENT /NORESTART` | `/NORESTART` (**mandatory**, see L.7) | `/LOG="log"` | QuietUninstallString / registry | `/SILENT` shows a progress bar, `/VERYSILENT` none; `/SUPPRESSMSGBOXES` only works WITH one of them |
-| **NSIS** | `setup.exe /S` (add `/allusers` or `/currentuser` if MultiUser - see L.7) | `Uninstall.exe /S _?=<installdir>` (see L.7) | (installer-specific) | `/D=path` (last arg, unquoted) | registry / file | `/S` is case-SENSITIVE; a bare `Uninstall.exe /S` returns BEFORE it is done |
-| **Advanced Installer** | `msiexec /i pkg.msi /qn` | `msiexec /x {ProductCode} /qn` | `/norestart` | `/l*v "log"` | MSI ProductCode | plain MSI underneath; a fresh ProductCode per build is typical - re-probe every time (**L.6**) |
-| **WiX Burn bundle** | `bundle.exe /quiet /norestart` | `bundle.exe /uninstall /quiet` | `/norestart` | `/log "log"` | registry (BundleProviderKey) / file version | wraps MSIs; a single ProductCode is unreliable |
-| **Squirrel (Electron)** | `Setup.exe --silent` | `%LocalAppData%\<App>\Update.exe --uninstall -s` | n/a | n/a | file version under `%LocalAppData%` | usually PER-USER; a System/Win32 install needs care |
-| **MSIX / AppX** | `Add-AppxProvisionedPackage -Online -PackagePath x -SkipLicense` | `Remove-AppxProvisionedPackage -Online` **AND** `Remove-AppxPackage -AllUsers` | n/a | DISM `-LogPath` | `Get-AppxProvisionedPackage -Online` (**NOT** `Get-AppxPackage`) | not a Win32 installer - **L.8**. As SYSTEM, `Add-AppxPackage` registers for SYSTEM only and still reports success. Prefer Intune's native LOB type (cap 8 GB). Must be signed; cert Subject == manifest Publisher |
-| **App-V** | `Add-AppvClientPackage x` then `Publish-AppvClientPackage -Global` | `Unpublish-AppvClientPackage` **AND** `Remove-AppvClientPackage` | n/a | client event log | `Get-AppvClientPackage` | **L.9**. Client not deprecated (fixed extended support); servers end 04/2026. Add alone publishes to nobody; without `-Global` it publishes to SYSTEM. A package in use goes *pending* - global tasks apply only after a RESTART |
-| **install4j (Java)** | `installer.exe -q` (unattended) | `<installdir>\uninstall.exe -q` | n/a | `-Dinstall4j.logToStderr=true` | registry / file version | **NOT `/S`** (that shows the language dialog + hangs). Needs elevation (runs as SYSTEM under Intune). QuietUninstallString is often EMPTY -> pass `-q` via `-AdditionalArgumentList`. Bundles its own JRE (no external dep). May `dpinst`-install drivers - extract the signer `.cer` and pre-trust it (TrustedPublisher). |
-| **IzPack (Java)** | `installer.jar auto-install.xml` / `-options resp.txt` | uninstaller `-q` | n/a | varies | registry / file | response-file driven |
-| **InstallAware / Wise** | `/s` or `/silent` | vendor-specific | varies | varies | registry / file | confirm per build; often MSI underneath |
+| **MSI** `msi` | `msiexec /i pkg.msi /qn` | `msiexec /x {ProductCode} /qn` | `/norestart` | `/l*v "log"` | MSI ProductCode | props as `NAME=value`; `REBOOT=ReallySuppress` |
+| **MSI-wrapped EXE** | vendor flag, often `/s /v"/qn /norestart"` | extracted MSI ProductCode | `/v"/norestart"` | `/v"/l*v log"` | ProductCode | a PACKAGING PATTERN, not an engine - no catalog id. Identify the real wrapper first; prefer extracting the MSI (`/a` admin install or `setup.exe /extract`) |
+| **MSP patch** `msp` | `msiexec /p patch.msp /qn` | through the patched product | `/norestart` | `/l*v "log"` | patched product version | rules in L.4; `/i` and `/p` may NOT be combined |
+| **InstallShield (Basic MSI)** `installshield-basic-msi` | `setup.exe /s /v"/qn"` | ProductCode | `/v"/norestart"` | `/v"/l*v log"` | ProductCode | |
+| **InstallShield (InstallScript)** `installshield-installscript` | `setup.exe /s /f1"setup.iss"` | `setup.exe /s /x /f1"uninstall.iss"` | (ISS-driven) | `/f2"log"` | registry / file | record the `.iss` with `setup.exe /r /f1"setup.iss"` |
+| **Inno Setup** `inno` | `setup.exe /VERYSILENT /SUPPRESSMSGBOXES /SP- /NORESTART` | `unins000.exe /VERYSILENT /NORESTART` | `/NORESTART` (**mandatory**, see L.7) | `/LOG="log"` | QuietUninstallString / registry | `/SILENT` shows a progress bar, `/VERYSILENT` none; `/SUPPRESSMSGBOXES` only works WITH one of them |
+| **NSIS** `nsis` | `setup.exe /S` (add `/allusers` or `/currentuser` if MultiUser - see L.7) | `Uninstall.exe /S _?=<installdir>` (see L.7) | (installer-specific) | `/D=path` (last arg, unquoted) | registry / file | `/S` is case-SENSITIVE; a bare `Uninstall.exe /S` returns BEFORE it is done |
+| **Advanced Installer** `advanced-installer` | `msiexec /i pkg.msi /qn` | `msiexec /x {ProductCode} /qn` | `/norestart` | `/l*v "log"` | MSI ProductCode | plain MSI underneath; a fresh ProductCode per build is typical - re-probe every time (**L.6**) |
+| **WiX Burn bundle** `wix-burn` | `bundle.exe /quiet /norestart` | `bundle.exe /uninstall /quiet` | `/norestart` | `/log "log"` | registry (BundleProviderKey) / file version | wraps MSIs; a single ProductCode is unreliable |
+| **Squirrel (Electron)** `squirrel` | `Setup.exe --silent` | `%LocalAppData%\<App>\Update.exe --uninstall -s` | n/a | n/a | file version under `%LocalAppData%` | usually PER-USER; a System/Win32 install needs care |
+| **MSIX / AppX** `msix` | `Add-AppxProvisionedPackage -Online -PackagePath x -SkipLicense` | `Remove-AppxProvisionedPackage -Online` **AND** `Remove-AppxPackage -AllUsers` | n/a | DISM `-LogPath` | `Get-AppxProvisionedPackage -Online` (**NOT** `Get-AppxPackage`) | not a Win32 installer - **L.8**. As SYSTEM, `Add-AppxPackage` registers for SYSTEM only and still reports success. Prefer Intune's native LOB type (cap 8 GB). Must be signed; cert Subject == manifest Publisher |
+| **App-V** `appv` | `Add-AppvClientPackage x` then `Publish-AppvClientPackage -Global` | `Unpublish-AppvClientPackage` **AND** `Remove-AppvClientPackage` | n/a | client event log | `Get-AppvClientPackage` | **L.9**. Client not deprecated (fixed extended support); servers end 04/2026. Add alone publishes to nobody; without `-Global` it publishes to SYSTEM. A package in use goes *pending* - global tasks apply only after a RESTART |
+| **install4j (Java)** `install4j` | `installer.exe -q` (unattended) | `<installdir>\uninstall.exe -q` | n/a | `-Dinstall4j.logToStderr=true` | registry / file version | **NOT `/S`** (that shows the language dialog + hangs). Needs elevation (runs as SYSTEM under Intune). QuietUninstallString is often EMPTY -> pass `-q` via `-AdditionalArgumentList`. Bundles its own JRE (no external dep). May `dpinst`-install drivers - extract the signer `.cer` and pre-trust it (TrustedPublisher). |
+| **IzPack (Java)** `izpack` | `installer.jar auto-install.xml` / `-options resp.txt` | uninstaller `-q` | n/a | varies | registry / file | response-file driven |
+| **electron-builder** `electron-builder` | `Setup.exe /S` (add `/allusers` for machine scope) | `Uninstall <App>.exe /S` | n/a | n/a | registry / file | an NSIS build underneath, so the NSIS traps apply; defaults to PER-USER unless `perMachine` was set at build time |
+| **BitRock InstallBuilder** `bitrock` | `installer.exe --mode unattended --unattendedmodeui none` | `uninstall.exe --mode unattended` | n/a | own log in `%TEMP%` | registry / file | double-dash switches: a `/S` here does nothing and the installer goes interactive |
+| **7-Zip SFX** `sfx-7zip` | `archive.exe -y` | none (payload decides) | n/a | n/a | payload | a CONTAINER, not an installer - extract it and identify the real installer inside; an SFX config block may define its own `RunProgram` |
+| **WinRAR SFX** `sfx-winrar` | `archive.exe /S` | none (payload decides) | n/a | n/a | payload | a CONTAINER, not an installer - extract it and identify the real installer inside |
+| **InstallAware** `installaware` | `/s` or `/silent` | vendor-specific | varies | varies | registry / file | confirm per build; often MSI underneath |
+| **Wise** `wise` | `/s` or `/silent` | vendor-specific | varies | varies | registry / file | legacy; confirm per build; often MSI underneath |
 
 ### L.3 Detection-rule choice
 - MSI / MSI-wrapped -> **MSI ProductCode** rule (upload `-MsiProductCode`).

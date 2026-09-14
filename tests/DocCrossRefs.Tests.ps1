@@ -20,6 +20,11 @@ BeforeAll {
 
     $script:refFiles = @(Get-ChildItem -LiteralPath $script:refDir -File | Where-Object { $_.Extension -in '.md', '.html' })
 
+    # references/ gained its first SUBDIRECTORY in 0.30.0 (switch-catalog/, data rather than prose).
+    # A path like "references/switch-catalog/engine-defaults.json" captures only the first segment, so
+    # directory names have to count as valid targets or every mention of the catalog reads as a dead link.
+    $script:refDirs = @(Get-ChildItem -LiteralPath $script:refDir -Directory)
+
     # Documents that must be internally consistent right now, and the scripts' comment-based help.
     $sources = @(
         Get-Item (Join-Path $script:root 'SKILL.md')
@@ -87,7 +92,7 @@ Describe 'every phase label resolves to a file' {
 
 Describe 'every references/ path that is written down exists' {
     It 'has no dead references/ path' {
-        $names = @($script:refFiles.Name)
+        $names = @($script:refFiles.Name) + @($script:refDirs.Name)
         $bad = foreach ($d in $script:docs) {
             foreach ($m in [regex]::Matches($d.Text, 'references/([A-Za-z0-9._-]+)')) {
                 # Trim a sentence-ending period: "see references/app-registration.md." captures the

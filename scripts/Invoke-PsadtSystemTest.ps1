@@ -109,6 +109,10 @@ if (-not (Get-Module -ListAvailable -Name Invoke-CommandAs)) {
 }
 Import-Module Invoke-CommandAs -ErrorAction SilentlyContinue
 
+# Absolute before use, for two reasons: this script writes its result with a .NET API (which ignores
+# PowerShell's location), and it re-execs itself into Windows PowerShell 5.1 with -PackagePath passed
+# through - a relative path would be resolved against the CHILD process's directory, not the caller's.
+$PackagePath = (Resolve-Path -LiteralPath $PackagePath).ProviderPath.TrimEnd('\')
 $exe = Join-Path $PackagePath 'Invoke-AppDeployToolkit.exe'
 
 # 3. Run the launcher (and optional detection) as SYSTEM in one context

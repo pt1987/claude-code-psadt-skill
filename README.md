@@ -93,6 +93,10 @@ control plane.
 
 - **Guided intake** — the blocker questions up front as clickable options, pre-filled with researched
   defaults (app, latest version, installer type, package type).
+- **Switch catalog before the web** — identifies the installer engine from the *binary* (byte signatures in
+  the PE overlay, resources and section table, not a filename guess) and serves that engine's documented
+  silent / uninstall / log / no-reboot switches from a catalog that ships with the skill. Offline, and it
+  reports every stage it checked including the misses. A candidate is still a claim until a run proves it.
 - **Autonomous research** — checks the installed PSADT version against the latest release *and* whether
   commands changed; researches silent install / uninstall / repair switches and known Intune pitfalls.
 - **All three deployment types from the start** — Install, Uninstall *and* Repair, acid-tested, so
@@ -345,9 +349,10 @@ psadt-deploy/
 │  ├─ README.md                          the reference map (label -> file)
 │  ├─ phases-0-6.md · phases-7-12.md     the twelve phases
 │  ├─ appendix-a-errors.md … -q-drivers.md  one file per appendix
+│  ├─ switch-catalog/                    engine defaults + JSON schema (App. L.0)
 │  ├─ Report-Template.html               the fixed dossier template
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
-└─ tests/                                Pester suite, 503 tests
+└─ tests/                                Pester suite, 551 tests
 ```
 
 Machine-local state lives outside the skill folder:
@@ -429,6 +434,28 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.30.0 - 2026-09-14
+- **Fixed: the sandbox could not test a heavy package - and it was never the package.** Smart App Control
+  is enabled in the Windows Sandbox base image while Defender is disabled, so `wintrust` asks the disabled
+  Defender to rate every signed file and waits ~2 minutes per package. A bootstrapper chaining a dozen MSIs
+  took 30+ minutes and looked like a hang, three times. Two lines in the guest remove it: the same run then
+  finished in **5.7 minutes with exit 0**. This also corrects the ADK lesson in Appendix G, which blamed
+  Defender scanning - Defender was switched off the whole time.
+- **Fixed: nothing was visible inside the sandbox.** On this Sandbox build the `LogonCommand` process gets
+  no console window, so the 0.29.0 heartbeat went to a file nobody could see. There is now a top-most
+  progress window in the guest, the host mirrors it, and the runner measures whether a console exists at
+  all. Runs are cancellable with `STOP.txt` (guest shuts itself down in 5 s, no orphaned VM worker), a
+  failed VM start is no longer reported as "the VM was closed", and a timed-out action captures the guest's
+  process table and vendor logs before the VM is discarded.
+- **Added: `Get-PsadtInstallerEngine.ps1`** - identifies the installer engine from the binary. A definitive
+  marker always beats a hint, so an install4j installer carrying NSIS branding no longer gets `/S`, which
+  hangs on its language dialog forever. Reports marker, byte offset and region; an unrecognised file
+  returns `unknown`, never a guess.
+- **Added: `Get-PsadtSwitchCandidates.ps1` + `references/switch-catalog/`** - ranked switch candidates from
+  19 engine defaults, offline, before the first web query, with a reason for every miss. It is an ENGINE
+  catalog, not an application catalog, and **winget stays opt-in** including as a research source.
+- **Faster:** staging 481 MB into the guest via `robocopy /MT` (3.6 s to 0.6 s), `-Scenarios` for partial
+  iteration runs, per-action timeout default 900 s to 600 s. Suite 503 -> 551.
 ### 0.29.1 - 2026-09-14
 - **Fixed: Phase 5.5 mapped `Remove-MSIApplications` to `Remove-ADTApplication`**, which v4 does not
   have - the v4 name is `Uninstall-ADTApplication`. The table's right column is now checked against the
@@ -440,16 +467,3 @@ second copy to keep in sync.
   identical to the config defaults. The `.mst` belongs in `Files\` next to the MSI (`TRANSFORMSSECURE=1`);
   extra properties go into `-AdditionalArgumentList`, because `-ArgumentList` REPLACES the defaults.
 - **Fixed: README claimed 441 Pester tests** in three places. Suite 501 -> 503.
-### 0.29.0 - 2026-09-11
-- **Fixed: the 0.28.0 Startup-folder trigger could not run a single task as SYSTEM.** The runner passed
-  the elevation check, yet `schtasks /Create` and `/Run` returned 0 while the task never executed - every
-  action timed out blaming the package. `<LogonCommand>` is back; #125 is left to the host's DONE.txt timeout.
-- **Fixed: `schtasks`' stderr notice ended the run before the first action** - in WinPS 5.1 a `2>file`
-  redirect does not stop the terminating `NativeCommandError`; the preference is lowered around the call.
-- **Fixed: the sandbox image lacked `de-DE\ArchiveResources.psd1`**, which PSADT needs just to import,
-  and **WMI refused SYSTEM** (`Win32_ComputerSystem` -> `0x80070005`), which `Open-ADTSession` needs.
-  Both surfaced as 60008 on every action with no log. `GuestPrepare` ships the host's module resources
-  into the guest and repairs the WMI repository.
-- **Added: three canaries before the loop** (SYSTEM task, toolkit import, toolkit session), **a 60008
-  action is re-run once via `powershell.exe -File` to capture the stderr the `.exe` discards**, and a
-  **heartbeat in the guest console** so a healthy install no longer looks like a hang. Suite 493 -> 501.
