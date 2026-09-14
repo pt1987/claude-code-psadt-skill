@@ -586,6 +586,8 @@ textarea.input { min-height: 90px; resize: vertical; }
   body { margin: 0; background: var(--color-bg); }
   a { color: var(--color-accent); text-decoration: none; }
   a:hover { color: var(--color-accent-300); }
+  .release-link { color: inherit; text-decoration: none; }
+  .release-link:hover { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
   @keyframes noct-pulse { 0%,100% { opacity: 0.35 } 50% { opacity: 1 } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important } }
   [data-hero-title] { font-size: clamp(30px, 5.4vw, 64px) !important }
@@ -622,6 +624,7 @@ textarea.input { min-height: 90px; resize: vertical; }
         <a href="#phases" style="color: var(--color-neutral-400)">Pre-flight</a>
         <a href="#engines" style="color: var(--color-neutral-400)">Engines</a>
         <a href="https://github.com/pt1987/claude-code-psadt-skill" rel="noopener" style="color: var(--color-neutral-400)">GitHub</a>
+        <a href="https://github.com/pt1987/claude-code-psadt-skill/blob/main/CHANGELOG.md" rel="noopener" style="color: var(--color-neutral-400)">Changelog</a>
       </nav>
       <a class="btn btn-primary" href="#start" style="margin-left: auto">Install</a>
     </div>
@@ -631,7 +634,7 @@ textarea.input { min-height: 90px; resize: vertical; }
     <div style="position: absolute; inset: -140px 40% 40% -220px; background: radial-gradient(circle at 30% 40%, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent 62%); filter: blur(30px); pointer-events: none; opacity: 0.9"></div>
     <div data-col="" style="position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 64px; align-items: end">
       <div>
-        <p style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-300); margin: 0 0 20px">Claude Code skill · v0.29.1</p>
+        <p style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-300); margin: 0 0 20px">Claude Code skill · <a class="release-link" href="https://github.com/pt1987/claude-code-psadt-skill/blob/main/CHANGELOG.md" rel="noopener" title="Changelog">v0.29.1 · 2026-09-14</a></p>
         <h1 data-hero-title="" style="font-size: 64px; line-height: 1.02; letter-spacing: -0.03em; margin: 0 0 24px; text-wrap: balance">PSADT v4 to Intune,<br>in verified phases.</h1>
         <p style="font-size: 19px; line-height: 1.5; color: var(--color-neutral-300); max-width: 46ch; margin: 0 0 32px">Thirteen phases, each owned by a script rather than by prose. A step either passed or it did not — and the thing that decides is the same every time.</p>
         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
@@ -822,7 +825,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 
   <footer style="border-top: 1px solid var(--color-divider)">
     <div data-wrap="" style="max-width: 1160px; margin: 0 auto; padding: 32px 28px; display: flex; gap: 24px; flex-wrap: wrap; align-items: center; justify-content: space-between">
-      <p style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: var(--color-neutral-500); margin: 0">psadt-deploy v0.29.1 · MIT · Patrick Taubert · PHAT Consulting GmbH</p>
+      <p style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: var(--color-neutral-500); margin: 0">psadt-deploy v0.29.1 (2026-09-14) · MIT · Patrick Taubert · PHAT Consulting GmbH</p>
       <nav style="display: flex; gap: 20px; font-size: 13px">
         <a href="https://github.com/pt1987/claude-code-psadt-skill" rel="noopener">GitHub</a>
         <a href="https://www.npmjs.com/package/psadt-deploy-skill" rel="noopener">npm</a>
