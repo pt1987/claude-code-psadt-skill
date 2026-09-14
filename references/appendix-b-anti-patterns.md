@@ -3,6 +3,11 @@
 > Part of the [PSADT v4 deployment reference](README.md). Section numbering is unchanged, so a
 > cross-reference like "Appendix L.1" or "Phase 6.2" still resolves.
 
+## Contents
+
+- [Appendix B: Anti-pattern list](#appendix-b-anti-pattern-list)
+- [B.9 The list SKILL.md used to carry](#b9-the-list-skillmd-used-to-carry)
+
 ## Appendix B: Anti-pattern list
 
 1. **Em-dash/smart quote in double-quoted strings**. `"Repair failed — DB status [$status]."` kills the entire script.
@@ -86,3 +91,17 @@ people actually make, which is worth keeping - one is the rule, the other is the
 - Windows features (App. P): enabling WITHOUT `-NoRestart` (DISM reboots mid-install instead of returning 3010);
   forgetting the temporary WSUS bypass on managed devices (`0x800f0950` content-not-found) or not restoring it;
   detection run as 32-bit (DISM needs 64-bit); treating `EnablePending` as installed.
+- PowerShell traps that each cost a run in this repo on 2026-09-14, all of them silent: wrapping an EMPTY
+  `System.Collections.Generic.List` in `@(...)` (throws *Argument types do not match* in WinPS 5.1 AND
+  pwsh 7 - use `.ToArray()`); `-WindowStyle Hidden` on `Start-Process` (the style goes into the child's
+  STARTUPINFO and the FIRST window it creates inherits it, so a progress GUI started that way runs with no
+  window and looks like a hang); two variables that differ only in case (`$S` and `$s` are the SAME
+  variable - the language is case-insensitive and there is no warning); `-like` for a literal that contains
+  `*` (it is a wildcard in the PATTERN, so the comparison silently matches things it should not - use
+  `.Contains()`).
+- Fixing the component that was already correct. A step can only be judged by whoever reads its exit code,
+  and in the sandbox gate that is TWO independent lists (guide 6.1): PSADT's `-SuccessExitCodes` inside the
+  launcher decides whether the deployment throws, `Invoke-PsadtSandboxTest.ps1 -SuccessExitCodes` decides
+  whether the step is painted green. Citrix Workspace Repair returns 40032 and three consecutive runs were
+  spent editing the launcher, which had accepted 40032 from the first attempt. Before changing anything,
+  read which of the two produced the RED.

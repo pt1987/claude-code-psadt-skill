@@ -610,6 +610,15 @@ Management Extension. Returns `{ Verdict, Steps, FailedAssertions, Assertions, R
 writes `results.sandboxTest` plus one `results.systemTest[]` entry per action, and copies the PSADT logs
 back to the host.
 
+**A vendor-specific success code has to be in BOTH lists.** `-SuccessExitCodes` on this harness (default
+`0, 1707, 3010, 1641`) is a DIFFERENT list from the `-SuccessExitCodes` on each `Start-ADTProcess` inside
+the launcher. The launcher's list decides whether PSADT throws; the harness's list decides whether the step
+is painted green. Put a code in only one of them and a cleanly deployed package reports a failure it does
+not have. Measured on Citrix Workspace 26.3.10.69, whose Repair returns **40032** ("already at the current
+version", CTX695019): the launcher accepted it, the run still came back RED, and the second fix attempt was
+spent on the launcher that was already correct. When an action returns a documented non-zero success code,
+change both places in the same edit.
+
 Why this is the default:
 - **No elevation on the host** and the host is never modified, so the test is available in an ordinary
   packaging session instead of being deferred to "a DEV VM later" - which in practice means never.
