@@ -134,3 +134,32 @@ Describe 'the split kept the documents navigable' {
         @($bad) -join ', ' | Should -BeNullOrEmpty
     }
 }
+
+# Discovery-time: -Skip is evaluated before BeforeAll runs, so the toolkit lookup has to happen out here.
+$script:psadtManifest = Get-Module -ListAvailable PSAppDeployToolkit | Sort-Object Version -Descending | Select-Object -First 1
+
+Describe 'the Phase 5.5 v3 -> v4 table points at cmdlets that exist' {
+    # Found 2026-09-14 while reviewing an external patch: the table sent readers from Remove-MSIApplications
+    # to Remove-ADTApplication, which v4 does not have (it is Uninstall-ADTApplication). A "forbidden ->
+    # correct" table whose right column names nothing is worse than no table, and nothing here read it.
+    # The manifest is READ with Import-PowerShellDataFile, never imported - importing PSADT has side effects.
+    BeforeAll {
+        $text = Get-Content -LiteralPath (Join-Path $script:refDir 'phases-0-6.md') -Raw
+        $section = [regex]::Match($text, '(?s)### 5\.5 .*?(?=\r?\n### )').Value
+        $script:v4Names = @([regex]::Matches($section, '(?m)^\| `[^`]+` \| `([^`]+)` \|\s*$') | ForEach-Object { $_.Groups[1].Value })
+        $script:manifest = Get-Module -ListAvailable PSAppDeployToolkit | Sort-Object Version -Descending | Select-Object -First 1
+    }
+
+    It 'still finds the table' {
+        # Guards the regex: a table that moved or changed shape must fail here, not pass vacuously below.
+        $script:v4Names.Count | Should -BeGreaterOrEqual 10
+        $script:v4Names | Should -Contain 'Uninstall-ADTApplication'
+    }
+
+    It 'names only functions the installed PSAppDeployToolkit exports' -Skip:(-not $script:psadtManifest) {
+        $exported = @((Import-PowerShellDataFile -LiteralPath $script:manifest.Path).FunctionsToExport)
+        $exported.Count | Should -BeGreaterThan 100
+        $unknown = @($script:v4Names | Where-Object { $exported -notcontains $_ })
+        ($unknown -join ', ') | Should -BeNullOrEmpty -Because "PSADT $($script:manifest.Version) exports no such command"
+    }
+}

@@ -172,7 +172,7 @@ The app's **native installer is always the default**. Everything else is opt-in 
 - **Self-update** — `scripts/Update-PsadtSkill.ps1` compares against GitHub, shows what changed, and
   updates in place on your confirmation (`git pull --ff-only` for a clone, otherwise a branch-zip overwrite
   of tracked files only). Machine-local state is never touched. Say *"psadt update"*.
-- **441 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
+- **503 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
   disagree.
 
 ## Requirements
@@ -347,7 +347,7 @@ psadt-deploy/
 │  ├─ appendix-a-errors.md … -q-drivers.md  one file per appendix
 │  ├─ Report-Template.html               the fixed dossier template
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
-└─ tests/                                Pester suite, 441 tests
+└─ tests/                                Pester suite, 503 tests
 ```
 
 Machine-local state lives outside the skill folder:
@@ -368,7 +368,7 @@ psadt-package.json                       identity · gate decisions · research 
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 441 Pester tests.
+verified against a live tenant. The helper scripts are covered by 503 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -429,6 +429,17 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.29.1 - 2026-09-14
+- **Fixed: Phase 5.5 mapped `Remove-MSIApplications` to `Remove-ADTApplication`**, which v4 does not
+  have - the v4 name is `Uninstall-ADTApplication`. The table's right column is now checked against the
+  installed toolkit's `FunctionsToExport`.
+- **Fixed: Appendix A named 60012 as the v4 deferral code.** 4.1.x exits a deferral with
+  `UI.DeferExitCode`, default 1602. Deliberately NOT added to the mandatory Intune table - every install
+  command this skill writes runs `-DeployMode Silent`, where a deferral cannot happen.
+- **Fixed: the Phase 4.3 MSI sample** put the `.mst` in `SupportFiles\` and passed an `-ArgumentList`
+  identical to the config defaults. The `.mst` belongs in `Files\` next to the MSI (`TRANSFORMSSECURE=1`);
+  extra properties go into `-AdditionalArgumentList`, because `-ArgumentList` REPLACES the defaults.
+- **Fixed: README claimed 441 Pester tests** in three places. Suite 501 -> 503.
 ### 0.29.0 - 2026-09-11
 - **Fixed: the 0.28.0 Startup-folder trigger could not run a single task as SYSTEM.** The runner passed
   the elevation check, yet `schtasks /Create` and `/Run` returned 0 while the task never executed - every
@@ -442,22 +453,3 @@ second copy to keep in sync.
 - **Added: three canaries before the loop** (SYSTEM task, toolkit import, toolkit session), **a 60008
   action is re-run once via `powershell.exe -File` to capture the stderr the `.exe` discards**, and a
   **heartbeat in the guest console** so a healthy install no longer looks like a hang. Suite 493 -> 501.
-### 0.28.0 - 2026-09-11
-- **Fixed: a space in the `.wsb` path silently disabled every custom mapped folder.** `Start-Process
-  -ArgumentList` does not quote its elements, so Windows Sandbox booted with the built-in shares only -
-  no error, no warning. A username with a space in it is enough, and it reads exactly like an upstream
-  Sandbox bug.
-- **Fixed: `<LogonCommand>` never ran** on the affected Sandbox app version
-  ([#125](https://github.com/microsoft/Windows-Sandbox/issues/125)). The work folder is now mapped onto
-  the guest's Startup folder and a trigger `.cmd` starts the runner, which lives one level down because
-  Startup auto-executes only `.exe/.bat/.cmd/.lnk/.vbs`.
-- **Fixed: a transient read reported a real result as empty** - a detection step captured `stdout: ""`
-  while the same file, re-read at the end of the run, held the right answer. The read now retries.
-- **Changed: `schtasks` failures are checked** instead of surfacing as a 900-second timeout, and the
-  runner verifies it is elevated before the first action - a Startup item does not carry the full admin
-  token by construction the way `<LogonCommand>` did.
-- **Added: NSIS MultiUser needs an explicit `/allusers` or `/currentuser`** (App. L.7). A bare `/S`
-  exits in under a second with no output and nothing installed. Now a Gate 2 decision.
-- **Added: an unbundled runtime prerequisite is researched in Phase 2 and decided at Gate 1**, and a
-  manual interactive test is offered after a GREEN Phase 6 - the loop proves the package works, never
-  that the app does. Suite 484 -> 493.
