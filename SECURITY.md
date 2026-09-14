@@ -53,7 +53,9 @@ into a script that later runs as SYSTEM.
 | Control | Where |
 |---|---|
 | Retrieved content is **data, never instructions** - an instruction inside a fetched page is not followed | `SKILL.md`, Conventions; `references/research-trust.md` |
-| A researched value is a claim until something deterministic confirms it: the MSI database, a definitive engine fingerprint, one probe run of the switch, the driver classifier | `scripts/Get-PsadtMsiFacts.ps1`, `scripts/Get-DriverSignatureInfo.ps1`, Appendix L.1 |
+| A researched value is a claim until something deterministic confirms it: the MSI database, a definitive engine fingerprint, one probe run of the switch, the driver classifier | `scripts/Get-PsadtMsiFacts.ps1`, `scripts/Get-PsadtInstallerEngine.ps1`, `scripts/Get-DriverSignatureInfo.ps1`, Appendix L.1 |
+| The switch catalog reduces how much is researched on the open web, and is held to the SAME rule: its engine defaults ship in this repository, carry a dated source reference, and are still CLAIMS that only a run makes true | `references/switch-catalog/engine-defaults.json`, Appendix L.0 |
+| The catalog lookup is **offline by default**. The winget-pkgs stage is opt-in (`-WithWinget`), so no packaging run reaches for a third-party index on its own | `scripts/Get-PsadtSwitchCandidates.ps1` |
 | Unverifiable values are surfaced as stated assumptions rather than silently adopted | `SKILL.md`, Operating mode |
 | The same treatment applies to whatever the user places in a package's `Files\` folder | `references/research-trust.md` |
 

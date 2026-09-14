@@ -51,6 +51,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not (Test-Path -LiteralPath $PackagePath)) { throw "PackagePath not found: $PackagePath" }
+# Normalize to an absolute provider path before anything reads a file. The checks below use .NET file
+# APIs, and .NET does NOT follow PowerShell's current location - so `-PackagePath .` from a session whose
+# location is elsewhere made ReadAllBytes look beside the SHELL's directory and report a missing
+# launcher for a package that is perfectly fine. Measured 2026-09-14.
+$PackagePath = (Resolve-Path -LiteralPath $PackagePath).ProviderPath.TrimEnd('\')
 $launcher = Join-Path $PackagePath 'Invoke-AppDeployToolkit.ps1'
 if (-not (Test-Path -LiteralPath $launcher)) { throw "Not a PSADT package (no Invoke-AppDeployToolkit.ps1): $PackagePath" }
 

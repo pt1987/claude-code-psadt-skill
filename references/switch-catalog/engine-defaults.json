@@ -1,0 +1,377 @@
+{
+  "schemaVersion": 1,
+  "description": "Silent-switch defaults per installer ENGINE. Derived from Appendix L.2, which stays the prose form the agent reads in Phase 2; tests/SwitchCatalog.Tests.ps1 fails if the two drift apart. Every value here is a CLAIM: it is the documented default for the engine, not a fact about the file in front of you, and it stays a claim until a run proves it. There are deliberately NO per-application entries - applications are a long tail whose switches rot silently, engines are a short list that is stable for years.",
+  "placeholders": {
+    "{file}": "full path to the installer file",
+    "{log}": "full path to the log file the installer should write",
+    "{productcode}": "MSI ProductCode including braces",
+    "{installdir}": "installation directory"
+  },
+  "engines": [
+    {
+      "engine": "msi",
+      "displayName": "Windows Installer (MSI)",
+      "install": "/qn",
+      "installCommand": "msiexec /i \"{file}\" /qn /norestart /l*v \"{log}\"",
+      "uninstall": "/qn",
+      "uninstallCommand": "msiexec /x {productcode} /qn /norestart",
+      "installLog": "/l*v \"{log}\"",
+      "noReboot": "/norestart",
+      "uninstallerHint": "msiexec with the ProductCode; no uninstaller executable on disk",
+      "detectHint": { "kind": "msi-productcode", "note": "Use the MSI ProductCode rule; Get-PsadtMsiFacts.ps1 reads it from the file." },
+      "returnCodes": [],
+      "notes": [
+        "Public properties are passed as NAME=value on the command line.",
+        "REBOOT=ReallySuppress is the property form of suppressing a restart."
+      ],
+      "sourceRef": "App. L.2 row MSI",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "msp",
+      "displayName": "Windows Installer patch (MSP)",
+      "install": "/qn",
+      "installCommand": "msiexec /p \"{file}\" /qn /norestart",
+      "uninstall": "/qn",
+      "uninstallCommand": "msiexec /package {productcode} /uninstall \"{file}\" /qn",
+      "installLog": "/l*v \"{log}\"",
+      "noReboot": "/norestart",
+      "uninstallerHint": "patches are removed through the product they patched",
+      "detectHint": { "kind": "msi-patchcode", "note": "Detect the patched product version, not the patch itself." },
+      "returnCodes": [],
+      "notes": [
+        "/i and /p may NOT be combined; to patch during an install use PATCH=patch.msp with /i.",
+        "Full rules in App. L.4."
+      ],
+      "sourceRef": "App. L.4",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "installshield-basic-msi",
+      "displayName": "InstallShield (Basic MSI)",
+      "install": "/s /v\"/qn\"",
+      "installCommand": "\"{file}\" /s /v\"/qn /norestart /l*v \\\"{log}\\\"\"",
+      "uninstall": "/qn",
+      "uninstallCommand": "msiexec /x {productcode} /qn /norestart",
+      "installLog": "/v\"/l*v {log}\"",
+      "noReboot": "/v\"/norestart\"",
+      "uninstallerHint": "uninstall through the embedded MSI ProductCode",
+      "detectHint": { "kind": "msi-productcode", "note": "The embedded MSI carries the ProductCode; extract it to read the value." },
+      "returnCodes": [],
+      "notes": [
+        "Everything after /v is handed to msiexec, so inner quotes have to survive two levels of parsing."
+      ],
+      "sourceRef": "App. L.2 row InstallShield (Basic MSI)",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "installshield-installscript",
+      "displayName": "InstallShield (InstallScript)",
+      "install": "/s /f1\"{installdir}\\setup.iss\"",
+      "installCommand": "\"{file}\" /s /f1\"setup.iss\" /f2\"{log}\"",
+      "uninstall": "/s /x /f1\"uninstall.iss\"",
+      "uninstallCommand": "\"{file}\" /s /x /f1\"uninstall.iss\"",
+      "installLog": "/f2\"{log}\"",
+      "noReboot": "(driven by the response file)",
+      "uninstallerHint": "the original setup.exe with /x and a recorded uninstall.iss",
+      "detectHint": { "kind": "registry-uninstall", "note": "No ProductCode; detect by registry DisplayVersion or a file version." },
+      "returnCodes": [],
+      "notes": [
+        "Record the response file first: setup.exe /r /f1\"setup.iss\".",
+        "Without a matching .iss the silent run falls back to interactive and hangs."
+      ],
+      "sourceRef": "App. L.2 row InstallShield (InstallScript)",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "inno",
+      "displayName": "Inno Setup",
+      "install": "/VERYSILENT /SUPPRESSMSGBOXES /SP- /NORESTART",
+      "installCommand": "\"{file}\" /VERYSILENT /SUPPRESSMSGBOXES /SP- /NORESTART /LOG=\"{log}\"",
+      "uninstall": "/VERYSILENT /NORESTART",
+      "uninstallCommand": "\"{installdir}\\unins000.exe\" /VERYSILENT /NORESTART",
+      "installLog": "/LOG=\"{log}\"",
+      "noReboot": "/NORESTART",
+      "uninstallerHint": "unins000.exe in the installation folder",
+      "detectHint": { "kind": "registry-uninstall", "note": "Uninstall key is typically <AppName>_is1; QuietUninstallString is usually populated." },
+      "returnCodes": [],
+      "notes": [
+        "/NORESTART is mandatory: without it Inno reboots the machine by itself (App. L.7).",
+        "/SILENT shows a progress bar, /VERYSILENT shows none.",
+        "/SUPPRESSMSGBOXES only takes effect together with one of the silent switches."
+      ],
+      "sourceRef": "App. L.2 row Inno Setup",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "nsis",
+      "displayName": "NSIS",
+      "install": "/S",
+      "installCommand": "\"{file}\" /S",
+      "uninstall": "/S",
+      "uninstallCommand": "\"{installdir}\\Uninstall.exe\" /S _?={installdir}",
+      "installLog": "(none; NSIS has no log switch)",
+      "noReboot": "(installer-specific)",
+      "uninstallerHint": "Uninstall.exe or uninst.exe in the installation folder",
+      "detectHint": { "kind": "registry-uninstall", "note": "No ProductCode; detect by registry DisplayVersion or a file version." },
+      "returnCodes": [],
+      "notes": [
+        "/S is case-SENSITIVE.",
+        "A bare Uninstall.exe /S returns BEFORE it has finished; _?=<installdir> makes it synchronous (App. L.7).",
+        "On a MultiUser build check /allusers or /currentuser before trusting a bare /S.",
+        "/D=path sets the install directory, must be the LAST argument and must not be quoted."
+      ],
+      "sourceRef": "App. L.2 row NSIS",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "electron-builder",
+      "displayName": "electron-builder (NSIS variant)",
+      "install": "/S",
+      "installCommand": "\"{file}\" /S /allusers",
+      "uninstall": "/S",
+      "uninstallCommand": "\"{installdir}\\Uninstall {app}.exe\" /S",
+      "installLog": "(none)",
+      "noReboot": "(not applicable)",
+      "uninstallerHint": "Uninstall <App>.exe in the installation folder",
+      "detectHint": { "kind": "registry-uninstall", "note": "Often per-user by default; force machine scope with /allusers and detect accordingly." },
+      "returnCodes": [],
+      "notes": [
+        "An NSIS build underneath, so the NSIS traps apply.",
+        "Defaults to a per-user install unless perMachine was set at build time or /allusers is passed."
+      ],
+      "sourceRef": "App. L.2 row NSIS (electron-builder variant)",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "advanced-installer",
+      "displayName": "Advanced Installer",
+      "install": "/qn",
+      "installCommand": "msiexec /i \"{file}\" /qn /norestart /l*v \"{log}\"",
+      "uninstall": "/qn",
+      "uninstallCommand": "msiexec /x {productcode} /qn /norestart",
+      "installLog": "/l*v \"{log}\"",
+      "noReboot": "/norestart",
+      "uninstallerHint": "msiexec with the ProductCode",
+      "detectHint": { "kind": "msi-productcode", "note": "Plain MSI underneath." },
+      "returnCodes": [],
+      "notes": [
+        "A fresh ProductCode per build is typical - re-probe with Get-PsadtMsiFacts.ps1 after every rebuild (App. L.6)."
+      ],
+      "sourceRef": "App. L.2 row Advanced Installer",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "wix-burn",
+      "displayName": "WiX Burn bundle",
+      "install": "/quiet /norestart",
+      "installCommand": "\"{file}\" /quiet /norestart /log \"{log}\"",
+      "uninstall": "/uninstall /quiet /norestart",
+      "uninstallCommand": "\"{file}\" /uninstall /quiet /norestart",
+      "installLog": "/log \"{log}\"",
+      "noReboot": "/norestart",
+      "uninstallerHint": "the bundle executable itself, cached under ProgramData\\Package Cache",
+      "detectHint": { "kind": "registry-uninstall", "note": "Detect the BundleProviderKey or a payload file version; a single ProductCode is unreliable because a bundle wraps several MSIs." },
+      "returnCodes": [],
+      "notes": [
+        "Verbs: /install /uninstall /modify /repair /layout /help.",
+        "Display: /full /passive /quiet (/silent and /s are accepted aliases).",
+        "Full detail in App. L.5."
+      ],
+      "sourceRef": "App. L.2 row WiX Burn bundle",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "squirrel",
+      "displayName": "Squirrel (Electron)",
+      "install": "--silent",
+      "installCommand": "\"{file}\" --silent",
+      "uninstall": "--uninstall -s",
+      "uninstallCommand": "\"%LocalAppData%\\{app}\\Update.exe\" --uninstall -s",
+      "installLog": "(none)",
+      "noReboot": "(not applicable)",
+      "uninstallerHint": "Update.exe in the per-user installation folder",
+      "detectHint": { "kind": "file-version", "note": "Per-user under %LocalAppData%; run detection in the right context." },
+      "returnCodes": [],
+      "notes": [
+        "Usually a PER-USER install; a SYSTEM/Win32 deployment needs care."
+      ],
+      "sourceRef": "App. L.2 row Squirrel (Electron)",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "msix",
+      "displayName": "MSIX / AppX",
+      "install": "-Online -SkipLicense",
+      "installCommand": "Add-AppxProvisionedPackage -Online -PackagePath \"{file}\" -SkipLicense",
+      "uninstall": "-Online",
+      "uninstallCommand": "Remove-AppxProvisionedPackage -Online -PackageName <name> ; Remove-AppxPackage -AllUsers",
+      "installLog": "DISM -LogPath \"{log}\"",
+      "noReboot": "(not applicable)",
+      "uninstallerHint": "provisioning removal plus per-user removal; both are needed",
+      "detectHint": { "kind": "appx-provisioned", "note": "Get-AppxProvisionedPackage -Online, NOT Get-AppxPackage." },
+      "returnCodes": [],
+      "notes": [
+        "Not a classic installer - read App. L.8 before writing any hook.",
+        "As SYSTEM, Add-AppxPackage registers for SYSTEM only and still reports success.",
+        "Check first whether Intune's native LOB app type is the better route.",
+        "Must be signed; the certificate Subject must equal the manifest Publisher."
+      ],
+      "sourceRef": "App. L.2 row MSIX / AppX",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "appv",
+      "displayName": "App-V",
+      "install": "-Global",
+      "installCommand": "Add-AppvClientPackage \"{file}\" | Publish-AppvClientPackage -Global",
+      "uninstall": "-Global",
+      "uninstallCommand": "Unpublish-AppvClientPackage <name> ; Remove-AppvClientPackage <name>",
+      "installLog": "client event log",
+      "noReboot": "(not applicable)",
+      "uninstallerHint": "unpublish then remove; both are needed",
+      "detectHint": { "kind": "appv-package", "note": "Get-AppvClientPackage." },
+      "returnCodes": [],
+      "notes": [
+        "Add alone publishes to nobody; without -Global it publishes to SYSTEM only.",
+        "A package in use goes pending - global tasks apply only after a RESTART.",
+        "Full detail in App. L.9."
+      ],
+      "sourceRef": "App. L.2 row App-V",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "install4j",
+      "displayName": "install4j (Java)",
+      "install": "-q",
+      "installCommand": "\"{file}\" -q",
+      "uninstall": "-q",
+      "uninstallCommand": "\"{installdir}\\uninstall.exe\" -q",
+      "installLog": "-Dinstall4j.logToStderr=true",
+      "noReboot": "(not applicable)",
+      "uninstallerHint": "uninstall.exe in the installation folder",
+      "detectHint": { "kind": "registry-uninstall", "note": "QuietUninstallString is often EMPTY - pass -q through -AdditionalArgumentList." },
+      "returnCodes": [],
+      "notes": [
+        "NOT /S. Passing /S shows the language-selection dialog and hangs forever - this is the Aperio incident behind the App. L.1 rule.",
+        "Needs elevation (a RequestPrivilegesAction) or it stalls waiting for it.",
+        "Bundles its own JRE, so there is no external runtime dependency.",
+        "May dpinst-install drivers - extract the signer certificate and pre-trust it."
+      ],
+      "sourceRef": "App. L.2 row install4j (Java)",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "izpack",
+      "displayName": "IzPack (Java)",
+      "install": "auto-install.xml",
+      "installCommand": "java -jar \"{file}\" auto-install.xml",
+      "uninstall": "-q",
+      "uninstallCommand": "java -jar \"{installdir}\\Uninstaller\\uninstaller.jar\" -q",
+      "installLog": "(varies by build)",
+      "noReboot": "(not applicable)",
+      "uninstallerHint": "uninstaller.jar under the installation folder",
+      "detectHint": { "kind": "file-version", "note": "Response-file driven; detect by an installed file or a registry value if the build writes one." },
+      "returnCodes": [],
+      "notes": [
+        "Response-file driven: record one first, then ship it alongside the installer.",
+        "Needs a JRE on the machine unless the build bundles one."
+      ],
+      "sourceRef": "App. L.2 row IzPack (Java)",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "installaware",
+      "displayName": "InstallAware",
+      "install": "/s",
+      "installCommand": "\"{file}\" /s",
+      "uninstall": "(vendor-specific)",
+      "uninstallCommand": "(vendor-specific; read the Uninstall key)",
+      "installLog": "(varies by build)",
+      "noReboot": "(varies by build)",
+      "uninstallerHint": "read UninstallString from the registry",
+      "detectHint": { "kind": "registry-uninstall", "note": "Often an MSI underneath; if so prefer the ProductCode." },
+      "returnCodes": [],
+      "notes": [
+        "Confirm per build - the silent switch is not consistent across InstallAware versions."
+      ],
+      "sourceRef": "App. L.2 row InstallAware / Wise",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "wise",
+      "displayName": "Wise Installation System",
+      "install": "/s",
+      "installCommand": "\"{file}\" /s",
+      "uninstall": "(vendor-specific)",
+      "uninstallCommand": "(vendor-specific; read the Uninstall key)",
+      "installLog": "(varies by build)",
+      "noReboot": "(varies by build)",
+      "uninstallerHint": "read UninstallString from the registry",
+      "detectHint": { "kind": "registry-uninstall", "note": "Often an MSI underneath; if so prefer the ProductCode." },
+      "returnCodes": [],
+      "notes": [
+        "Legacy technology; confirm per build.",
+        "/silent is accepted by some builds instead of /s."
+      ],
+      "sourceRef": "App. L.2 row InstallAware / Wise",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "bitrock",
+      "displayName": "BitRock InstallBuilder",
+      "install": "--mode unattended --unattendedmodeui none",
+      "installCommand": "\"{file}\" --mode unattended --unattendedmodeui none",
+      "uninstall": "--mode unattended",
+      "uninstallCommand": "\"{installdir}\\uninstall.exe\" --mode unattended",
+      "installLog": "(writes its own log to %TEMP%)",
+      "noReboot": "(not applicable)",
+      "uninstallerHint": "uninstall.exe in the installation folder",
+      "detectHint": { "kind": "registry-uninstall", "note": "Detect by registry DisplayVersion or an installed file version." },
+      "returnCodes": [],
+      "notes": [
+        "Double-dash switches, not slash switches - a /S here does nothing and the installer goes interactive."
+      ],
+      "sourceRef": "App. L.2 row BitRock InstallBuilder",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "sfx-7zip",
+      "displayName": "7-Zip self-extracting archive",
+      "install": "-y",
+      "installCommand": "\"{file}\" -y -o\"{installdir}\"",
+      "uninstall": "(none; depends on the wrapped payload)",
+      "uninstallCommand": "(none; uninstall the payload the archive delivered)",
+      "installLog": "(none)",
+      "noReboot": "(not applicable)",
+      "uninstallerHint": "the archive itself installs nothing - inspect the payload",
+      "detectHint": { "kind": "file-version", "note": "Detect whatever the payload installed, not the archive." },
+      "returnCodes": [],
+      "notes": [
+        "A container, not an installer. Extract it and identify the REAL installer inside before choosing a switch.",
+        "An SFX config block may define its own RunProgram, which is what actually runs."
+      ],
+      "sourceRef": "App. L.2 row 7-Zip SFX",
+      "verifiedAt": "2026-09-14"
+    },
+    {
+      "engine": "sfx-winrar",
+      "displayName": "WinRAR self-extracting archive",
+      "install": "/S",
+      "installCommand": "\"{file}\" /S",
+      "uninstall": "(none; depends on the wrapped payload)",
+      "uninstallCommand": "(none; uninstall the payload the archive delivered)",
+      "installLog": "(none)",
+      "noReboot": "(not applicable)",
+      "uninstallerHint": "the archive itself installs nothing - inspect the payload",
+      "detectHint": { "kind": "file-version", "note": "Detect whatever the payload installed, not the archive." },
+      "returnCodes": [],
+      "notes": [
+        "A container, not an installer. Extract it and identify the REAL installer inside before choosing a switch.",
+        "The embedded SFX script decides what runs after extraction."
+      ],
+      "sourceRef": "App. L.2 row WinRAR SFX",
+      "verifiedAt": "2026-09-14"
+    }
+  ]
+}

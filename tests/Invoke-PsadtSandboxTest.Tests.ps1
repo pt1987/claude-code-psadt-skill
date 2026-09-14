@@ -325,8 +325,16 @@ Describe 'Invoke-PsadtSandboxTest' {
             # falling back, so every launcher exited 60008 with no log - on every package, not just one.
             $script:sysRunner | Should -Match 'ps-module-resources'
             $script:sysRunner | Should -Match "Add-Step 'GuestPrepare'"
-            # the shim must run BEFORE the package is copied and any toolkit import happens
-            $script:sysRunner.IndexOf("Add-Step 'GuestPrepare'") | Should -BeLessThan $script:sysRunner.IndexOf('Copy-Item -LiteralPath $pkgSrc')
+            # the shim must run BEFORE the package is staged and any toolkit import happens
+            $shim = $script:sysRunner.IndexOf("Add-Step 'GuestPrepare'")
+            $stage = $script:sysRunner.IndexOf('robocopy.exe $pkgSrc $pkg')
+            # Both anchors must EXIST. This comparison used to be made without that check, so when the
+            # staging switched from Copy-Item to robocopy the missing anchor returned -1 and the test
+            # failed with "expected less than -1" - a message about the test, not about the runner.
+            # An index of -1 on either side has to fail as a missing anchor, not as a broken order.
+            $shim | Should -BeGreaterThan -1 -Because "the GuestPrepare step must still be findable"
+            $stage | Should -BeGreaterThan -1 -Because "the package-staging call must still be findable"
+            $shim | Should -BeLessThan $stage
         }
 
         It 'repairs WMI for SYSTEM before the first PSADT session is opened' {

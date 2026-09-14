@@ -36,8 +36,8 @@ Verification is deterministic, not a second opinion. In order of preference:
 | Kind of value | Verify by |
 |---|---|
 | MSI identity, ProductCode, features, file versions, upgrade behaviour | `scripts/Get-PsadtMsiFacts.ps1` - it reads the database, so there is nothing to trust |
-| Installer engine | the **definitive** fingerprint from Appendix L.1, not a string match |
-| Silent switch | run it once with a timeout and a window/exit watch; expect exit 0 with no dialog |
+| Installer engine | `scripts/Get-PsadtInstallerEngine.ps1` - it reads the definitive fingerprint out of the binary and reports the offset it found it at; a hint-only match comes back as `low` confidence, never as an answer |
+| Silent switch | `scripts/Get-PsadtSwitchCandidates.ps1` narrows it to ranked candidates offline (App. L.0); the candidate becomes a verified value only by RUNNING it - a timeout plus a window/exit watch, expecting exit 0 with no dialog |
 | Driver signature and trust class | `scripts/Get-DriverSignatureInfo.ps1` |
 | Whether a package installs, detects and uninstalls | Phase 6 SYSTEM test - the detection script is the verdict |
 | Intune permissions | `scripts/Test-PsadtIntuneAccess.ps1`, three-valued, never a 403 probe |

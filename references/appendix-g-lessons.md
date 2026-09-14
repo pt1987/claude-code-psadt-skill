@@ -80,7 +80,11 @@ Two things that were NOT the problem, recorded so the next run does not "optimis
 - **Windows Sandbox is fast enough.** The complete seven-step loop - Install, detection, Uninstall,
   detection, Reinstall, Repair, final Uninstall, all as SYSTEM - ran in **5 minutes 58 seconds**
   unattended, with no elevation on the host and no DEV VM. Individual actions take ~2 min instead of ~20 s
-  because the VM has no warm file cache and Defender scans every file it sees. That is the price of a
+  because the VM has no warm file cache. (Corrected 2026-09-14: the far larger cause was NOT Defender
+  scanning - Microsoft documents that windefend is DISABLED in the sandbox image while Smart App Control
+  stays enabled, so wintrust blocked ~2 minutes per signed package waiting for a service that never
+  answers. `Disable-GuestSmartAppControl` in the runner removes it, and a heavy multi-MSI package is
+  testable again.) That is the price of a
   machine that has provably never seen the app; do not "fix" it by disabling Defender, which would test a
   configuration no real client has.
 - **The package itself never failed.** Not once across four runs. When a test harness and the thing under

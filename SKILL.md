@@ -176,7 +176,7 @@ bundle** - a GREEN Phase 6 proves the PACKAGE works, never that the app does; su
 **For an MSI the probe IS the research: `pwsh scripts/Get-PsadtMsiFacts.ps1 -Path <msi> -AsText`** -
 identity, signature, SHA256, features, decoded upgrade flags, shortcuts, file versions, registry rows and
 the Icon table in one call. Read it BEFORE web-searching anything; never hand-roll it (App. G).
-**Consult App. L before web-searching switches.** Each package type researches something else, and its
+**Switches: `Get-PsadtSwitchCandidates.ps1` first, then App. L.** Each package type researches something else, and its
 appendix says what: K · O.2 (store IDs, not switches) · P.2 · I.1. On a newer PSADT release, always diff
 the release notes for renamed or changed commands and verify with `Get-Command -Module
 PSAppDeployToolkit` before building - never adopt a version by number alone. Queries + version-sync
@@ -364,7 +364,8 @@ unchanged, so "App. L.1" or "Phase 6.2" still resolves.
 | App. I - **WinGet packaging** (opt-in, never the default) | `references/appendix-i-winget.md` |
 | App. J - **app-logo acquisition + verification** | `references/appendix-j-logo.md` |
 | App. K - **script-only / remediation packages** (ESP-safe) | `references/appendix-k-remediation.md` |
-| App. L - **installer technologies + silent switches**, consult BEFORE web research (L.8 MSIX/AppX, L.9 App-V) | `references/appendix-l-installers.md` |
+| App. L - **installer technologies + silent switches**, consult BEFORE web research (L.0 catalog lookup, L.8 MSIX/AppX, L.9 App-V) | `references/appendix-l-installers.md` |
+| **Engine catalog** - silent-switch defaults per installer engine, read by `Get-PsadtSwitchCandidates.ps1` | `references/switch-catalog/engine-defaults.json` |
 | App. M - **group assignment** (opt-in: config, naming, permissions) | `references/appendix-m-group-assignment.md` |
 | App. N - **certificate store deployment** (driver-trust / TrustedPublisher; RootCATrustedCertificates CSP OMA-URI; `New-IntuneTrustedCertPolicy.ps1`) | `references/appendix-n-cert-store.md` |
 | App. O - **browser-extension force-install** (Edge/Chrome/Firefox policy keys, Firefox `REG_MULTI_SZ` trap, merge/selective-remove; `New-BrowserExtensionPackage.ps1`) | `references/appendix-o-browser-extensions.md` |

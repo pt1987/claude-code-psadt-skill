@@ -226,6 +226,21 @@ Use this list as an intake form; whatever stays open = risk in the deployment.
 
 Research per app - without these answers there is no successful silent install:
 
+**Run the catalog FIRST - before any query below:**
+```
+pwsh scripts/Get-PsadtSwitchCandidates.ps1 -Path <installer>
+```
+It identifies the engine from the binary and returns ranked candidates from local sources only (App. L.0).
+Two outcomes, both useful:
+- **Candidates returned** - you now search to CONFIRM a specific switch on this build, not to discover one
+  from scratch. Hand the candidate table to the Researcher so it looks for contradictions instead of
+  rediscovering the same string.
+- **No candidate** - the output names the engine it could not resolve, and why. That is the sharper search
+  term, and it tells you the probe run is the only thing that will settle it.
+
+Either way the candidate is a CLAIM until a run proves it. The catalog shortens the search; it does not end
+it, and it never replaces Phase 6.
+
 **Mandatory search queries (examples):**
 ```
 "<AppName>" "<Version>" silent install command line
