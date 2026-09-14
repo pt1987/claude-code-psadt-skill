@@ -434,6 +434,20 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.30.2 - 2026-09-14
+- **Changed: a vendor-specific success code has to be in BOTH lists.** A sandbox step is judged twice, by
+  two independent lists that share a parameter name: PSADT's `-SuccessExitCodes` in the launcher decides
+  whether the deployment throws, `Invoke-PsadtSandboxTest.ps1 -SuccessExitCodes` decides whether the step
+  is painted green. Citrix Workspace Repair returns the documented success code 40032; it went into the
+  launcher, the run still came back RED, and three further runs were spent re-editing a launcher that had
+  been correct all along. Guide 6.1, Appendix B and Appendix G now say so, and a drift guard keeps the
+  documented default equal to the actual one.
+- **Changed: four silent PowerShell traps** added to Appendix B, each of which cost a run here: `@(...)`
+  around an EMPTY `Generic.List` throws in 5.1 and 7 alike; `-WindowStyle Hidden` is inherited by the
+  child's first window, so a progress GUI runs windowless and looks like a hang; two variables differing
+  only in case are the same variable; `-like` against a literal containing `*` matches too much.
+- All 12 applications packaged with 0.30.x are GREEN, Citrix Workspace included. Suite 552 -> 554.
+
 ### 0.30.1 - 2026-09-14
 - **Fixed: a scheduled task will not start on battery.** `schtasks /Create` defaults
   `DisallowStartIfOnBatteries` and `StopIfGoingOnBatteries` to TRUE, so on an unplugged laptop the task is
@@ -453,25 +467,3 @@ second copy to keep in sync.
   Greenshot 1.3.315 without `/ALLUSERS` installed into the SYSTEM profile and registered under
   `HKEY_USERS\S-1-5-18`; install, uninstall, reinstall and repair all returned exit 0 while an HKLM
   detection rule correctly said "absent". With `/ALLUSERS` the full gate is GREEN. Suite 551 -> 552.
-### 0.30.0 - 2026-09-14
-- **Fixed: the sandbox could not test a heavy package - and it was never the package.** Smart App Control
-  is enabled in the Windows Sandbox base image while Defender is disabled, so `wintrust` asks the disabled
-  Defender to rate every signed file and waits ~2 minutes per package. A bootstrapper chaining a dozen MSIs
-  took 30+ minutes and looked like a hang, three times. Two lines in the guest remove it: the same run then
-  finished in **5.7 minutes with exit 0**. This also corrects the ADK lesson in Appendix G, which blamed
-  Defender scanning - Defender was switched off the whole time.
-- **Fixed: nothing was visible inside the sandbox.** On this Sandbox build the `LogonCommand` process gets
-  no console window, so the 0.29.0 heartbeat went to a file nobody could see. There is now a top-most
-  progress window in the guest, the host mirrors it, and the runner measures whether a console exists at
-  all. Runs are cancellable with `STOP.txt` (guest shuts itself down in 5 s, no orphaned VM worker), a
-  failed VM start is no longer reported as "the VM was closed", and a timed-out action captures the guest's
-  process table and vendor logs before the VM is discarded.
-- **Added: `Get-PsadtInstallerEngine.ps1`** - identifies the installer engine from the binary. A definitive
-  marker always beats a hint, so an install4j installer carrying NSIS branding no longer gets `/S`, which
-  hangs on its language dialog forever. Reports marker, byte offset and region; an unrecognised file
-  returns `unknown`, never a guess.
-- **Added: `Get-PsadtSwitchCandidates.ps1` + `references/switch-catalog/`** - ranked switch candidates from
-  19 engine defaults, offline, before the first web query, with a reason for every miss. It is an ENGINE
-  catalog, not an application catalog, and **winget stays opt-in** including as a research source.
-- **Faster:** staging 481 MB into the guest via `robocopy /MT` (3.6 s to 0.6 s), `-Scenarios` for partial
-  iteration runs, per-action timeout default 900 s to 600 s. Suite 503 -> 551.

@@ -11,7 +11,7 @@
 - [2026-09-05 (same day, second package) - PuTTY 0.85: the lessons above, measured](#2026-09-05-same-day-second-package---putty-085-the-lessons-above-measured)
 - [2026-09-08 - BootForge + Windows ADK + WinPE add-on (three packages, one dependency chain)](#2026-09-08---bootforge--windows-adk--winpe-add-on-three-packages-one-dependency-chain)
 - [2026-09-11 - Google Chrome: the sandbox ran nothing as SYSTEM and blamed the package](#2026-09-11---google-chrome-the-sandbox-ran-nothing-as-system-and-blamed-the-package)
-- [2026-09-14 - Citrix Workspace + Greenshot: four faults that all blamed the package](#2026-09-14---citrix-workspace--greenshot-four-faults-that-all-blamed-the-package)
+- [2026-09-14 - Citrix Workspace + Greenshot: five faults that all blamed the package](#2026-09-14---citrix-workspace--greenshot-five-faults-that-all-blamed-the-package)
 
 ## Appendix G: Lessons Learned (from real-world incidents)
 
@@ -280,9 +280,9 @@ wrong in detail and would have produced another blind full run.
 
 ---
 
-### 2026-09-14 - Citrix Workspace + Greenshot: four faults that all blamed the package
+### 2026-09-14 - Citrix Workspace + Greenshot: five faults that all blamed the package
 
-One afternoon, two packages, four separate causes. Every one of them presented as "the package does not
+One afternoon, two packages, five separate causes. Every one of them presented as "the package does not
 work", and not one of them was the package.
 
 **1. The sandbox spent half an hour asking a switched-off Defender whether it trusted a file.** Three runs
@@ -322,6 +322,23 @@ device that ships as a green deployment where no user ever gets the application.
 > NSIS MultiUser `/allusers`, Squirrel is per-user by design (L.2). Exit code 0 does NOT mean a machine
 > install happened, and an HKLM detection rule reporting "absent" right after a successful install is the
 > signature of exactly this. Check the user hives before blaming the detection script.
+
+**5. The exit code was accepted by the launcher and rejected by the harness.** Citrix Workspace Repair
+returns **40032** - "the installed version is already current" (CTX695019), a documented success. It was
+added to `-SuccessExitCodes` on the `Start-ADTProcess` call in the launcher, and the run still came back
+RED on Repair. Three further runs went into re-editing that launcher, which had been correct since the
+first edit. The reason is that a sandbox step is judged **twice by two different lists**: PSADT's
+`-SuccessExitCodes` decides whether the deployment throws, and `Invoke-PsadtSandboxTest.ps1`
+`-SuccessExitCodes` (default `0, 1707, 3010, 1641`) decides whether the step is painted green. The
+launcher was green; the harness had never been told about 40032.
+
+> **BINDING: a vendor-specific success code goes into BOTH lists in the same edit.** A package that
+> deploys perfectly will otherwise report a failure it does not have, and the RED points at the launcher
+> rather than at the judge. Before changing anything after a RED, read WHICH of the two produced it.
+
+With 40032 passed to the harness as well, the same unchanged package passed the full gate: Install 157 s,
+Uninstall 85 s, Reinstall 72 s, Repair 30 s (exit 40032), FinalUninstall 72 s, every detection correct,
+**GREEN with no failed assertion** - on the tenth sandbox launch of the day for this one package.
 
 **What made #4 findable in one run:** the harness now captures every ARP entry from the guest - both HKLM
 views **and every HKEY_USERS subtree** - whenever a detection result contradicts the action that just

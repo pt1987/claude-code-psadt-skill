@@ -168,3 +168,30 @@ Describe 'the Phase 5.5 v3 -> v4 table points at cmdlets that exist' {
         ($unknown -join ', ') | Should -BeNullOrEmpty -Because "PSADT $($script:manifest.Version) exports no such command"
     }
 }
+
+Describe 'the documented harness success codes match the harness' {
+    # Added 2026-09-14. Guide 6.1 tells the reader the harness default list so they can see that it is a
+    # DIFFERENT list from PSADT's -SuccessExitCodes in the launcher - the distinction that cost three
+    # sandbox runs on Citrix Workspace (App. G, fault 5). A documented list that has drifted from the
+    # parameter default would teach exactly the wrong thing, silently.
+    BeforeAll {
+        $script:doc = Get-Content -LiteralPath (Join-Path $script:refDir 'phases-0-6.md') -Raw
+        $script:script61 = Get-Content -LiteralPath (Join-Path (Split-Path $script:refDir -Parent) 'scripts\Invoke-PsadtSandboxTest.ps1') -Raw
+
+        $m = [regex]::Match($script:doc, '(?s)has to be in BOTH lists.*?`([0-9, ]+)`')
+        $script:documented = @($m.Groups[1].Value -split ',' | ForEach-Object { [int]$_.Trim() })
+
+        $p = [regex]::Match($script:script61, '\[int\[\]\]\$SuccessExitCodes\s*=\s*@\(([0-9, ]+)\)')
+        $script:actual = @($p.Groups[1].Value -split ',' | ForEach-Object { [int]$_.Trim() })
+    }
+
+    It 'still finds both lists' {
+        # Anti-vacuity: if either regex stops matching, this fails instead of comparing two empty arrays.
+        $script:documented.Count | Should -BeGreaterOrEqual 3
+        $script:actual.Count | Should -BeGreaterOrEqual 3
+    }
+
+    It 'documents exactly the parameter default' {
+        ($script:documented -join ', ') | Should -Be ($script:actual -join ', ') -Because 'guide 6.1 quotes the harness default so the reader can tell the two lists apart'
+    }
+}

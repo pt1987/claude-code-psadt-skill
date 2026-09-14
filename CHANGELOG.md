@@ -2,6 +2,40 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.30.2 - 2026-09-14 - The exit code was accepted by the launcher and rejected by the harness
+
+Citrix Workspace 26.3.10.69 needed ten sandbox launches in one afternoon. Nine of them were faults in this
+skill, not in the package, and 0.30.0 and 0.30.1 already carry five of those. This release carries the last
+one, which is the one that wasted the most runs for the least reason.
+
+### Changed
+- **A vendor-specific success code has to be in BOTH lists** - guide 6.1, Appendix G fault 5, Appendix B.
+  A sandbox step is judged twice, by two independent lists that share a parameter name: PSADT's
+  `-SuccessExitCodes` on the `Start-ADTProcess` call inside the launcher decides whether the DEPLOYMENT
+  throws, and `Invoke-PsadtSandboxTest.ps1 -SuccessExitCodes` (default `0, 1707, 3010, 1641`) decides
+  whether the STEP is painted green. Citrix Workspace Repair returns 40032 - "already at the current
+  version", CTX695019, a documented success. It went into the launcher, the run still came back RED, and
+  three more runs were spent re-editing a launcher that had been correct since the first edit. With the
+  code passed to the harness as well, the unchanged package passed the full gate: Install 157 s, Uninstall
+  85 s, Reinstall 72 s, Repair 30 s (exit 40032), FinalUninstall 72 s, every detection correct, GREEN with
+  no failed assertion. **Before changing anything after a RED, read which of the two produced it.**
+- `references/appendix-b-anti-patterns.md` gains the four PowerShell traps that each cost a run here on
+  2026-09-14, all silent: `@(...)` around an EMPTY `Generic.List` throws *Argument types do not match* in
+  WinPS 5.1 AND pwsh 7 (use `.ToArray()`); `-WindowStyle Hidden` on `Start-Process` is inherited by the
+  FIRST window the child creates, so a progress GUI launched that way runs windowless and reads as a hang;
+  two variables differing only in case are the SAME variable, with no warning; `-like` against a literal
+  containing `*` silently matches more than it should (use `.Contains()`). The file crossed 100 lines and
+  gained the table of contents the doc guard requires.
+
+### Added
+- A drift guard in `tests/DocCrossRefs.Tests.ps1`: the harness default list quoted in guide 6.1 must equal
+  the actual parameter default in `Invoke-PsadtSandboxTest.ps1`, with an anti-vacuity test on both regexes.
+  A documented list that has drifted teaches exactly the wrong thing, silently.
+
+### Notes
+- All 12 applications packaged with 0.30.x are GREEN, Citrix Workspace included.
+- Suite 552 -> 554.
+
 ## 0.30.1 - 2026-09-14 - A scheduled task will not start on battery, and Greenshot installed into a profile nobody uses
 
 Packaging Greenshot with 0.30.0 produced four consecutive RED runs, none of which were the package. Two
