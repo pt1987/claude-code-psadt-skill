@@ -109,7 +109,8 @@ Describe 'Invoke-PsadtSandboxTest' {
         }
 
         It 'runs every deployment action as SYSTEM' {
-            $script:runner | Should -Match "/RU 'SYSTEM'"
+            $script:runner | Should -Match '<UserId>S-1-5-18</UserId>'
+            $script:runner | Should -Match '<RunLevel>HighestAvailable</RunLevel>'
             $script:runner | Should -Match '/RL HIGHEST'
         }
 
@@ -256,7 +257,11 @@ Describe 'Invoke-PsadtSandboxTest' {
             # /Run starts the task; the trigger only exists because /Create demands one. A near-future
             # /ST silences the stderr notice by ARMING a real trigger, which can re-launch the same
             # deployment .cmd as SYSTEM while the action is still running.
-            $script:sysRunner | Should -Match '/SC ONCE /ST 00:00'
+            # Registered from XML, which carries NO <Triggers> element at all. A task with no trigger can
+            # only ever be started on demand, which is strictly stronger than the old "schedule it in the
+            # past so it cannot fire by itself" trick this replaces.
+            $script:sysRunner | Should -Not -Match '<Triggers>'
+            $script:sysRunner | Should -Match '<AllowStartOnDemand>true</AllowStartOnDemand>'
         }
 
         It 'never formats the start time through the current culture' {
@@ -337,6 +342,21 @@ Describe 'Invoke-PsadtSandboxTest' {
             $shim | Should -BeLessThan $stage
         }
 
+        It 'registers the task so battery power cannot stop it from ever starting' {
+            # THE bug of 2026-09-14, invisible for hours: schtasks /Create defaults
+            # DisallowStartIfOnBatteries and StopIfGoingOnBatteries to TRUE. On a laptop running on
+            # battery the task is created, /Run returns 0, and the task then sits at status "Queued"
+            # forever without executing. Every action reports a bare timeout that names no cause, and
+            # the failure follows the POWER CABLE rather than the package - the same build passed hours
+            # earlier while plugged in. Registering from XML is the only way to turn both settings off.
+            $script:sysRunner | Should -Match '<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>'
+            $script:sysRunner | Should -Match '<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>'
+            # /Create also imposes a 72 hour execution limit; PT0S removes it, so a long action is
+            # bounded by this harness's own timeout and nothing else.
+            $script:sysRunner | Should -Match '<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>'
+            # schtasks /XML rejects a UTF-8 file with a parse error.
+            $script:sysRunner | Should -Match '\[System\.Text\.Encoding\]::Unicode'
+        }
         It 'repairs WMI for SYSTEM before the first PSADT session is opened' {
             # Measured 2026-09-11: Initialize-ADTModule queries Win32_ComputerSystem and the guest
             # answered 0x80070005 for SYSTEM, so Open-ADTSession threw - 60008 on every action, even

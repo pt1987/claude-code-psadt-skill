@@ -98,7 +98,8 @@
       "notes": [
         "/NORESTART is mandatory: without it Inno reboots the machine by itself (App. L.7).",
         "/SILENT shows a progress bar, /VERYSILENT shows none.",
-        "/SUPPRESSMSGBOXES only takes effect together with one of the silent switches."
+        "/SUPPRESSMSGBOXES only takes effect together with one of the silent switches.",
+        "PER-USER BY DEFAULT: add /ALLUSERS or the install lands in the SYSTEM profile when run by Intune, with exit code 0 and nothing in HKLM (App. L.7)."
       ],
       "sourceRef": "App. L.2 row Inno Setup",
       "verifiedAt": "2026-09-14"
@@ -119,7 +120,8 @@
         "/S is case-SENSITIVE.",
         "A bare Uninstall.exe /S returns BEFORE it has finished; _?=<installdir> makes it synchronous (App. L.7).",
         "On a MultiUser build check /allusers or /currentuser before trusting a bare /S.",
-        "/D=path sets the install directory, must be the LAST argument and must not be quoted."
+        "/D=path sets the install directory, must be the LAST argument and must not be quoted.",
+        "A MultiUser build is PER-USER BY DEFAULT: add /allusers or the install lands in the SYSTEM profile when run by Intune, with exit code 0 and nothing in HKLM (App. L.7)."
       ],
       "sourceRef": "App. L.2 row NSIS",
       "verifiedAt": "2026-09-14"
@@ -138,7 +140,7 @@
       "returnCodes": [],
       "notes": [
         "An NSIS build underneath, so the NSIS traps apply.",
-        "Defaults to a per-user install unless perMachine was set at build time or /allusers is passed."
+        "Defaults to a per-user install unless perMachine was set at build time or /allusers is passed - under Intune that means the SYSTEM profile, exit code 0, and nothing in HKLM (App. L.7)."
       ],
       "sourceRef": "App. L.2 row NSIS (electron-builder variant)",
       "verifiedAt": "2026-09-14"

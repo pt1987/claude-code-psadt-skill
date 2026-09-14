@@ -192,6 +192,17 @@ Relevant whenever the MSI is built in-house rather than shipped by a vendor.
 
 ### L.7 Inno Setup and NSIS - the two traps the switch table cannot hold
 
+> **A third trap, and it is the quietest: PER-USER BY DEFAULT (BINDING).** Inno Setup and NSIS MultiUser
+> builds install per-user unless told otherwise, and under Intune the "user" is SYSTEM. Measured on
+> Greenshot 1.3.315, 2026-09-14: without `/ALLUSERS` the install landed in
+> `C:\Windows\SysWOW64\config\systemprofile\AppData\Local\Programs\` and registered under
+> `HKEY_USERS\S-1-5-18\...\Uninstall\<AppId>_is1`. Install, uninstall, reinstall and repair each returned
+> **exit 0**, and an HKLM detection rule correctly reported "absent" every single time. On a real device
+> that is a green deployment that no user ever receives.
+> Force machine scope: Inno `/ALLUSERS`, NSIS MultiUser `/allusers`. Squirrel is per-user by design (L.2)
+> and needs a different decision, not a switch. **An HKLM rule saying "absent" immediately after a
+> successful install is the signature of this - check the user hives before touching the detect script.**
+
 Verified against the vendor documentation 2026-09-08 (jrsoftware.org, nsis.sourceforge.io). Both engines are
 open source, extremely common, and each has one behaviour that silently breaks an Intune package.
 

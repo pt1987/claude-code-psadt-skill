@@ -134,9 +134,31 @@ if ([int]$feature.InstallState -ne 1) {
 }
 # Windows allows exactly one sandbox instance. Starting a second one silently attaches to the first, which
 # would run this test against the previous run's dirty machine.
-$running = @(Get-Process -Name 'WindowsSandboxServer' -ErrorAction SilentlyContinue)
-if ($running.Count -gt 0) {
+# WindowsSandboxServer is the BROKER, vmmemWindowsSandbox is the VM. Both together mean a sandbox is
+# genuinely running. A broker WITHOUT a VM worker is a leftover from a previous run: microsoft/Windows-
+# Sandbox#124, filed by a Microsoft engineer, describes WindowsSandboxServer throwing an unhandled
+# exception during teardown and "blocking new launches until things are cleaned up", reproducing on
+# long-running, high-throughput sandbox sessions - exactly what an automated harness is.
+#
+# That leftover is the worst possible failure mode, because it is SILENT: the next run starts, the VM
+# comes up, and the scheduled task simply never executes. A different pre-check then times out on every
+# attempt, which reads as flakiness in the package. Measured 2026-09-14 across eight consecutive runs.
+# So the broker is cleaned up rather than reported as "a sandbox is already running", which it is not.
+$vmWorker = @(Get-Process -Name 'vmmemWindowsSandbox' -ErrorAction SilentlyContinue)
+$broker = @(Get-Process -Name 'WindowsSandboxServer' -ErrorAction SilentlyContinue)
+if ($vmWorker.Count -gt 0) {
     throw "A Windows Sandbox instance is already running. Close it first - Windows permits only one, and reusing it would test against a machine that is no longer clean."
+}
+if ($broker.Count -gt 0) {
+    Write-Warning "A leftover WindowsSandboxServer from a previous run is still present with no VM behind it (Windows-Sandbox#124). Clearing it - otherwise this run's scheduled tasks would silently never execute."
+    $broker | Stop-Process -Force -ErrorAction SilentlyContinue
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline -and @(Get-Process -Name 'WindowsSandboxServer' -ErrorAction SilentlyContinue).Count -gt 0) {
+        Start-Sleep -Seconds 2
+    }
+    if (@(Get-Process -Name 'WindowsSandboxServer' -ErrorAction SilentlyContinue).Count -gt 0) {
+        throw "A leftover WindowsSandboxServer could not be cleared. Reboot the host - the documented handle leak (Windows-Sandbox#126) is not recoverable any other way."
+    }
 }
 
 # --- 3. Work folder --------------------------------------------------------------------------------
@@ -239,8 +261,16 @@ function Set-Progress {
                 elapsed = $Elapsed
                 timeout = $Timeout
                 detail  = $Detail
-                done    = $script:report.steps.Count
-                total   = 14
+                done      = $script:report.steps.Count
+                total     = 14
+                # The NAMES, not just a count: an operator watching the VM wants to see what has already
+                # passed, not a number that means nothing without the source in front of them.
+                completed = @($script:report.steps | ForEach-Object {
+                        $ok = if ($null -ne $_.success) { [bool]$_.success }
+                        elseif ($null -ne $_.timedOut) { -not [bool]$_.timedOut }
+                        else { $true }
+                        [ordered]@{ name = $_.step; ok = $ok }
+                    })
                 verdict = $Verdict
                 updated = (Get-Date -Format 'HH:mm:ss')
             } | ConvertTo-Json -Compress) | Set-Content -LiteralPath $progressFile -Encoding UTF8
@@ -322,9 +352,22 @@ function Save-TimeoutDiagnostics {
         $dir = Join-Path $results 'timeout-diagnostics'
         New-Item -ItemType Directory -Path $dir -Force -ErrorAction SilentlyContinue | Out-Null
 
-        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-            Select-Object ProcessId, ParentProcessId, Name, CommandLine |
-            Sort-Object Name | Format-Table -AutoSize | Out-String -Width 500 |
+        # The scheduled task's own view. The process table shows what IS running; this shows what the
+        # Task Scheduler THINKS happened - and the difference between "never started" and "started and
+        # died" is the whole diagnosis. Measured 2026-09-14: a canary timed out with no SYSTEM process
+        # anywhere in the table, and nothing recorded whether its task had ever run.
+        & {
+            $ErrorActionPreference = 'Continue'
+            $q = & schtasks.exe /Query /TN "PsadtSbx_$Label" /V /FO LIST 2>&1
+            ($q | Out-String) | Set-Content -LiteralPath (Join-Path $dir "$Label.task.txt") -Encoding UTF8 -ErrorAction SilentlyContinue
+        }
+
+        # Get-Process, NOT Get-CimInstance: WMI is broken in the guest until GuestPrepare repairs it, and
+        # the FIRST pre-check runs before that. A diagnostic that needs the thing that may be broken
+        # collects nothing exactly when it is needed - measured 2026-09-14, an empty process table.
+        Get-Process -ErrorAction SilentlyContinue |
+            Select-Object Id, ProcessName, @{ n = 'Path'; e = { $_.Path } }, StartTime |
+            Sort-Object ProcessName | Format-Table -AutoSize | Out-String -Width 400 |
             Set-Content -LiteralPath (Join-Path $dir "$Label.processes.txt") -Encoding UTF8
 
         $cutoff = (Get-Date).AddHours(-2)
@@ -465,10 +508,64 @@ function Invoke-AsSystem {
     # reported as "das sieht nach fehlern aus" on 2026-09-14, and it is the single most misleading thing
     # in the output. Merging stderr into the output stream CAPTURES it instead of printing it; the text
     # is still kept for the failure message below, which is the only place it is of any use.
+    # THE task is registered from XML, not from schtasks' command-line switches, for one reason:
+    # /Create defaults DisallowStartIfOnBatteries and StopIfGoingOnBatteries to TRUE. On a laptop that
+    # is not plugged in, the task is created, /Run returns 0, and the task then sits at status
+    # "Queued" forever without ever executing. Every deployment action reports a bare timeout, no
+    # marker file is ever written, and nothing in the harness names the cause - it looks exactly like a
+    # broken package, and it comes and goes with whether the machine happens to be on mains power.
+    # Measured 2026-09-14: host on battery at 78%, task query showed
+    #   Status: Queued  /  Last Result: 0  /  Power Management: stop on battery, do not start on battery
+    # after runs that had passed hours earlier on the same build while plugged in.
+    # The XML also removes the 72-hour execution limit, which /Create sets and which would silently
+    # kill a long action.
+    $taskXmlFile = Join-Path $work "$Label.task.xml"
+    $taskXml = @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>PSADT sandbox harness</Author>
+    <Description>Runs one deployment action as SYSTEM inside Windows Sandbox.</Description>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="Author">
+      <UserId>S-1-5-18</UserId>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>5</Priority>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>$cmdFile</Command>
+    </Exec>
+  </Actions>
+</Task>
+"@
+    # schtasks /XML expects a Unicode file; a UTF-8 one is rejected with a parse error.
+    [System.IO.File]::WriteAllText($taskXmlFile, $taskXml, [System.Text.Encoding]::Unicode)
+
     $schtasksErr = Join-Path $work "$Label.schtasks.err"
     & {
         $ErrorActionPreference = 'Continue'
-        $createOutput = & schtasks.exe /Create /TN $taskName /TR "`"$cmdFile`"" /SC ONCE /ST 00:00 /RU 'SYSTEM' /RL HIGHEST /F 2>&1
+        $createOutput = & schtasks.exe /Create /TN $taskName /XML "`"$taskXmlFile`"" /F 2>&1
         ($createOutput | Out-String) | Set-Content -LiteralPath $schtasksErr -Encoding UTF8 -ErrorAction SilentlyContinue
     }
     if ($LASTEXITCODE -ne 0) { throw (Get-SchtasksFailure -Operation 'Create' -TaskName $taskName -Code $LASTEXITCODE -ErrFile $schtasksErr) }
@@ -514,6 +611,11 @@ function Invoke-AsSystem {
             throw 'CANCELLED_BY_HOST'
         }
     }
+    # The diagnostics run BEFORE the task is deleted. They used to run after it, so the task query could
+    # only ever report "the system cannot find the file specified" - a diagnostic that answers its own
+    # cleanup instead of the failure. Measured 2026-09-14: two runs' worth of useless evidence.
+    if (-not $raw) { Save-TimeoutDiagnostics -Label $Label }
+
     # Same stderr trap as /Create and /Run: a task that is already gone makes schtasks write to stderr,
     # which would end the whole run here - during CLEANUP, after the action itself already succeeded.
     # Nothing about this call's outcome changes the verdict, so it neither throws nor is checked.
@@ -523,7 +625,6 @@ function Invoke-AsSystem {
     }
 
     if (-not $raw) {
-        Save-TimeoutDiagnostics -Label $Label
         return [pscustomobject]@{ ExitCode = $null; Output = ''; TimedOut = $true; Seconds = [int]((Get-Date) - $startedAt).TotalSeconds }
     }
 
@@ -584,6 +685,43 @@ function Invoke-Detection {
     # A timeout puts no text on stdout, but it must never be read as "absent" either - assert on TimedOut
     # separately so a hung detection cannot masquerade as a correct negative result.
     $detected = (-not $r.TimedOut) -and (-not [string]::IsNullOrWhiteSpace($r.Output))
+    # A detection result that contradicts the deployment that just succeeded is the single most
+    # confusing outcome this harness can produce: the action says it worked, the rule says the app is
+    # absent, and the VM is discarded seconds later taking the only evidence with it. So when they
+    # disagree, the ARP entries the rule was looking at are captured first. Measured 2026-09-14:
+    # Greenshot installed with exit 0 in 14 s and was then reported as not detected.
+    if ($detected -ne $ExpectDetected) {
+        try {
+            $dir = Join-Path $results 'detection-diagnostics'
+            New-Item -ItemType Directory -Path $dir -Force -ErrorAction SilentlyContinue | Out-Null
+            $roots = @(
+                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+            )
+            foreach ($u in (Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue)) {
+                $roots += "Registry::$($u.Name)\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+                $roots += "Registry::$($u.Name)\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+            }
+            $rows = foreach ($root in $roots) {
+                if (-not (Test-Path -LiteralPath $root)) { continue }
+                foreach ($k in (Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
+                    $pr = Get-ItemProperty -LiteralPath $k.PSPath -ErrorAction SilentlyContinue
+                    if ($pr -and $pr.DisplayName) {
+                        [pscustomobject]@{
+                            Hive = $root; Key = $k.PSChildName; DisplayName = $pr.DisplayName
+                            DisplayVersion = $pr.DisplayVersion; Publisher = $pr.Publisher
+                            UninstallString = $pr.UninstallString
+                        }
+                    }
+                }
+            }
+            ($rows | Sort-Object DisplayName | Format-List | Out-String -Width 300) |
+                Set-Content -LiteralPath (Join-Path $dir "$Label.arp.txt") -Encoding UTF8
+            Write-Host ("   !! detection disagreed with the action - ARP dump written ({0} entries)" -f @($rows).Count) -ForegroundColor Yellow
+        }
+        catch { }
+    }
+
     Add-Step $Label @{ exitCode = $r.ExitCode; timedOut = $r.TimedOut; detected = $detected; stdout = $r.Output.Trim() }
     Add-Assertion "$Label not timed out" (-not $r.TimedOut)
     Add-Assertion "$Label exit code 0" ($r.ExitCode -eq 0) "exit=$($r.ExitCode) - Intune reads any non-zero exit as a detection ERROR, not as absent"

@@ -352,7 +352,7 @@ psadt-deploy/
 │  ├─ switch-catalog/                    engine defaults + JSON schema (App. L.0)
 │  ├─ Report-Template.html               the fixed dossier template
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
-└─ tests/                                Pester suite, 551 tests
+└─ tests/                                Pester suite, 552 tests
 ```
 
 Machine-local state lives outside the skill folder:
@@ -434,6 +434,25 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.30.1 - 2026-09-14
+- **Fixed: a scheduled task will not start on battery.** `schtasks /Create` defaults
+  `DisallowStartIfOnBatteries` and `StopIfGoingOnBatteries` to TRUE, so on an unplugged laptop the task is
+  created, `/Run` returns 0, and it then sits at status **Queued** forever. Every action reported a bare
+  timeout that named no cause, and the failure followed the POWER CABLE rather than the package. The task
+  is registered from XML now, which also drops the 72-hour execution limit `/Create` imposes.
+- **Fixed: a leftover `WindowsSandboxServer` silently broke every later run** (Windows-Sandbox#124). The
+  next sandbox came up and its scheduled tasks never executed, so a different pre-check timed out each
+  time and it read as flakiness. Broker-without-VM is now cleared at start instead of being reported as
+  "a sandbox is already running", which it is not.
+- **Fixed: the timeout diagnostics answered their own cleanup** - they ran after the task was deleted and
+  read the process table through WMI, which is broken in the guest until GuestPrepare repairs it.
+- **Added: an ARP dump whenever detection contradicts the action**, covering both HKLM views and every
+  `HKEY_USERS` subtree. It found the trap below in a single run. The progress window now also lists what
+  has already passed, with a tick per completed step.
+- **Note: an EXE installer that can install per-user must be forced to per-machine** (App. L.7, BINDING).
+  Greenshot 1.3.315 without `/ALLUSERS` installed into the SYSTEM profile and registered under
+  `HKEY_USERS\S-1-5-18`; install, uninstall, reinstall and repair all returned exit 0 while an HKLM
+  detection rule correctly said "absent". With `/ALLUSERS` the full gate is GREEN. Suite 551 -> 552.
 ### 0.30.0 - 2026-09-14
 - **Fixed: the sandbox could not test a heavy package - and it was never the package.** Smart App Control
   is enabled in the Windows Sandbox base image while Defender is disabled, so `wintrust` asks the disabled
@@ -456,14 +475,3 @@ second copy to keep in sync.
   catalog, not an application catalog, and **winget stays opt-in** including as a research source.
 - **Faster:** staging 481 MB into the guest via `robocopy /MT` (3.6 s to 0.6 s), `-Scenarios` for partial
   iteration runs, per-action timeout default 900 s to 600 s. Suite 503 -> 551.
-### 0.29.1 - 2026-09-14
-- **Fixed: Phase 5.5 mapped `Remove-MSIApplications` to `Remove-ADTApplication`**, which v4 does not
-  have - the v4 name is `Uninstall-ADTApplication`. The table's right column is now checked against the
-  installed toolkit's `FunctionsToExport`.
-- **Fixed: Appendix A named 60012 as the v4 deferral code.** 4.1.x exits a deferral with
-  `UI.DeferExitCode`, default 1602. Deliberately NOT added to the mandatory Intune table - every install
-  command this skill writes runs `-DeployMode Silent`, where a deferral cannot happen.
-- **Fixed: the Phase 4.3 MSI sample** put the `.mst` in `SupportFiles\` and passed an `-ArgumentList`
-  identical to the config defaults. The `.mst` belongs in `Files\` next to the MSI (`TRANSFORMSSECURE=1`);
-  extra properties go into `-AdditionalArgumentList`, because `-ArgumentList` REPLACES the defaults.
-- **Fixed: README claimed 441 Pester tests** in three places. Suite 501 -> 503.
