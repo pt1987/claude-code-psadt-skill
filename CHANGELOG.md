@@ -2,6 +2,48 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.32.0 - 2026-09-15 - Every dossier said the SYSTEM test was not run, including the ones whose gate was green
+
+Packaging JetBrains PyCharm 2026.2.2 (NSIS, 908 MB) turned up one trap in the app and one hole in this
+skill. The hole is the bigger of the two: the sandbox harness measures every action and writes result.json,
+records its path in the manifest - and the dossier ignored all of it.
+
+### Fixed
+- **The dossier now reads the sandbox verdict instead of asking for it.** `New-PsadtReport.ps1` takes
+  identity, artefacts and return codes from the manifest but not the test result, so without a hand-built
+  `-Metadata SystemTest` it printed *"the SYSTEM test was not run (no evidence)"* on a package whose gate
+  was GREEN. The only remedy was to retype, by hand, numbers the harness had already produced - exactly
+  the transcription this skill refuses everywhere else. It reads `results.sandboxTest.resultPath` now and
+  **judges** the rows rather than copying them: an action that exits 0 while the detection rule disagrees
+  is a **fail**, because that combination is the signature of a per-user install (App. L.7). A
+  caller-supplied `SystemTest` still wins, for the DEV-VM route that has no result.json, and an
+  unreadable result.json keeps the neutral "not run" default - unreadable evidence is not evidence.
+- **The guest progress window hung off the right edge of the sandbox desktop.** `WindowStartupLocation`
+  put it at x=208 on a 1353-wide guest, so TIMEOUT and DETECTION - the two columns a reader needs when a
+  phase misbehaves - were off screen. It is sized against the work area and positioned explicitly now,
+  which cannot place it outside the visible desktop. Verified in the guest.
+
+### Changed
+- `references/appendix-l-installers.md` L.7 gains a **fourth BINDING trap**, and the engine catalog
+  carries it as a note on `nsis`, `inno` and `electron-builder`:
+  **re-running the installer over an existing install is not a safe repair.** "NSIS has no repair verb, so
+  re-run the installer" is the standard substitute and assumes the installer tolerates finding itself
+  already there. Measured on PyCharm 2026.2.2 as SYSTEM: `installer.exe /S` over an existing install of
+  the same version **never returned** - killed at 603 s, the process alive with no child process, no
+  uninstaller and no error, while Install (217 s) and Reinstall (234 s) on a clean machine both exited 0.
+  Repair is then an explicit uninstall followed by an install. The signature is a Repair that times out
+  while Install and Reinstall pass.
+
+### Notes
+- PyCharm 2026.2.2 then passed the full gate: Install 185 s, Uninstall 32 s, Reinstall 195 s, Repair
+  210 s, FinalUninstall 32 s, every detection correct, **GREEN with no failed assertion** - at 908 MB the
+  largest package this skill has produced.
+- Two further traps that cost nothing only because the research found them first: PyCharm **Community is
+  discontinued** (the unified edition is the successor), and JetBrains writes the **build** number into
+  `DisplayVersion` (`262.10315.174`), not the marketing version - a rule comparing against `2026.2.2`
+  finds the app installed and decides it is years out of date, forever.
+- Suite 572 -> 576.
+
 ## 0.31.0 - 2026-09-14 - The window in the sandbox said the run was busy, never what it was doing
 
 The guest window added in 0.30.1 solved the right problem - a SYSTEM task draws nothing, and on some

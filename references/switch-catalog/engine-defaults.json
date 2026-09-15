@@ -18,7 +18,10 @@
       "installLog": "/l*v \"{log}\"",
       "noReboot": "/norestart",
       "uninstallerHint": "msiexec with the ProductCode; no uninstaller executable on disk",
-      "detectHint": { "kind": "msi-productcode", "note": "Use the MSI ProductCode rule; Get-PsadtMsiFacts.ps1 reads it from the file." },
+      "detectHint": {
+        "kind": "msi-productcode",
+        "note": "Use the MSI ProductCode rule; Get-PsadtMsiFacts.ps1 reads it from the file."
+      },
       "returnCodes": [],
       "notes": [
         "Public properties are passed as NAME=value on the command line.",
@@ -37,7 +40,10 @@
       "installLog": "/l*v \"{log}\"",
       "noReboot": "/norestart",
       "uninstallerHint": "patches are removed through the product they patched",
-      "detectHint": { "kind": "msi-patchcode", "note": "Detect the patched product version, not the patch itself." },
+      "detectHint": {
+        "kind": "msi-patchcode",
+        "note": "Detect the patched product version, not the patch itself."
+      },
       "returnCodes": [],
       "notes": [
         "/i and /p may NOT be combined; to patch during an install use PATCH=patch.msp with /i.",
@@ -56,7 +62,10 @@
       "installLog": "/v\"/l*v {log}\"",
       "noReboot": "/v\"/norestart\"",
       "uninstallerHint": "uninstall through the embedded MSI ProductCode",
-      "detectHint": { "kind": "msi-productcode", "note": "The embedded MSI carries the ProductCode; extract it to read the value." },
+      "detectHint": {
+        "kind": "msi-productcode",
+        "note": "The embedded MSI carries the ProductCode; extract it to read the value."
+      },
       "returnCodes": [],
       "notes": [
         "Everything after /v is handed to msiexec, so inner quotes have to survive two levels of parsing."
@@ -74,7 +83,10 @@
       "installLog": "/f2\"{log}\"",
       "noReboot": "(driven by the response file)",
       "uninstallerHint": "the original setup.exe with /x and a recorded uninstall.iss",
-      "detectHint": { "kind": "registry-uninstall", "note": "No ProductCode; detect by registry DisplayVersion or a file version." },
+      "detectHint": {
+        "kind": "registry-uninstall",
+        "note": "No ProductCode; detect by registry DisplayVersion or a file version."
+      },
       "returnCodes": [],
       "notes": [
         "Record the response file first: setup.exe /r /f1\"setup.iss\".",
@@ -93,13 +105,17 @@
       "installLog": "/LOG=\"{log}\"",
       "noReboot": "/NORESTART",
       "uninstallerHint": "unins000.exe in the installation folder",
-      "detectHint": { "kind": "registry-uninstall", "note": "Uninstall key is typically <AppName>_is1; QuietUninstallString is usually populated." },
+      "detectHint": {
+        "kind": "registry-uninstall",
+        "note": "Uninstall key is typically <AppName>_is1; QuietUninstallString is usually populated."
+      },
       "returnCodes": [],
       "notes": [
         "/NORESTART is mandatory: without it Inno reboots the machine by itself (App. L.7).",
         "/SILENT shows a progress bar, /VERYSILENT shows none.",
         "/SUPPRESSMSGBOXES only takes effect together with one of the silent switches.",
-        "PER-USER BY DEFAULT: add /ALLUSERS or the install lands in the SYSTEM profile when run by Intune, with exit code 0 and nothing in HKLM (App. L.7)."
+        "PER-USER BY DEFAULT: add /ALLUSERS or the install lands in the SYSTEM profile when run by Intune, with exit code 0 and nothing in HKLM (App. L.7).",
+        "Repair by re-running the installer is NOT universally safe: some builds hang when they find an existing install of the same version and branch into their own 'remove previous version' flow, which under /S in a SYSTEM task never completes (measured on JetBrains PyCharm 2026.2.2, App. L.7). Where that happens, Repair is an explicit uninstall followed by an install."
       ],
       "sourceRef": "App. L.2 row Inno Setup",
       "verifiedAt": "2026-09-14"
@@ -114,14 +130,18 @@
       "installLog": "(none; NSIS has no log switch)",
       "noReboot": "(installer-specific)",
       "uninstallerHint": "Uninstall.exe or uninst.exe in the installation folder",
-      "detectHint": { "kind": "registry-uninstall", "note": "No ProductCode; detect by registry DisplayVersion or a file version." },
+      "detectHint": {
+        "kind": "registry-uninstall",
+        "note": "No ProductCode; detect by registry DisplayVersion or a file version."
+      },
       "returnCodes": [],
       "notes": [
         "/S is case-SENSITIVE.",
         "A bare Uninstall.exe /S returns BEFORE it has finished; _?=<installdir> makes it synchronous (App. L.7).",
         "On a MultiUser build check /allusers or /currentuser before trusting a bare /S.",
         "/D=path sets the install directory, must be the LAST argument and must not be quoted.",
-        "A MultiUser build is PER-USER BY DEFAULT: add /allusers or the install lands in the SYSTEM profile when run by Intune, with exit code 0 and nothing in HKLM (App. L.7)."
+        "A MultiUser build is PER-USER BY DEFAULT: add /allusers or the install lands in the SYSTEM profile when run by Intune, with exit code 0 and nothing in HKLM (App. L.7).",
+        "Repair by re-running the installer is NOT universally safe: some builds hang when they find an existing install of the same version and branch into their own 'remove previous version' flow, which under /S in a SYSTEM task never completes (measured on JetBrains PyCharm 2026.2.2, App. L.7). Where that happens, Repair is an explicit uninstall followed by an install."
       ],
       "sourceRef": "App. L.2 row NSIS",
       "verifiedAt": "2026-09-14"
@@ -136,11 +156,15 @@
       "installLog": "(none)",
       "noReboot": "(not applicable)",
       "uninstallerHint": "Uninstall <App>.exe in the installation folder",
-      "detectHint": { "kind": "registry-uninstall", "note": "Often per-user by default; force machine scope with /allusers and detect accordingly." },
+      "detectHint": {
+        "kind": "registry-uninstall",
+        "note": "Often per-user by default; force machine scope with /allusers and detect accordingly."
+      },
       "returnCodes": [],
       "notes": [
         "An NSIS build underneath, so the NSIS traps apply.",
-        "Defaults to a per-user install unless perMachine was set at build time or /allusers is passed - under Intune that means the SYSTEM profile, exit code 0, and nothing in HKLM (App. L.7)."
+        "Defaults to a per-user install unless perMachine was set at build time or /allusers is passed - under Intune that means the SYSTEM profile, exit code 0, and nothing in HKLM (App. L.7).",
+        "Repair by re-running the installer is NOT universally safe: some builds hang when they find an existing install of the same version and branch into their own 'remove previous version' flow, which under /S in a SYSTEM task never completes (measured on JetBrains PyCharm 2026.2.2, App. L.7). Where that happens, Repair is an explicit uninstall followed by an install."
       ],
       "sourceRef": "App. L.2 row NSIS (electron-builder variant)",
       "verifiedAt": "2026-09-14"
@@ -155,7 +179,10 @@
       "installLog": "/l*v \"{log}\"",
       "noReboot": "/norestart",
       "uninstallerHint": "msiexec with the ProductCode",
-      "detectHint": { "kind": "msi-productcode", "note": "Plain MSI underneath." },
+      "detectHint": {
+        "kind": "msi-productcode",
+        "note": "Plain MSI underneath."
+      },
       "returnCodes": [],
       "notes": [
         "A fresh ProductCode per build is typical - re-probe with Get-PsadtMsiFacts.ps1 after every rebuild (App. L.6)."
@@ -173,7 +200,10 @@
       "installLog": "/log \"{log}\"",
       "noReboot": "/norestart",
       "uninstallerHint": "the bundle executable itself, cached under ProgramData\\Package Cache",
-      "detectHint": { "kind": "registry-uninstall", "note": "Detect the BundleProviderKey or a payload file version; a single ProductCode is unreliable because a bundle wraps several MSIs." },
+      "detectHint": {
+        "kind": "registry-uninstall",
+        "note": "Detect the BundleProviderKey or a payload file version; a single ProductCode is unreliable because a bundle wraps several MSIs."
+      },
       "returnCodes": [],
       "notes": [
         "Verbs: /install /uninstall /modify /repair /layout /help.",
@@ -193,7 +223,10 @@
       "installLog": "(none)",
       "noReboot": "(not applicable)",
       "uninstallerHint": "Update.exe in the per-user installation folder",
-      "detectHint": { "kind": "file-version", "note": "Per-user under %LocalAppData%; run detection in the right context." },
+      "detectHint": {
+        "kind": "file-version",
+        "note": "Per-user under %LocalAppData%; run detection in the right context."
+      },
       "returnCodes": [],
       "notes": [
         "Usually a PER-USER install; a SYSTEM/Win32 deployment needs care."
@@ -211,7 +244,10 @@
       "installLog": "DISM -LogPath \"{log}\"",
       "noReboot": "(not applicable)",
       "uninstallerHint": "provisioning removal plus per-user removal; both are needed",
-      "detectHint": { "kind": "appx-provisioned", "note": "Get-AppxProvisionedPackage -Online, NOT Get-AppxPackage." },
+      "detectHint": {
+        "kind": "appx-provisioned",
+        "note": "Get-AppxProvisionedPackage -Online, NOT Get-AppxPackage."
+      },
       "returnCodes": [],
       "notes": [
         "Not a classic installer - read App. L.8 before writing any hook.",
@@ -232,7 +268,10 @@
       "installLog": "client event log",
       "noReboot": "(not applicable)",
       "uninstallerHint": "unpublish then remove; both are needed",
-      "detectHint": { "kind": "appv-package", "note": "Get-AppvClientPackage." },
+      "detectHint": {
+        "kind": "appv-package",
+        "note": "Get-AppvClientPackage."
+      },
       "returnCodes": [],
       "notes": [
         "Add alone publishes to nobody; without -Global it publishes to SYSTEM only.",
@@ -252,7 +291,10 @@
       "installLog": "-Dinstall4j.logToStderr=true",
       "noReboot": "(not applicable)",
       "uninstallerHint": "uninstall.exe in the installation folder",
-      "detectHint": { "kind": "registry-uninstall", "note": "QuietUninstallString is often EMPTY - pass -q through -AdditionalArgumentList." },
+      "detectHint": {
+        "kind": "registry-uninstall",
+        "note": "QuietUninstallString is often EMPTY - pass -q through -AdditionalArgumentList."
+      },
       "returnCodes": [],
       "notes": [
         "NOT /S. Passing /S shows the language-selection dialog and hangs forever - this is the Aperio incident behind the App. L.1 rule.",
@@ -273,7 +315,10 @@
       "installLog": "(varies by build)",
       "noReboot": "(not applicable)",
       "uninstallerHint": "uninstaller.jar under the installation folder",
-      "detectHint": { "kind": "file-version", "note": "Response-file driven; detect by an installed file or a registry value if the build writes one." },
+      "detectHint": {
+        "kind": "file-version",
+        "note": "Response-file driven; detect by an installed file or a registry value if the build writes one."
+      },
       "returnCodes": [],
       "notes": [
         "Response-file driven: record one first, then ship it alongside the installer.",
@@ -292,7 +337,10 @@
       "installLog": "(varies by build)",
       "noReboot": "(varies by build)",
       "uninstallerHint": "read UninstallString from the registry",
-      "detectHint": { "kind": "registry-uninstall", "note": "Often an MSI underneath; if so prefer the ProductCode." },
+      "detectHint": {
+        "kind": "registry-uninstall",
+        "note": "Often an MSI underneath; if so prefer the ProductCode."
+      },
       "returnCodes": [],
       "notes": [
         "Confirm per build - the silent switch is not consistent across InstallAware versions."
@@ -310,7 +358,10 @@
       "installLog": "(varies by build)",
       "noReboot": "(varies by build)",
       "uninstallerHint": "read UninstallString from the registry",
-      "detectHint": { "kind": "registry-uninstall", "note": "Often an MSI underneath; if so prefer the ProductCode." },
+      "detectHint": {
+        "kind": "registry-uninstall",
+        "note": "Often an MSI underneath; if so prefer the ProductCode."
+      },
       "returnCodes": [],
       "notes": [
         "Legacy technology; confirm per build.",
@@ -329,7 +380,10 @@
       "installLog": "(writes its own log to %TEMP%)",
       "noReboot": "(not applicable)",
       "uninstallerHint": "uninstall.exe in the installation folder",
-      "detectHint": { "kind": "registry-uninstall", "note": "Detect by registry DisplayVersion or an installed file version." },
+      "detectHint": {
+        "kind": "registry-uninstall",
+        "note": "Detect by registry DisplayVersion or an installed file version."
+      },
       "returnCodes": [],
       "notes": [
         "Double-dash switches, not slash switches - a /S here does nothing and the installer goes interactive."
@@ -347,7 +401,10 @@
       "installLog": "(none)",
       "noReboot": "(not applicable)",
       "uninstallerHint": "the archive itself installs nothing - inspect the payload",
-      "detectHint": { "kind": "file-version", "note": "Detect whatever the payload installed, not the archive." },
+      "detectHint": {
+        "kind": "file-version",
+        "note": "Detect whatever the payload installed, not the archive."
+      },
       "returnCodes": [],
       "notes": [
         "A container, not an installer. Extract it and identify the REAL installer inside before choosing a switch.",
@@ -366,7 +423,10 @@
       "installLog": "(none)",
       "noReboot": "(not applicable)",
       "uninstallerHint": "the archive itself installs nothing - inspect the payload",
-      "detectHint": { "kind": "file-version", "note": "Detect whatever the payload installed, not the archive." },
+      "detectHint": {
+        "kind": "file-version",
+        "note": "Detect whatever the payload installed, not the archive."
+      },
       "returnCodes": [],
       "notes": [
         "A container, not an installer. Extract it and identify the REAL installer inside before choosing a switch.",
