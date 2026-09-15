@@ -74,6 +74,10 @@ people actually make, which is worth keeping - one is the rule, the other is the
   sequential tool calls against one artefact instead of one script - for an MSI that script exists, it is
   `scripts/Get-PsadtMsiFacts.ps1`; running Phase 6 strictly after Phases 7-8 when they are independent;
   a three-agent research fan-out for an app whose vendor ships an official MSI (the MSI is the research).
+- **Dispatching a research sub-agent before `scripts/Get-PsadtLocalEvidence.ps1` has run**, or dispatching
+  more of them than the `AgentBudget` it reports. The answer is usually already in the Uninstall registry
+  or in the binary; a fixed three-agent fan-out once cost 400k tokens to rediscover a `QuietUninstallString`
+  Windows had been storing all along. Phase 1.3, `rule:research-gate`.
 - Hand-building a Wikimedia thumbnail URL (only pre-rendered widths are served - `1024px-` returns HTTP 400
   where `1280px-` works; take `thumburl` from the API verbatim) or guessing a Commons file name instead of
   searching the File namespace. Both cost time twice in one session; App. J now has them.

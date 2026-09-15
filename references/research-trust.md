@@ -41,6 +41,7 @@ Verification is deterministic, not a second opinion. In order of preference:
 | Driver signature and trust class | `scripts/Get-DriverSignatureInfo.ps1` |
 | Whether a package installs, detects and uninstalls | Phase 6 SYSTEM test - the detection script is the verdict |
 | Intune permissions | `scripts/Test-PsadtIntuneAccess.ps1`, three-valued, never a 403 probe |
+| Whether a question needs research at all | `scripts/Get-PsadtLocalEvidence.ps1` - it answers from the Uninstall registry, the binary and this skill's own corpus, and only what it reports as OPEN is worth a sub-agent (phase 1.3) |
 
 A value that cannot be verified by any of these is not blocked - it is **stated as an assumption**
 per the operating mode, so a human sees it before it ships.

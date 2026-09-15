@@ -139,6 +139,11 @@ pwsh scripts/Initialize-PsadtSkill.ps1 -Fix -Set @{
 
 Before any package is built: is the local PSADT module still up to date? Breaking changes between minor versions do happen (4.0.x -> 4.1.x parameter renames).
 
+`scripts/Get-PsadtLocalEvidence.ps1` already answers the *command-drift* half of this locally: it reads
+the installed module's manifest with `Import-PowerShellDataFile` (never `Import-Module` - that has side
+effects) and compares `FunctionsToExport` against the commands this skill uses. So no sub-agent is ever
+spent on "did a cmdlet get renamed" - only the release-notes read below needs the network.
+
 **Check commands (online + local):**
 
 ```powershell
@@ -222,26 +227,50 @@ Without answers to these points the package will be junk. Clarify with the stake
 
 Use this list as an intake form; whatever stays open = risk in the deployment.
 
-### 1.3 Web research on the specific installer
+### 1.3 Research on the specific installer - gated
 
-Research per app - without these answers there is no successful silent install:
+Without these answers there is no successful silent install. But most of them are already on this
+machine, and Phase 2 used to pay three parallel sub-agents to go looking for them anyway.
 
-**Run the catalog FIRST - before any query below:**
+**Run the ladder FIRST - before any query below, and before dispatching anything:**
 ```
-pwsh scripts/Get-PsadtSwitchCandidates.ps1 -Path <installer>
+pwsh scripts/Get-PsadtLocalEvidence.ps1 -Path <installer>
 ```
-It identifies the engine from the binary and returns ranked candidates from local sources only (App. L.0).
-Two outcomes, both useful:
-- **Candidates returned** - you now search to CONFIRM a specific switch on this build, not to discover one
-  from scratch. Hand the candidate table to the Researcher so it looks for contradictions instead of
-  rediscovering the same string.
-- **No candidate** - the output names the engine it could not resolve, and why. That is the sharper search
-  term, and it tells you the probe run is the only thing that will settle it.
 
-Either way the candidate is a CLAIM until a run proves it. The catalog shortens the search; it does not end
-it, and it never replaces Phase 6.
+Three rungs, all deterministic, all offline:
 
-**Mandatory search queries (examples):**
+| Rung | Question | What answers it |
+|---|---|---|
+| 1 | **Is it already installed here?** | the Uninstall registry (HKLM 64-bit + 32-bit views, HKCU). A `QuietUninstallString` is not a claim - it is the vendor's own registration of a silent uninstall that works. `UninstallString`, `InstallLocation`, `InstallSource`, the ProductCode in the key name and `HelpLink` come with it. |
+| 2 | **Is the binary here?** | probe it, never search for it: `Get-PsadtSwitchCandidates.ps1` (engine, verified-switch store, ranked candidates - L.0) and, for an MSI, `Get-PsadtMsiFacts.ps1` - identity, signature, SHA256, features, decoded upgrade flags, shortcuts, file versions, registry rows and the Icon table in ONE call. Never hand-roll either (App. G). |
+| 3 | **Is it already written down?** | this skill's own corpus (App. A / B / G / L), plus a vendor documentation URL taken from `HelpLink`, `URLInfoAbout` or the MSI's `ARPHELPLINK`. The ladder NAMES that URL and never fetches it - one direct fetch by you is the cheap middle step between the ladder and an agent. |
+
+Rung 2 has two outcomes and both are useful. **Candidates returned** - the remaining search confirms a
+specific switch on this build instead of discovering one from scratch. **No candidate** - the output
+names the engine it could not resolve, and why; that is the sharper search term, and it says the probe
+run is the only thing that will settle it.
+
+The ladder returns every question in one of three states - `Closed` (local evidence answers it),
+`Provisional` (a local claim exists, and the Phase 6 probe run settles it, not a web search) or
+`Open` - plus three collections:
+
+- `OpenQuestions[]` - the questions a sub-agent is the right tool for
+- `AgentBudget` - their count
+- `Deferred[]` - open, but a search is the wrong answer: `probe-run`, `recheck-after-binary`,
+  `accept-unanswered`. Nothing is dropped silently.
+
+<!-- rule:research-gate -->
+**`AgentBudget` is the dispatch rule.** Zero open questions means zero sub-agents. N open questions
+means at most N, one per question, and each agent gets that question's `KnownContext` - the engine, the
+ProductCode, the provisional switch, the ARP row - so it searches to CONFIRM rather than to discover.
+A fixed three-agent fan-out is an anti-pattern (App. B), and it is where a 400k-token research pass
+came from.
+
+Two questions can **never** be closed locally, and the ladder says so with `CanCloseLocally = $false`:
+the **external runtime prerequisite** (1.4) and **known Intune pitfalls**. A statement about other
+people's fleets does not follow from this machine. Those are the agents worth spending.
+
+**Query templates - for an OPEN question, never for a closed one:**
 ```
 "<AppName>" "<Version>" silent install command line
 "<AppName>" msi transform mst enterprise deployment
@@ -262,20 +291,24 @@ it, and it never replaces Phase 6.
 - `/r/SCCM`, `/r/Intune` on Reddit
 - GitHub: search for `<appname> intune win32` or `<appname> PSADT`
 
+Whatever comes back is a CLAIM, whichever rung produced it. The ladder shortens the search; it never
+ends it, and it never replaces Phase 6 (`research-is-data`, `references/research-trust.md`).
+
 **Document the minimal result:**
 
-| Question | Answer | Source |
-|---|---|---|
-| Silent install CMD | `<...>` | |
-| Silent uninstall CMD | `<...>` | |
-| Known exit codes (success, reboot, error) | `0, 3010, ...` | |
-| Installer log file path | `<...>` | |
-| Dependency installer (if separate) | `<...>` | |
-| External runtime prerequisite (1.4) | `<...>` | |
-| Known Intune pitfalls | `<...>` | |
-| Known post-install config (registry / XML) | `<...>` | |
+| Question | Answer | Source | Closed by |
+|---|---|---|---|
+| Silent install CMD | `<...>` | | rung 2 - stage-0 hash match, or MSI |
+| Silent uninstall CMD | `<...>` | | rung 1 - `QuietUninstallString`, or the ProductCode |
+| Known exit codes (success, reboot, error) | `0, 3010, ...` | | `Get-PsadtReturnCodes.ps1`; an MSI closes the rest |
+| Installer log file path | `<...>` | | rung 2 - engine default |
+| Dependency installer (if separate) | `<...>` | | rung 2 for a Burn bundle; otherwise the Phase 6 run |
+| External runtime prerequisite (1.4) | `<...>` | | **never locally - agent** |
+| Known Intune pitfalls | `<...>` | | rung 3 narrows it; **otherwise agent** |
+| Known post-install config (registry / XML) | `<...>` | | rung 2 - the MSI Property / Registry / Shortcut tables |
 
-Without this table filled in: **do not package**.
+Without this table filled in - every row either answered, or explicitly `Closed` / `Deferred` by the
+ladder: **do not package**.
 
 **Example (Adobe Acrobat Pro):**
 - Admin guide: https://www.adobe.com/devnet-docs/acrobatetk/

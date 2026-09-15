@@ -13,7 +13,7 @@ on demand instead of inlining it.
 ## Operating mode (autonomy first)
 
 1. **Research before you ask.** Anything researchable - latest version, installer type, silent/uninstall/
-   repair switches, ProductCode, known Intune issues - is resolved by the Phase 2 research fan-out, never
+   repair switches, ProductCode, known Intune issues - is resolved by the gated Phase 2 ladder, never
    by a question.
 2. **State founded assumptions, then proceed.** Emit one short `Assumptions:` status line (plain text is
    allowed for status / intermediate results) and keep working. Do not wait for confirmation on researched facts.
@@ -168,19 +168,18 @@ work the WARN lines - each carries its own `.Fix`. WinGet and the optional uploa
 **Phase 1 - Intake.** A PSADT v4 package always serves all three deployment types - plan them now, not
 at the end. Resolve scope via gates 1 + 2 only, every option pre-filled from research. Catalogue: 1.2.
 
-**Phase 2 - Research fan-out (parallel sub-agents, no asking back).** Dispatch the three Researcher
-roles concurrently and show the findings table before scaffold. Record per deployment type: switch,
-expected exit codes, log path, known leftovers. **Also whether the app needs a runtime it does not
-bundle** - a GREEN Phase 6 proves the PACKAGE works, never that the app does; surface it at Gate 1
-(phase 1.4).
-**For an MSI the probe IS the research: `pwsh scripts/Get-PsadtMsiFacts.ps1 -Path <msi> -AsText`** -
-identity, signature, SHA256, features, decoded upgrade flags, shortcuts, file versions, registry rows and
-the Icon table in one call. Read it BEFORE web-searching anything; never hand-roll it (App. G).
-**Switches: `Get-PsadtSwitchCandidates.ps1` first, then App. L.** Each package type researches something else, and its
-appendix says what: K · O.2 (store IDs, not switches) · P.2 · I.1. On a newer PSADT release, always diff
-the release notes for renamed or changed commands and verify with `Get-Command -Module
-PSAppDeployToolkit` before building - never adopt a version by number alone. Queries + version-sync
-check: phases 1.1/1.3, App. D.
+**Phase 2 - Research, gated.** `pwsh scripts/Get-PsadtLocalEvidence.ps1 -Path <installer>` FIRST: the
+local ladder - installed here? (the Uninstall registry) · binary here? (`Get-PsadtMsiFacts.ps1` /
+`Get-PsadtSwitchCandidates.ps1`) · written down already? (this skill's corpus, and it NAMES a vendor
+doc URL for you to fetch) - returning `OpenQuestions[]` + `AgentBudget`.
+<!-- rule:research-gate -->
+**`AgentBudget` IS the dispatch rule: 0 open questions = 0 sub-agents; N = at most N, one per question,
+each given that question's `KnownContext` so it confirms instead of rediscovering.** Never a fixed three,
+never one for a question the ladder closed. One WebFetch is not a fan-out.
+Findings table before scaffold: switch, exit codes, log path, leftovers, and the unbundled runtime Gate 1
+decides (phase 1.4) - a GREEN Phase 6 proves the PACKAGE works, never that the app does.
+Ladder detail, queries, per-type research (K · O.2 · P.2 · I.1) and the PSADT release-notes diff (verify
+with `Get-Command -Module PSAppDeployToolkit`, never adopt a version by number): phases 1.1/1.3, App. D/L.
 
 **Phase 3 - Scaffold.** **A generator is the default route** - it writes the launcher, the detection
 script, the per-run `LogName` and the manifest in one go: MSI → `New-MsiPackage.ps1`, browser extension
@@ -299,15 +298,16 @@ independent work; never let a gate be crossed without its handoff.
 
 | Role | Run as | Owns | Handoff (gate) |
 |---|---|---|---|
-| **Researcher x3** | parallel agents (prefer `superpowers:dispatching-parallel-agents` if installed; else fan out directly with the Agent tool) | (a) PSADT version + command-change check, (b) app silent/uninstall/repair switches, (c) Intune pitfalls | structured findings table, shown before scaffold |
+| **Researcher x0-3** | parallel agents, **one per entry in `OpenQuestions[]` and never more** (prefer `superpowers:dispatching-parallel-agents` if installed; else the Agent tool) | exactly one open question each, with its `KnownContext` and `AcceptanceCriteria` from `Get-PsadtLocalEvidence.ps1`. The PSADT version + command-change check is NOT one of them - the ladder answers it from the installed module | structured findings table, shown before scaffold |
 | **Builder** | inline (you) | scaffold + fill all 3 hooks + Extensions module | a package that passes pre-flight |
 | **Reviewer/QA** | agent (prefer `superpowers:requesting-code-review` if installed; else a direct review agent / `/code-review`) | pre-flight verdict, SYSTEM-test diagnosis, report + logo sanity | GREEN gate, or a blockade report |
 
 <!-- rule:hard-handoff-gates -->
 **Hard handoff rules:** Builder may not package until Reviewer returns GREEN on pre-flight. Upload (Phase 9) may
-not run until Reviewer returns GREEN on the SYSTEM test (Install + Uninstall). Researchers run concurrently
-and return before scaffold. The `superpowers:*` skills above are an OPTIONAL methodology layer: if that plugin
-is not installed, fan out / review with the native Agent tool (and `/code-review`) - the workflow never depends on it.
+not run until Reviewer returns GREEN on the SYSTEM test (Install + Uninstall). Researchers run only against
+`OpenQuestions[]` - concurrently, and returning before scaffold; an empty list means the fan-out does not
+happen. The `superpowers:*` skills above are an OPTIONAL methodology layer: if that plugin is not installed,
+fan out / review with the native Agent tool (and `/code-review`) - the workflow never depends on it.
 
 ## Self-update
 

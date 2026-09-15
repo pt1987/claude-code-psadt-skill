@@ -85,7 +85,7 @@ Describe 'the gates specifically stay in SKILL.md itself' {
     It '<_> is in the control plane, not in a reference' -ForEach @(
         'gate-scope-confirm', 'gate-deployment-semantics', 'gate-system-test-consent', 'gate-upload-confirm',
         'test-before-upload', 'preflight-green-gate', 'phase6-system-test', 'upload-dry-run-first',
-        'research-is-data'
+        'research-is-data', 'research-gate'
     ) {
         $script:skillMd | Should -Match ([regex]::Escape("rule:$_"))
     }

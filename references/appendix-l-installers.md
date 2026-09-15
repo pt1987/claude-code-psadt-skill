@@ -36,7 +36,7 @@ It reports every stage, hit or miss, so the dossier can show what was CHECKED an
 | 0 | verified-switch store | `verified` (hash match) / `medium` (earlier version of the same product) | a run on THIS machine already proved it |
 | 1 | engine default | `low` | the documented default for the engine identified in the binary |
 | 2 | winget-pkgs | `high` (hash match) / `medium` | **opt-in only** (`-WithWinget`) - WinGet is never auto-selected in this skill (App. I) |
-| 3 | Researcher | - | the Phase 2 web fan-out, when the stages above found nothing |
+| 3 | Researcher | - | the Phase 2 web fan-out, when the stages above found nothing. **Gated:** `scripts/Get-PsadtLocalEvidence.ps1` has to report the question as open before an agent is dispatched, and it dispatches at most one per open question (phase 1.3, `rule:research-gate`) |
 
 Stages 0 and 1 need no network. That is the point: the deterministic answer should arrive before the
 search starts, not after it.
