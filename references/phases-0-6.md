@@ -627,6 +627,14 @@ Why this is the default:
 - The verdict is keyed on the **detection script**, which is what Intune evaluates. Package-specific facts
   (an updater that must be absent, a binary that must exist) are asserted through the `-Paths*` parameters.
 
+**What the operator sees in the VM.** A SYSTEM scheduled task draws nothing on the interactive desktop,
+and on some Sandbox builds the `<LogonCommand>` process gets no console window at all - so a healthy
+15-minute install and a hang look identical. A separate top-most window in the guest therefore polls the
+runner's `results\progress.json` and shows the WHOLE plan at once: every phase with a tick, a cross or a
+live marker, and for the selected phase its exit code, duration, start and end, timeout, detection result
+and its own transcript. It is passive - it never drives the run, and closing it stops nothing. If it did
+not open, `SHOW-PROGRESS.cmd` in the work folder starts it by hand.
+
 Prerequisite: the optional feature `Containers-DisposableClientVM`. The script checks it through
 `Win32_OptionalFeature` (WMI, no elevation - deliberately not `Get-WindowsOptionalFeature`, which needs
 admin) and prints the one-time enable command if it is off. Windows permits exactly ONE sandbox instance,

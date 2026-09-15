@@ -70,7 +70,11 @@ param(
     # to pass for an upload. A shorter set is for ITERATION: proving a silent switch does not need the
     # repair and reinstall passes, and running them anyway turns a 10-minute question into an hour.
     # What actually ran is recorded in the report, so a partial run can never be mistaken for the gate.
-    [ValidateSet('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')]
+    # Deliberately NOT [ValidateSet]: a parameter attribute runs BEFORE the body, so `pwsh -File ...
+    # -Scenarios Install,Uninstall` - the documented form, and the one the -File binder turns into a
+    # single "Install,Uninstall" string - was rejected out of hand, before Expand-CommaSeparated below
+    # could split it. Measured 2026-09-14: the run never started and only said the argument "does not
+    # belong to the set". The names are checked after the split instead, with the same error in substance.
     [string[]]$Scenarios = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall'),
 
     # Ceiling for the whole run, measured on the host. Protects against a VM that never boots.
@@ -214,6 +218,12 @@ $PathsPresentAfterInstall = Expand-CommaSeparated $PathsPresentAfterInstall
 $PathsAbsentAfterInstall = Expand-CommaSeparated $PathsAbsentAfterInstall
 $PathsAbsentAfterUninstall = Expand-CommaSeparated $PathsAbsentAfterUninstall
 $Scenarios = Expand-CommaSeparated $Scenarios
+$knownScenarios = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+$unknownScenarios = @($Scenarios | Where-Object { $knownScenarios -notcontains $_ })
+if ($unknownScenarios.Count) {
+    throw ("-Scenarios: unknown name(s) " + ($unknownScenarios -join ', ') +
+        ". Valid: " + ($knownScenarios -join ', ') + ". Comma-separated is fine.")
+}
 # Install is not optional: every later scenario asserts against a machine it left behind.
 if ($Scenarios -notcontains 'Install') { $Scenarios = @('Install') + $Scenarios }
 
@@ -250,9 +260,62 @@ $assertions = @()
 $progressFile = Join-Path $results 'progress.json'
 $script:progressPackage = '__STEM__'
 
+# The window needs the WHOLE phase list, not only the step running right now: a run three phases in has to
+# look different from one stuck on its first, and a phase that failed has to stay readable afterwards. The
+# plan is DERIVED from the scenario list, never hardcoded - -Scenarios makes the count variable, and the
+# fixed 14 this file used to publish was wrong for every partial run and wrong for the full gate too,
+# which has 15 steps.
+$script:phaseOrder = @()
+$script:phaseData = @{}
+# Real timestamps, not just the HH:mm:ss strings the window prints. Phases run strictly one after another,
+# so the time since the PREVIOUS phase ended is this phase's duration - which is how the pre-checks get a
+# duration at all: they report no `seconds` of their own, and without this every one of them showed "-".
+$script:phaseClock = Get-Date
+$script:phaseStartAt = $null
+
+function Initialize-PhasePlan {
+    param([string[]]$Scenarios)
+    $plan = [System.Collections.Generic.List[string]]::new()
+    foreach ($p in 'Elevation', 'SystemTaskCanary', 'GuestPrepare', 'GuestStaging', 'PsadtModuleCanary') { $plan.Add($p) }
+    $plan.Add('Install')
+    $plan.Add('DetectionAfterInstall')
+    foreach ($sc in 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall') {
+        if ($Scenarios -contains $sc) { $plan.Add($sc); $plan.Add("DetectionAfter$sc") }
+    }
+    $script:phaseOrder = $plan.ToArray()
+    $script:phaseData = @{}
+    foreach ($n in $script:phaseOrder) {
+        $script:phaseData[$n] = [ordered]@{
+            name = $n; status = 'pending'; exitCode = $null; seconds = $null
+            started = ''; ended = ''; timeout = 0; detection = ''; logTail = @()
+        }
+    }
+}
+
+function Add-PhaseLine {
+    # Keeps the last 40 lines this runner wrote for one phase, so the window can show a per-phase
+    # transcript instead of one shared tail in which the interesting lines scroll away.
+    param([string]$Phase, [string]$Line)
+    if (-not $Phase -or -not $script:phaseData.ContainsKey($Phase)) { return }
+    $buf = @($script:phaseData[$Phase].logTail) + $Line
+    if ($buf.Count -gt 40) { $buf = $buf[($buf.Count - 40)..($buf.Count - 1)] }
+    $script:phaseData[$Phase].logTail = $buf
+}
+
+Initialize-PhasePlan -Scenarios $scenarios
+
 function Set-Progress {
     param([string]$Step, [string]$State, [int]$Elapsed = 0, [int]$Timeout = 0, [string]$Detail = '', [string]$Verdict = '')
     try {
+        if ($Step -and $script:phaseData.ContainsKey($Step)) {
+            $ph = $script:phaseData[$Step]
+            if ($State -ne 'completed' -and $ph.status -eq 'pending') {
+                $ph.status = 'running'
+                $script:phaseStartAt = Get-Date
+                $ph.started = $script:phaseStartAt.ToString('HH:mm:ss')
+            }
+            if ($Timeout -gt 0) { $ph.timeout = $Timeout }
+        }
         New-Item -ItemType Directory -Path (Split-Path $progressFile -Parent) -Force -ErrorAction SilentlyContinue | Out-Null
         ([ordered]@{
                 package = $script:progressPackage
@@ -262,7 +325,7 @@ function Set-Progress {
                 timeout = $Timeout
                 detail  = $Detail
                 done      = $script:report.steps.Count
-                total     = 14
+                total     = $(if ($script:phaseOrder.Count) { $script:phaseOrder.Count } else { $script:report.steps.Count })
                 # The NAMES, not just a count: an operator watching the VM wants to see what has already
                 # passed, not a number that means nothing without the source in front of them.
                 completed = @($script:report.steps | ForEach-Object {
@@ -271,9 +334,12 @@ function Set-Progress {
                         else { $true }
                         [ordered]@{ name = $_.step; ok = $ok }
                     })
+                # The full plan, one record per phase. This is what the window renders; `completed` above
+                # stays for compatibility with an older UI that may still be polling this file.
+                phases  = @($script:phaseOrder | ForEach-Object { $script:phaseData[$_] })
                 verdict = $Verdict
                 updated = (Get-Date -Format 'HH:mm:ss')
-            } | ConvertTo-Json -Compress) | Set-Content -LiteralPath $progressFile -Encoding UTF8
+            } | ConvertTo-Json -Depth 5 -Compress) | Set-Content -LiteralPath $progressFile -Encoding UTF8
     }
     catch { }
 }
@@ -399,10 +465,13 @@ try {
 [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 [DllImport("user32.dll")] public static extern bool SetForegroundWindow(System.IntPtr hWnd);
 "@
-    $hwnd = [PsadtSandbox.Win]::GetConsoleWindow()
-    if ($hwnd -ne [System.IntPtr]::Zero) {
-        [void][PsadtSandbox.Win]::ShowWindow($hwnd, 3)
-        [void][PsadtSandbox.Win]::SetForegroundWindow($hwnd)
+    $script:runnerConsole = [PsadtSandbox.Win]::GetConsoleWindow()
+    if ($script:runnerConsole -ne [System.IntPtr]::Zero) {
+        # Shown for now. It is the ONLY feedback until the progress window is up, and if that window fails
+        # to start this console has to stay - so the decision to hide it is made after the launch below,
+        # never here.
+        [void][PsadtSandbox.Win]::ShowWindow($script:runnerConsole, 3)
+        [void][PsadtSandbox.Win]::SetForegroundWindow($script:runnerConsole)
         $consoleWindow = $true
     }
 }
@@ -424,6 +493,14 @@ if (Test-Path -LiteralPath $progressUi) {
             '-ProgressFile', ('"' + $progressFile + '"'),
             '-TranscriptFile', ('"' + (Join-Path $results 'sandbox-transcript.txt') + '"')
         ) | Out-Null
+
+        # The window is up, so this console is no longer the feedback - it is just a second thing behind
+        # it showing the same lines. Hidden by handle, which leaves the progress window alone; the
+        # transcript keeps every line either way. If the launch above threw, this is never reached and
+        # the console stays exactly where it was.
+        if ($script:runnerConsole -and $script:runnerConsole -ne [System.IntPtr]::Zero) {
+            [void][PsadtSandbox.Win]::ShowWindow($script:runnerConsole, 0)   # SW_HIDE
+        }
     }
     catch { }
 }
@@ -433,7 +510,28 @@ function Add-Step {
     $entry = [ordered]@{ step = $Name }
     foreach ($k in $Data.Keys) { $entry[$k] = $Data[$k] }
     $script:report.steps += [pscustomobject]$entry
-    Write-Host ("== " + $Name + " : " + (($Data.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '  '))
+    $summary = "== " + $Name + " : " + (($Data.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '  ')
+    Write-Host $summary
+    if ($script:phaseData.ContainsKey($Name)) {
+        $ph = $script:phaseData[$Name]
+        $ok = if ($null -ne $Data['success']) { [bool]$Data['success'] }
+        elseif ($null -ne $Data['timedOut']) { -not [bool]$Data['timedOut'] }
+        else { $true }
+        $endedAt = Get-Date
+        $startedAt = if ($script:phaseStartAt) { $script:phaseStartAt } else { $script:phaseClock }
+        $ph.status = if ($ok) { 'done' } else { 'failed' }
+        $ph.ended = $endedAt.ToString('HH:mm:ss')
+        $ph.started = $startedAt.ToString('HH:mm:ss')
+        if ($null -ne $Data['exitCode']) { $ph.exitCode = $Data['exitCode'] }
+        # The action's OWN measurement wins where it has one - it times the deployment, not the bookkeeping
+        # around it. Everything else is measured from the end of the phase before.
+        $ph.seconds = if ($null -ne $Data['seconds']) { $Data['seconds'] }
+        else { [int][Math]::Round(($endedAt - $startedAt).TotalSeconds) }
+        $script:phaseClock = $endedAt
+        $script:phaseStartAt = $null
+        if ($null -ne $Data['detected']) { $ph.detection = $(if ([bool]$Data['detected']) { 'found' } else { 'not found' }) }
+        Add-PhaseLine -Phase $Name -Line $summary
+    }
     Set-Progress -Step $Name -State 'completed'
 }
 
@@ -581,7 +679,9 @@ function Invoke-AsSystem {
     # install from a hung one - and telling those two apart by staring at an idle screen is exactly
     # what cost hours on 2026-09-11.
     try { $Host.UI.RawUI.WindowTitle = "PSADT Sandbox - $Label (running as SYSTEM)" } catch { }
-    Write-Host ("-> {0}: started as SYSTEM at {1}" -f $Label, (Get-Date -Format 'HH:mm:ss')) -ForegroundColor Cyan
+    $startLine = "-> {0}: started as SYSTEM at {1}" -f $Label, (Get-Date -Format 'HH:mm:ss')
+    Write-Host $startLine -ForegroundColor Cyan
+    Add-PhaseLine -Phase $Label -Line $startLine
     Set-Progress -Step $Label -State 'running as SYSTEM' -Timeout $TimeoutSeconds
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -600,7 +700,9 @@ function Invoke-AsSystem {
             $secs = [int]((Get-Date) - $startedAt).TotalSeconds
             $detail = Get-GuestLogTail
             $suffix = if ($detail) { "  |  $detail" } else { '' }
-            Write-Host ("   {0}: still running - {1}s of max {2}s{3}" -f $Label, $secs, $TimeoutSeconds, $suffix) -ForegroundColor DarkGray
+            $tickLine = "   {0}: still running - {1}s of max {2}s{3}" -f $Label, $secs, $TimeoutSeconds, $suffix
+            Write-Host $tickLine -ForegroundColor DarkGray
+            Add-PhaseLine -Phase $Label -Line $tickLine
             Set-Progress -Step $Label -State 'running as SYSTEM' -Elapsed $secs -Timeout $TimeoutSeconds -Detail $detail
         }
         # A cancel signal from the host. Without it the only way out of a long run is to close the
@@ -867,12 +969,15 @@ try {
         $ErrorActionPreference = 'Continue'
         & robocopy.exe $pkgSrc $pkg /E /MT:16 /R:1 /W:1 /NFL /NDL /NJH /NJS /NP 2>&1 | Out-Null
     }
-    if ($LASTEXITCODE -ge 8) { throw "robocopy failed to stage the package into the guest (exit $LASTEXITCODE)." }
+    $stagingExit = $LASTEXITCODE
+    if ($stagingExit -ge 8) { throw "robocopy failed to stage the package into the guest (exit $stagingExit)." }
     $global:LASTEXITCODE = 0
 
     Get-ChildItem -LiteralPath $pkg -Recurse -File -Include '*.ps1', '*.psm1', '*.psd1', '*.exe', '*.dll' -ErrorAction SilentlyContinue |
         Unblock-File -ErrorAction SilentlyContinue
-    Add-Step 'GuestStaging' @{ seconds = [int]((Get-Date) - $stageStart).TotalSeconds; sizeMb = [int](((Get-ChildItem -LiteralPath $pkg -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum) / 1MB) }
+    # robocopy's code is recorded, not just tested: anything under 8 is a success, but 1 (files copied),
+    # 2 (extra files) and 3 say different things about what the guest actually received.
+    Add-Step 'GuestStaging' @{ exitCode = $stagingExit; seconds = [int]((Get-Date) - $stageStart).TotalSeconds; sizeMb = [int](((Get-ChildItem -LiteralPath $pkg -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum) / 1MB) }
 
     # --- PSADT module canary: can the package's toolkit be IMPORTED as SYSTEM in this guest? ---------
     # Invoke-AppDeployToolkit.exe swallows the .ps1's stderr, so a failing toolkit import shows up only
@@ -1036,6 +1141,12 @@ $runnerPath = Join-Path $workFolder 'Run-PsadtSandboxTest.ps1'
 $progressUiSource = Join-Path $PSScriptRoot '_SandboxProgressUi.ps1'
 if (Test-Path -LiteralPath $progressUiSource) {
     Copy-Item -LiteralPath $progressUiSource -Destination (Join-Path $workFolder '_SandboxProgressUi.ps1') -Force
+    # The window is WPF since 0.31.0, so its XAML travels with it. Without this the guest script
+    # throws on the very first line that reads it and the operator is back to a blank desktop.
+    $progressUiXaml = Join-Path $PSScriptRoot '_SandboxProgressUi.xaml'
+    if (Test-Path -LiteralPath $progressUiXaml) {
+        Copy-Item -LiteralPath $progressUiXaml -Destination (Join-Path $workFolder '_SandboxProgressUi.xaml') -Force
+    }
 
     # A double-clickable fallback, so an operator standing in front of the VM is never dependent on the
     # runner having managed to start the window.

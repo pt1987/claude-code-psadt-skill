@@ -2,6 +2,66 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.31.0 - 2026-09-14 - The window in the sandbox said the run was busy, never what it was doing
+
+The guest window added in 0.30.1 solved the right problem - a SYSTEM task draws nothing, and on some
+Sandbox builds the LogonCommand process gets no console at all - but it showed one line: the step running
+now. A run three phases in looked like one stuck on its first, and a phase that failed left nothing behind
+to read. It is a WPF master/detail window now, and the JSON under it carries the whole run.
+
+### Added
+- **The guest window shows every phase at once.** Tick, cross or live marker per phase, and for the
+  selected one its exit code, duration, start and end, timeout, detection result and its own transcript.
+  Still a separate process polling a file, still passive: it never drives the run and closing it stops
+  nothing. `SHOW-PROGRESS.cmd` still starts it by hand if it did not open.
+- **`progress.json` carries a `phases[]` plan**, derived from `-Scenarios` rather than fixed. The old
+  hardcoded `total = 14` was wrong for every partial run and wrong for the full gate too, which has 15
+  steps. The top-level fields it published before are unchanged, so an older window still works.
+- `tests/SandboxProgressUi.Tests.ps1`: ASCII and parse guards on both halves, the XAML loaded through
+  `XamlReader` in a child `powershell.exe -STA` with every name the script looks up asserted, a guard
+  against setting `Style` twice on one element, the passivity rules, and the phase plan exercised by
+  running the runner's own functions - extracted through the AST by name, not by a byte range.
+
+### Fixed
+- **`-Scenarios Install,Uninstall` was refused before the run could start.** A `[ValidateSet]` on the
+  parameter runs at BINDING time, before any line of the body - and `pwsh -File` hands a comma list to a
+  `[string[]]` parameter as ONE string, which is exactly what `Expand-CommaSeparated` exists to split.
+  The attribute rejected it first with "does not belong to the set" and nothing ran, so the documented
+  short-iteration form has never worked from the documented invocation. The names are validated after the
+  split now, naming the unknown one and the valid set.
+- **The phase list never moved off the first row.** Selecting a row does not scroll to it in WPF, and the
+  code could not tell its OWN automatic selection from a click - so the first auto-selection counted as the
+  operator's choice and the list stayed on `Elevation` for the whole run while the work happened below the
+  fold. It follows the running phase now, and stops following the moment a person clicks a row.
+- **The pre-checks showed no duration.** They report no `seconds` of their own, so four of the five rows
+  that start every run were a dash. Phases are strictly sequential, so they are timed from the end of the
+  phase before; an action's own measurement still wins where it has one.
+- **`GuestStaging` threw its exit code away.** `robocopy` returns one, it was tested (`-ge 8` throws) and
+  then dropped. It is recorded now - 1, 2 and 3 all say different things about what the guest received.
+  `Elevation` and `GuestPrepare` keep a dash, because they start no process and no exit code exists.
+- **Two PowerShell consoles sat behind the window.** Both are hidden by console handle, not with
+  `-WindowStyle Hidden` - that lands in STARTUPINFO and the first window the process creates inherits it,
+  which is what hid the progress window itself in 0.30.1. The runner's console is hidden only AFTER the
+  window has been launched, so a failed launch still leaves the operator something to look at.
+- **A failed phase looked exactly like a passed one.** In WPF a LOCAL value beats a style trigger, and the
+  phase marker carried `Background=` as an attribute alongside a style whose `DataTrigger`s set it.
+  Measured: Pending, Running, Done and Failed all rendered `#FF0A2F29`. The defaults moved into the style,
+  where a trigger can win; a test now rejects that combination anywhere in the markup.
+
+### Notes
+- **Measured in the guest before any of it was written**, because a window that cannot render there is
+  worth nothing: WPF loads under Windows PowerShell 5.1 (STA by default - `pwsh` is MTA and would throw),
+  the real XAML parses, and the window paints at 1180x800 on render tier 0, with no vGPU. A PNG of the
+  rendered window came back out of the VM as the proof.
+- Three faults in the imported drafts, each of which made them unusable and none visible by reading them:
+  the script carried non-ASCII bytes with no BOM and had **four parse errors** under WinPS 5.1 (App. B.1);
+  the XAML set `Style` twice on one element and `XamlReader` threw; and a `{Binding Phases}` on the window
+  reports `UpdateTargetError` against a `PSCustomObject` DataContext, so the list stayed empty - inside the
+  item templates the very same objects bind correctly, so only that one hop is done in code.
+- The window is clamped to the guest work area before it is shown. A window bigger than the desktop is
+  centred anyway and then hangs off all four edges, taking the phase list and the buttons with it.
+- Suite 554 -> 569.
+
 ## 0.30.2 - 2026-09-14 - The exit code was accepted by the launcher and rejected by the harness
 
 Citrix Workspace 26.3.10.69 needed ten sandbox launches in one afternoon. Nine of them were faults in this
