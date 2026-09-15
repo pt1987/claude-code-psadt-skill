@@ -268,10 +268,18 @@ $win.Topmost = $true
 # phase list and the buttons are the first things to go. Shrink to fit before it is ever shown; a
 # slightly cramped window is readable, a clipped one is not.
 $work = [System.Windows.SystemParameters]::WorkArea
-if ($win.Width -gt $work.Width) { $win.Width = [Math]::Max(640, $work.Width - 40) }
-if ($win.Height -gt $work.Height) { $win.Height = [Math]::Max(480, $work.Height - 40) }
-$win.MinWidth = [Math]::Min($win.MinWidth, $win.Width)
-$win.MinHeight = [Math]::Min($win.MinHeight, $win.Height)
+$win.MinWidth = 0
+$win.MinHeight = 0
+if ($win.Width -gt ($work.Width - 24)) { $win.Width = [Math]::Max(640, $work.Width - 24) }
+if ($win.Height -gt ($work.Height - 24)) { $win.Height = [Math]::Max(440, $work.Height - 24) }
+
+# Position explicitly instead of trusting WindowStartupLocation. Measured in the guest on 2026-09-15:
+# CenterScreen put the window at x=208 on a 1353-wide desktop, so its right-hand columns - TIMEOUT and
+# DETECTION, the two a reader needs when a phase misbehaves - sat off the screen entirely. Centring
+# inside the WORK AREA and clamping to its origin cannot place it outside the visible desktop.
+$win.WindowStartupLocation = 'Manual'
+$win.Left = $work.Left + [Math]::Max(0, ($work.Width - $win.Width) / 2)
+$win.Top = $work.Top + [Math]::Max(0, ($work.Height - $win.Height) / 2)
 
 $win.Add_SourceInitialized({ Update-Ui; $timer.Start() })
 $win.Add_Closed({ $timer.Stop() })

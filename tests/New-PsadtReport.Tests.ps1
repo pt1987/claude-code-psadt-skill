@@ -453,3 +453,98 @@ function Repair-ADTDeployment {
         }
     }
 }
+
+Describe 'The dossier reads the sandbox verdict instead of asking for it (0.32.0)' {
+    # SCOPE NOTE: this shipped wrong. Invoke-PsadtSandboxTest.ps1 measures every action, writes
+    # result.json and records its path in the manifest - and the dossier ignored all of it. Without a
+    # hand-built -Metadata SystemTest it printed "the SYSTEM test was not run (no evidence)" on a package
+    # whose gate was GREEN, and the only remedy was to retype numbers the harness had already produced.
+    # Measured on JetBrains PyCharm 2026.2.2, 2026-09-15.
+    #
+    # The rows must also be JUDGED, not just copied: an action that exits 0 while the detection rule
+    # disagrees with it is a FAIL, because that combination is the signature of a per-user install
+    # (App. L.7) and it is the one thing this table exists to surface.
+
+    BeforeAll {
+        # Defined here, not at Describe scope: Pester evaluates the Describe body during discovery, so a
+        # function declared there does not exist when an It actually runs.
+        function Set-SandboxResult {
+            param([string]$Verdict, [array]$Steps, [array]$Failed = @())
+            @{ verdict = $Verdict; failedAssertions = $Failed; steps = $Steps } |
+                ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $script:res2 -Encoding UTF8
+        }
+    }
+
+    BeforeEach {
+        $script:pkg2 = Join-Path ([System.IO.Path]::GetTempPath()) ("psadtsbx_" + [guid]::NewGuid().ToString('N'))
+        New-Item $script:pkg2 -ItemType Directory -Force | Out-Null
+        $script:res2 = Join-Path $script:pkg2 'result.json'
+        $script:mf2 = Join-Path $script:pkg2 'psadt-package.json'
+        $script:out2 = Join-Path $script:pkg2 'Dossier.html'
+
+        @{
+            schema = 1
+            app = @{ vendor = 'ACME'; name = 'Widget'; version = '1.0'; arch = 'x64'; lang = 'EN'; revision = 1 }
+            decisions = @{ upload = $false }
+            results = @{ sandboxTest = @{ verdict = 'GREEN'; resultPath = $script:res2 } }
+        } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $script:mf2 -Encoding UTF8
+    }
+
+    AfterEach {
+        if (Test-Path $script:pkg2) { Remove-Item $script:pkg2 -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'renders a row per deployment action, with its exit code and duration' {
+        Set-SandboxResult -Verdict 'GREEN' -Steps @(
+            @{ step = 'Install'; exitCode = 0; seconds = 185; success = $true }
+            @{ step = 'DetectionAfterInstall'; detected = $true }
+            @{ step = 'Uninstall'; exitCode = 0; seconds = 32; success = $true }
+            @{ step = 'DetectionAfterUninstall'; detected = $false }
+        )
+        & $script:gen -ManifestPath $script:mf2 -OutputPath $script:out2 -WarningAction SilentlyContinue
+        $html = Get-Content $script:out2 -Raw
+
+        $html | Should -Not -Match 'SYSTEM test was not run'
+        $html | Should -Match '185 s'
+        $html | Should -Match '32 s'
+        ([regex]::Matches($html, '>pass<')).Count | Should -Be 2
+    }
+
+    It 'fails a row whose detection contradicts the action that succeeded' {
+        # exit 0 plus "absent" right after an install is the per-user-install signature, not a pass.
+        Set-SandboxResult -Verdict 'RED' -Steps @(
+            @{ step = 'Install'; exitCode = 0; seconds = 14; success = $true }
+            @{ step = 'DetectionAfterInstall'; detected = $false }
+        ) -Failed @('detection after install')
+        & $script:gen -ManifestPath $script:mf2 -OutputPath $script:out2 -WarningAction SilentlyContinue
+        $html = Get-Content $script:out2 -Raw
+
+        $html | Should -Match '>fail<'
+        ([regex]::Matches($html, '>pass<')).Count | Should -Be 0
+    }
+
+    It 'lets a caller-supplied SystemTest win, for the DEV-VM route that has no result.json' {
+        Set-SandboxResult -Verdict 'GREEN' -Steps @(
+            @{ step = 'Install'; exitCode = 0; seconds = 185; success = $true }
+            @{ step = 'DetectionAfterInstall'; detected = $true }
+        )
+        & $script:gen -ManifestPath $script:mf2 -OutputPath $script:out2 -WarningAction SilentlyContinue -Metadata @{
+            SystemTest = @(@{ StepDe = 'Handgebaut'; StepEn = 'Hand built'; Exit = '1618'; Detection = '&ndash;'; Cls = 'b-neut'; Result = 'manual' })
+        }
+        $html = Get-Content $script:out2 -Raw
+
+        $html | Should -Match 'Hand built'
+        $html | Should -Match '1618'
+        $html | Should -Not -Match '185 s'
+    }
+
+    It 'keeps the neutral default when the recorded result.json is gone' {
+        # Unreadable evidence is not evidence. The honest state is "not run", never an invented pass.
+        Remove-Item -LiteralPath $script:res2 -Force -ErrorAction SilentlyContinue
+        & $script:gen -ManifestPath $script:mf2 -OutputPath $script:out2 -WarningAction SilentlyContinue
+        $html = Get-Content $script:out2 -Raw
+
+        $html | Should -Match 'SYSTEM test was not run'
+        $html | Should -Not -Match '>pass<'
+    }
+}

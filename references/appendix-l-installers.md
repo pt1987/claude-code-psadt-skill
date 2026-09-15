@@ -203,6 +203,26 @@ Relevant whenever the MSI is built in-house rather than shipped by a vendor.
 > and needs a different decision, not a switch. **An HKLM rule saying "absent" immediately after a
 > successful install is the signature of this - check the user hives before touching the detect script.**
 
+> **A fourth trap, and it turns Repair into a hang: RE-RUNNING THE INSTALLER OVER AN EXISTING INSTALL
+> (BINDING).** "NSIS has no repair verb, so re-run the installer" is the standard substitute and it is in
+> the engine catalog as such - but it assumes the installer tolerates finding itself already there. Some
+> do not. Measured on JetBrains PyCharm 2026.2.2 (NSIS, 908 MB), 2026-09-15, as SYSTEM in the sandbox:
+> `installer.exe /S` over an existing install of the SAME version never returned. The action was killed at
+> 603 s; the process was alive with **no child process, no uninstaller and no error**, while Install
+> (217 s) and Reinstall (234 s) on a clean machine both returned exit 0. The installer branches into its
+> own "remove the previous version" flow, which under `/S` in a SYSTEM task waits for something it can
+> never be given.
+> **Repair is then an explicit uninstall followed by an install**, so neither half ever sees an existing
+> installation. Cost it as uninstall + install - on this package 36 s + 228 s, since Reinstall is the same
+> "install after an uninstall". Measured twice on the same package: **210 s** (uninstall 32 s + install
+> 195 s) in a clean run, and **1017 s** once, where the install half alone took ~980 s for work that cost
+> 228 s elsewhere in that same run. The second figure is an OUTLIER, not the cost of a repair - the cause
+> was never established and the log shows only "awaiting completion". Budget a repair as uninstall +
+> install; give its TIMEOUT room for several times that, because the outlier is real and would otherwise
+> read as the hang this trap is about.
+> The signature is a Repair that times out while Install and Reinstall pass - if the timeout diagnostics
+> show the installer alive with no children, this is it, and it is not the harness.
+
 Verified against the vendor documentation 2026-09-08 (jrsoftware.org, nsis.sourceforge.io). Both engines are
 open source, extremely common, and each has one behaviour that silently breaks an Intune package.
 

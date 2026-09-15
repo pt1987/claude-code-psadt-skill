@@ -102,6 +102,83 @@ if ($ManifestPath) {
     # dossier and Invoke-IntuneWin32Upload.ps1 cannot document different mappings.
     Set-FromManifest 'ReturnCodes'  $mf.research.returnCodes
 
+    # The sandbox harness already measures every action and writes its verdict, exit codes, durations and
+    # detection results into result.json, recording the path in the manifest. Until 0.32.0 this document
+    # ignored all of it: without a hand-built -Metadata SystemTest it printed "the SYSTEM test was not run
+    # (no evidence)" - on a package whose gate was GREEN. The only way to correct that was to retype, by
+    # hand, numbers the harness had already produced, which is exactly the kind of transcription this
+    # skill refuses everywhere else. It is read here instead.
+    #
+    # A caller-supplied SystemTest still wins: Set-FromManifest never overwrites a key that is already
+    # present, and the DEV-VM route (Invoke-PsadtSystemTest.ps1) has no result.json to read.
+    if (-not $Metadata.ContainsKey('SystemTest')) {
+        $sbxResultPath = [string]$mf.results.sandboxTest.resultPath
+        if ($sbxResultPath -and (Test-Path -LiteralPath $sbxResultPath)) {
+            try {
+                $sbx = Get-Content -LiteralPath $sbxResultPath -Raw | ConvertFrom-Json
+
+                # Whether the rule was expected to find the app after each action. This is what makes a
+                # row a PASS or a FAIL - an action that exits 0 while detection disagrees is not a pass.
+                $expectDetected = @{
+                    Install = $true; Reinstall = $true; Repair = $true
+                    Uninstall = $false; FinalUninstall = $false
+                }
+                $labelDe = @{
+                    Install = 'Install'; Uninstall = 'Deinstallation'; Reinstall = 'Neuinstallation'
+                    Repair = 'Reparatur'; FinalUninstall = 'Abschliessende Deinstallation'
+                }
+                $labelEn = @{
+                    Install = 'Install'; Uninstall = 'Uninstall'; Reinstall = 'Reinstall'
+                    Repair = 'Repair'; FinalUninstall = 'Final uninstall'
+                }
+
+                $detected = @{}
+                foreach ($s in $sbx.steps) {
+                    if ([string]$s.step -like 'DetectionAfter*') { $detected[[string]$s.step] = [bool]$s.detected }
+                }
+
+                $sbxRows = @(foreach ($name in 'Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall') {
+                        $step = $sbx.steps | Where-Object { [string]$_.step -eq $name } | Select-Object -First 1
+                        if (-not $step) { continue }
+                        $key = "DetectionAfter$name"
+                        $det = if ($detected.ContainsKey($key)) { $detected[$key] } else { $null }
+                        $ok = [bool]$step.success -and ($null -eq $det -or $det -eq $expectDetected[$name])
+                        $secs = if ($null -ne $step.seconds) { " ($($step.seconds) s)" } else { '' }
+                        @{
+                            StepDe    = $labelDe[$name] + $secs
+                            StepEn    = $labelEn[$name] + $secs
+                            Exit      = "$($step.exitCode)"
+                            Detection = $(if ($null -eq $det) { '&ndash;' } elseif ($det) { 'erkannt / detected' } else { 'nicht erkannt / absent' })
+                            Cls       = $(if ($ok) { 'b-ok' } else { 'b-bad' })
+                            Result    = $(if ($ok) { 'pass' } else { 'fail' })
+                        }
+                    })
+
+                if ($sbxRows.Count) {
+                    $Metadata['SystemTest'] = $sbxRows
+                    $verdict = [string]$sbx.verdict
+                    $failed = @($sbx.failedAssertions)
+                    $failedText = if ($failed.Count) { ($failed -join ', ') } else { $null }
+                    if (-not $Metadata.ContainsKey('SystemTestNoteDe')) {
+                        $Metadata['SystemTestNoteDe'] = 'Windows Sandbox, jede Aktion als NT AUTHORITY\SYSTEM ueber eine geplante Aufgabe. Verdikt: ' +
+                        $verdict + '. ' + $(if ($failedText) { 'Fehlgeschlagene Zusicherungen: ' + $failedText + '. ' } else { 'Keine fehlgeschlagene Zusicherung. ' }) +
+                        'Die Erkennung wurde nach jeder Aktion gegen dieselbe Regel geprueft, die Intune auswertet. Beleg: ' + $sbxResultPath
+                    }
+                    if (-not $Metadata.ContainsKey('SystemTestNoteEn')) {
+                        $Metadata['SystemTestNoteEn'] = 'Windows Sandbox, every action as NT AUTHORITY\SYSTEM through a scheduled task. Verdict: ' +
+                        $verdict + '. ' + $(if ($failedText) { 'Failed assertions: ' + $failedText + '. ' } else { 'No failed assertion. ' }) +
+                        'Detection was evaluated after every action against the same rule Intune runs. Evidence: ' + $sbxResultPath
+                    }
+                }
+            }
+            catch {
+                # A result.json that cannot be read must not cost the caller the whole dossier. The
+                # neutral "not run" default then stands, which is the honest state for unreadable evidence.
+                Write-Verbose "sandbox result.json not usable: $($_.Exception.Message)"
+            }
+        }
+    }
+
     # The identity floor. Everything else - IntuneWin, Preflight, SystemTest - renders neutrally, because
     # "report ALWAYS" has to hold for a package that is not packed or tested yet. But a dossier that says
     # "App 0.0.0" is not an honest deliverable, it is a placeholder with a letterhead.

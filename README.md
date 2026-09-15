@@ -434,6 +434,24 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.32.0 - 2026-09-15
+- **Fixed: the dossier now reads the sandbox verdict instead of asking for it.** `New-PsadtReport.ps1`
+  took identity, artefacts and return codes from the manifest but not the test result, so without a
+  hand-built `-Metadata SystemTest` it printed "the SYSTEM test was not run (no evidence)" on packages
+  whose gate was GREEN. It reads `results.sandboxTest.resultPath` now and **judges** the rows: an action
+  that exits 0 while the detection rule disagrees is a fail, not a pass - that combination is the
+  signature of a per-user install. A caller-supplied `SystemTest` still wins, and an unreadable
+  result.json keeps the honest "not run" default.
+- **Fixed: the guest progress window hung off the right edge** of the sandbox desktop, taking the TIMEOUT
+  and DETECTION columns with it. Sized against the work area and positioned explicitly now; verified in
+  the guest.
+- **Changed: a fourth BINDING trap in App. L.7** - re-running the installer over an existing install is
+  not a safe repair. Measured on JetBrains PyCharm 2026.2.2 as SYSTEM: `/S` over an existing install of
+  the same version never returned (killed at 603 s, no child process, no error), while Install and
+  Reinstall on a clean machine both exited 0. Repair is an explicit uninstall followed by an install.
+- PyCharm 2026.2.2 (908 MB, the largest package built with this skill) then passed the full gate GREEN.
+  Suite 572 -> 576.
+
 ### 0.31.0 - 2026-09-14
 - **Added: the guest window shows every phase of the run at once.** Until now it showed one line, the step
   running right now, so a run three phases in looked like one stuck on its first and a failed phase left
@@ -448,17 +466,3 @@ second copy to keep in sync.
   the real XAML parses, and the window paints at render tier 0 with no vGPU - a PNG of it came back out of
   the VM as the proof. New guards in `tests/SandboxProgressUi.Tests.ps1` cover ASCII, parsing, XAML loading
   and the phase plan. Suite 554 -> 569.
-
-### 0.30.2 - 2026-09-14
-- **Changed: a vendor-specific success code has to be in BOTH lists.** A sandbox step is judged twice, by
-  two independent lists that share a parameter name: PSADT's `-SuccessExitCodes` in the launcher decides
-  whether the deployment throws, `Invoke-PsadtSandboxTest.ps1 -SuccessExitCodes` decides whether the step
-  is painted green. Citrix Workspace Repair returns the documented success code 40032; it went into the
-  launcher, the run still came back RED, and three further runs were spent re-editing a launcher that had
-  been correct all along. Guide 6.1, Appendix B and Appendix G now say so, and a drift guard keeps the
-  documented default equal to the actual one.
-- **Changed: four silent PowerShell traps** added to Appendix B, each of which cost a run here: `@(...)`
-  around an EMPTY `Generic.List` throws in 5.1 and 7 alike; `-WindowStyle Hidden` is inherited by the
-  child's first window, so a progress GUI runs windowless and looks like a hang; two variables differing
-  only in case are the same variable; `-like` against a literal containing `*` matches too much.
-- All 12 applications packaged with 0.30.x are GREEN, Citrix Workspace included. Suite 552 -> 554.
