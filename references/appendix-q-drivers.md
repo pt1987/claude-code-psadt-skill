@@ -45,6 +45,13 @@ anyway. Then:
 | `VendorSigned` | valid, non-Microsoft | **kernel** | **RED** | Ask the vendor for a Dev-Portal-signed driver. TrustedPublisher will NOT make it load under Secure Boot. `-AssumeSecureBootOff` downgrades this to a warning - only for a fleet that genuinely runs without Secure Boot, and the reason is recorded in `driverTrust`. |
 | `Unsigned` | no `.cat`, `NotSigned`, `HashMismatch` | either | **RED, hard stop** | Three honest options only: a signed driver from the vendor, vendor-side Attestation signing via Partner Center, or an isolated lab. The skill never enables `testsigning` and never disables integrity checks. |
 
+**Testing any of this in the sandbox needs the signer passed in.** The guest has no Intune policy, so
+`Invoke-PsadtSandboxTest.ps1 -TrustedPublisherCert <signer.cer>` is what puts it in TrustedPublisher.
+Leave it out and the driver step blocks on the device-software prompt until the action times out - silently,
+because a SYSTEM scheduled task draws no dialog. This applies just as much when the driver is staged by a
+vendor MSI rather than by pnputil: on Time-Access 3010 / EDIsecure it cost 25 minutes per run against 43
+seconds with the certificate present. Phase 6.1 has the mechanics.
+
 The documented exceptions to the Secure Boot rule - and the reason `-AssumeSecureBootOff` exists at all -
 are in-place-upgraded machines, fleets with Secure Boot off, and drivers cross-signed before 2015-07-29.
 All three are real; none of them is an assumption a script may make for you.

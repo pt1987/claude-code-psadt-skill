@@ -54,6 +54,14 @@ param(
     [string[]]$PathsAbsentAfterInstall = @(),
     [string[]]$PathsAbsentAfterUninstall = @(),
 
+    # .cer files to import into the guest's LocalMachine\TrustedPublisher before any action runs.
+    # Needed whenever the installer stages a third-party driver: without the signer in that store
+    # Windows raises the "install device software?" prompt, which is INVISIBLE here because every
+    # action runs as SYSTEM through a scheduled task, so the installer parks until the phase times
+    # out. On the fleet an Intune RootCATrustedCertificates profile supplies this (App. N); pass the
+    # same certificate here so the guest matches production and a RED means the package is broken.
+    [string[]]$TrustedPublisherCert = @(),
+
     # Per-action ceiling inside the VM. The sandbox is slower than the host because it has no warm file
     # cache - NOT because Defender scans everything: Microsoft states that windefend is DISABLED in the
     # base image. The pathological case was the opposite of scanning, and Disable-GuestSmartAppControl
@@ -688,23 +696,31 @@ function Invoke-AsSystem {
     $startedAt = Get-Date
     $raw = $null
     $tick = 0
+    $detail = $null
     while ((Get-Date) -lt $deadline) {
         if (Test-Path -LiteralPath $codeFile) {
             $raw = Get-Content -LiteralPath $codeFile -Raw -ErrorAction SilentlyContinue
             if ($raw -and ($raw.Trim() -match '^-?\d+$')) { break }
         }
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 1
         $raw = $null
         $tick++
-        if (($tick % 5) -eq 0) {
-            $secs = [int]((Get-Date) - $startedAt).TotalSeconds
+        # Two different beats on purpose. The heartbeat FILE is rewritten every tick, because that is
+        # what the host renders as a live elapsed counter - a watcher asking "is it still working?"
+        # wants that answer now, not up to 20s later (guest 10s + host 10s, as it used to be).
+        # The console line and the transcript keep the coarser 10s beat: they are read by a human
+        # scrolling back afterwards, and one line per second would bury the phase boundaries.
+        # Re-tailing the PSADT session log is the only expensive part of a tick, so $detail rides
+        # along on that coarser beat and the cheap elapsed counter updates every second.
+        $secs = [int]((Get-Date) - $startedAt).TotalSeconds
+        if (($tick % 10) -eq 0) {
             $detail = Get-GuestLogTail
             $suffix = if ($detail) { "  |  $detail" } else { '' }
             $tickLine = "   {0}: still running - {1}s of max {2}s{3}" -f $Label, $secs, $TimeoutSeconds, $suffix
             Write-Host $tickLine -ForegroundColor DarkGray
             Add-PhaseLine -Phase $Label -Line $tickLine
-            Set-Progress -Step $Label -State 'running as SYSTEM' -Elapsed $secs -Timeout $TimeoutSeconds -Detail $detail
         }
+        Set-Progress -Step $Label -State 'running as SYSTEM' -Elapsed $secs -Timeout $TimeoutSeconds -Detail $detail
         # A cancel signal from the host. Without it the only way out of a long run is to close the
         # sandbox window, which kills the VM from outside and orphans vmmemWindowsSandbox - the worker
         # then holds the mapped folder until a reboot. Going through the guest keeps the teardown clean.
@@ -951,7 +967,71 @@ try {
         }
     }
     $sac = Disable-GuestSmartAppControl
-    Add-Step 'GuestPrepare' @{ smartAppControl = $sac.State; uiCulture = (Get-UICulture).Name; wmi = $wmiState; resourcesShimmed = $(if ($shimmed.Count) { $shimmed -join ', ' } else { 'none needed' }) }
+
+    # Driver-trust certificates, mirroring what the fleet gets from policy.
+    #
+    # An installer that stages a third-party driver raises the Windows "install device software?"
+    # prompt unless the signer already sits in TrustedPublisher. On a managed client an Intune
+    # RootCATrustedCertificates OMA-URI profile puts it there (App. N); the sandbox has no policy, so
+    # without this the prompt appears - INVISIBLY, because every action runs as SYSTEM through a
+    # scheduled task and draws nothing on the guest desktop. The MSI custom action then waits for an
+    # answer nobody can give and the phase burns its entire timeout.
+    #
+    # That failure is indistinguishable from a genuinely slow installer unless you read the log tail,
+    # and it costs a full run every time. Measured 2026-09-16 on Time-Access 3010 / EDIsecure: 25
+    # minutes parked in "CA.dll: InstallPrinterDriver" for want of one certificate that was sitting in
+    # the package's own output folder. Seeding it here makes the guest match production, so a RED
+    # verdict means the PACKAGE is broken rather than the harness.
+    # The host drops the .cer files into <mapped>\trusted-publisher; nothing to substitute, and an
+    # absent folder simply means the caller supplied no certificate.
+    # certutil, not Import-Certificate. The PKI-module cmdlet goes through the Cert: provider, which
+    # returns E_ACCESSDENIED against LocalMachine\TrustedPublisher in this guest even though the
+    # runner is elevated (measured 2026-09-16). certutil writes the store directly and works; the
+    # .NET X509Store call is kept as a second route so one broken path cannot silently cost a run.
+    #
+    # The import is VERIFIED by reading the store back. A cert that failed to land looks exactly like
+    # one that landed when you only trust the exit code, and the run that follows then answers a
+    # different question than the one asked - which is how 4 minutes went into testing a hypothesis
+    # whose precondition was never met.
+    $certsImported = @()
+    $certDir = Join-Path $mapped 'trusted-publisher'
+    if (Test-Path -LiteralPath $certDir) {
+        foreach ($certFile in @(Get-ChildItem -LiteralPath $certDir -Filter '*.cer' -File -ErrorAction SilentlyContinue)) {
+            $thumb = $null
+            try { $thumb = ([System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certFile.FullName)).Thumbprint } catch { }
+            $how = $null
+
+            & { $ErrorActionPreference = 'Continue'; & certutil.exe -addstore -f TrustedPublisher $certFile.FullName 2>&1 | Out-Null }
+            if ($LASTEXITCODE -eq 0) { $how = 'certutil' }
+
+            if ($how -eq $null) {
+                try {
+                    $store = [System.Security.Cryptography.X509Certificates.X509Store]::new('TrustedPublisher', 'LocalMachine')
+                    $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                    $store.Add([System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certFile.FullName))
+                    $store.Close()
+                    $how = 'X509Store'
+                }
+                catch { $how = $null }
+            }
+
+            $present = $false
+            if ($thumb) {
+                try {
+                    $verify = [System.Security.Cryptography.X509Certificates.X509Store]::new('TrustedPublisher', 'LocalMachine')
+                    $verify.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
+                    $present = @($verify.Certificates | Where-Object { $_.Thumbprint -eq $thumb }).Count -gt 0
+                    $verify.Close()
+                }
+                catch { }
+            }
+
+            if ($present) { $certsImported += ('OK {0} [{1}] via {2}' -f $certFile.Name, $thumb, $how) }
+            else { $certsImported += ('FAILED {0} [{1}] - not in store after import attempt' -f $certFile.Name, $thumb) }
+        }
+    }
+
+    Add-Step 'GuestPrepare' @{ smartAppControl = $sac.State; uiCulture = (Get-UICulture).Name; wmi = $wmiState; resourcesShimmed = $(if ($shimmed.Count) { $shimmed -join ', ' } else { 'none needed' }); trustedPublisher = $(if ($certsImported.Count) { $certsImported -join '; ' } else { 'none supplied' }) }
 
     # The mapped package folder is read-only and PSADT unblocks files under its own root, so work on a
     # copy. Two things here are about SPEED, and both were measured against a 481 MB package
@@ -1162,6 +1242,20 @@ if (Test-Path -LiteralPath $progressUiSource) {
 # its culture folders are shipped along and the runner lays them down inside the guest (GuestPrepare).
 # Only the modules PSADT's own import list names are considered; the psd1 filter keeps this to resource
 # files, never module code.
+# Driver-trust certificates travel with the work folder, which is the only writable thing mapped into
+# the guest. GuestPrepare imports every .cer it finds here into LocalMachine\TrustedPublisher.
+if ($TrustedPublisherCert.Count -gt 0) {
+    $certDest = Join-Path $workFolder 'trusted-publisher'
+    New-Item -ItemType Directory -Path $certDest -Force | Out-Null
+    foreach ($certPath in $TrustedPublisherCert) {
+        if (-not (Test-Path -LiteralPath $certPath -PathType Leaf)) {
+            throw "TrustedPublisherCert not found: $certPath"
+        }
+        Copy-Item -LiteralPath $certPath -Destination $certDest -Force
+    }
+    Write-Host ('  TrustedPublisher: {0} certificate(s) staged for the guest' -f $TrustedPublisherCert.Count) -ForegroundColor DarkGray
+}
+
 $modRootHost = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\Modules'
 $resDest = Join-Path $workFolder 'ps-module-resources'
 foreach ($modName in 'Microsoft.PowerShell.Archive', 'Dism', 'International', 'NetAdapter', 'ScheduledTasks') {
@@ -1246,6 +1340,12 @@ Write-Host ''
 # The host used to sit in a silent 10-second sleep loop for the whole run, so the CALLER saw nothing
 # either. It now echoes the guest's own progress file, which makes a long install legible from both
 # sides and costs one small file read per tick.
+#
+# That tick is 1 second, not 10. The two sleeps used to stack - the guest refreshed the heartbeat
+# every 10s and the host re-read it every 10s - so an elapsed counter could be up to 20 seconds
+# stale, which reads as "nothing is happening" on exactly the long installs this is meant to make
+# legible. Printing is still change-gated below, so a quiet phase stays quiet: the cost of the
+# faster tick is one small file read per second, not more output.
 $hostDeadline = (Get-Date).AddMinutes($TotalTimeoutMinutes)
 $sawSandbox = $false
 $progressPath = Join-Path $resultsFolder 'progress.json'
@@ -1271,7 +1371,7 @@ while ((Get-Date) -lt $hostDeadline) {
         }
         catch { }
     }
-    Start-Sleep -Seconds 10
+    Start-Sleep -Seconds 1
 }
 
 # How long to wait for the VM worker to disappear after the guest has shut itself down. Named once:

@@ -687,6 +687,31 @@ Prerequisite: the optional feature `Containers-DisposableClientVM`. The script c
 admin) and prints the one-time enable command if it is off. Windows permits exactly ONE sandbox instance,
 and a second launch silently attaches to the first, so the script refuses to start while one is running.
 
+**An installer that stages a third-party driver needs `-TrustedPublisherCert`.** Pass the signer's `.cer`
+and the harness imports it into the guest's `LocalMachine\TrustedPublisher` before any action runs, which
+is what an Intune `RootCATrustedCertificates` profile does on the fleet (App. N). Without it Windows
+raises the "install device software?" prompt - and that prompt is INVISIBLE here, because every action
+runs as SYSTEM through a scheduled task and draws nothing on the desktop. The installer then waits for an
+answer nobody can give and the phase burns its whole timeout, which looks exactly like a slow installer
+unless you read the log tail. Measured on Time-Access 3010 / EDIsecure (2026-09-16): **25 minutes parked
+in `CA.dll: InstallPrinterDriver` versus 43 seconds with the certificate present**, for a `.cer` that was
+sitting in the package's own output folder. The import uses `certutil -addstore` - `Import-Certificate`
+returns `E_ACCESSDENIED` in this guest even when elevated - and is verified by reading the store back by
+thumbprint, because a failed import is indistinguishable from a successful one in a log that only records
+the return value.
+
+**Cancel a run with `STOP.txt`, never by killing the process.** The guest polls for that file in the work
+folder and tears itself down cleanly; the script prints the exact command when it starts. Killing the host
+process or closing the sandbox window instead orphans the `vmmemWindowsSandbox` worker, which survives
+`Stop-Process` from an unelevated session and blocks every further run until an elevated
+`Restart-Service vmcompute -Force` or a reboot.
+
+**Scope the run while iterating.** `-Scenarios @('Install')` answers "does the install work at all"; the
+full five-scenario set is the upload gate and is worth its minutes only once Install is green. Uninstall,
+Repair and the reinstall pass all need a successfully installed machine to mean anything - run them after
+a failed Install and they re-prove the same failure at ten minutes a turn. What actually ran is recorded,
+so a partial run reports `GREEN_PARTIAL` and can never be mistaken for the gate.
+
 When the sandbox is NOT the right host: the app needs domain join, a real TPM, GPU acceleration, a reboot
 to complete (the VM is discarded), or hardware the VM does not have. Then use 6.2.
 

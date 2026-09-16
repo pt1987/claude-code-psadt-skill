@@ -156,6 +156,37 @@ function ConvertTo-PhaseItem {
     }
 }
 
+# The clock, and only the clock, on every tick.
+#
+# Split out of Update-Ui because that function returns early when the progress file is byte-identical
+# to the last read - correctly so, since rebuilding the phase list would reset the operator's
+# selection and repaint for nothing. But the elapsed counter is the one element whose whole job is to
+# keep moving: a frozen timer is how a healthy run looks like a hung one, which is the single question
+# this window exists to answer.
+#
+# Whenever the file delivers a new (step, elapsed) pair, that is the truth and the baseline resets;
+# between writes the display is extrapolated from this timer's own 1s tick. The reading can never
+# drift more than one write interval from the runner, and it always moves. A finished run is left
+# alone - Update-Ui puts 'done' there and nothing should tick over it.
+function Update-ElapsedDisplay {
+    param($p)
+    if ([string]$p.state -eq 'finished') { return }
+
+    $fileElapsed = [int]$p.elapsed
+    $key = '{0}|{1}' -f [string]$p.step, $fileElapsed
+    if ($script:elapsedKey -ne $key) {
+        $script:elapsedKey = $key
+        $script:elapsedBase = $fileElapsed
+        $script:elapsedAt = Get-Date
+    }
+    $shown = $script:elapsedBase + [int]((Get-Date) - $script:elapsedAt).TotalSeconds
+
+    $ui.Elapsed.Text = if ([int]$p.timeout -gt 0) {
+        '{0} / {1}' -f (Format-Clock $shown), (Format-Clock ([int]$p.timeout))
+    }
+    else { Format-Clock $shown }
+}
+
 function Update-Ui {
     $raw = ''
     if (Test-Path -LiteralPath $ProgressFile) {
@@ -169,16 +200,20 @@ function Update-Ui {
         return
     }
 
+    $p = $null
+    try { $p = $raw | ConvertFrom-Json } catch { return }
+    if (-not $p) { return }
+
+    # Before the unchanged-guard below, so the clock keeps ticking through phases that write the file
+    # rarely or not at all - GuestPrepare alone can sit there for 90 seconds.
+    Update-ElapsedDisplay $p
+
     # Rebuilding the list on every tick would reset the selection and repaint for nothing. The runner
     # rewrites this file several times per action, but its CONTENT only changes when something happened.
     if ($raw -eq $script:lastRaw) {
         return
     }
     $script:lastRaw = $raw
-
-    $p = $null
-    try { $p = $raw | ConvertFrom-Json } catch { return }
-    if (-not $p) { return }
 
     $phases = @($p.phases)
     if ($phases.Count -eq 0) { return }
@@ -250,10 +285,7 @@ function Update-Ui {
         $ui.Headline.Text = if ($running) { $running.Name } else { [string]$p.step }
         $ui.HeadPillText.Text = 'RUNNING AS SYSTEM'
         $ui.FootNote.Text = '{0} of {1} phases complete' -f $doneCount, $items.Count
-        $ui.Elapsed.Text = if ([int]$p.timeout -gt 0) {
-            '{0} / {1}' -f (Format-Clock ([int]$p.elapsed)), (Format-Clock ([int]$p.timeout))
-        }
-        else { Format-Clock ([int]$p.elapsed) }
+        # Elapsed is set by Update-ElapsedDisplay on every tick, above the unchanged-guard.
     }
 }
 

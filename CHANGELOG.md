@@ -2,6 +2,56 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.34.0 - 2026-09-16 - A run can park for 25 minutes on a dialog nobody can see, and the timer said nothing
+
+Packaging Time-Access 3010 (IDC, with the EDIsecure XID8600 card printer) spent four sandbox runs on two
+problems that have nothing to do with that package. Both are about the same thing: the harness could not
+tell a working run from a stuck one, and neither could the operator watching it.
+
+### Added
+- **`-TrustedPublisherCert` on `Invoke-PsadtSandboxTest.ps1`.** Takes one or more `.cer`, stages them in
+  the mapped work folder and imports them into the guest's `LocalMachine\TrustedPublisher` during
+  GuestPrepare - the same thing an Intune `RootCATrustedCertificates` profile does on the fleet (App. N).
+  Without it, any installer that stages a third-party driver raises the Windows *"install device
+  software?"* prompt, and that prompt is **invisible**: every action runs as SYSTEM through a scheduled
+  task and draws nothing on the desktop. The installer waits for an answer nobody can give and the phase
+  burns its whole timeout, which is indistinguishable from a slow installer unless you read the log tail.
+  Measured: **25 minutes parked in `CA.dll: InstallPrinterDriver` versus 43 seconds with the certificate
+  present** - for a `.cer` that was sitting in the package's own output folder. A RED now means the
+  package is broken rather than the harness being short a prerequisite.
+
+  The import goes through `certutil -addstore`, not `Import-Certificate`: the PKI cmdlet routes via the
+  `Cert:` provider and returns `E_ACCESSDENIED` against `LocalMachine\TrustedPublisher` in this guest even
+  though the runner is elevated. An `X509Store` call is kept as a second route, and **the result is
+  verified by reading the store back by thumbprint** - a failed import looks exactly like a successful one
+  in a log that records only the return value, which cost one full run testing a hypothesis whose
+  precondition was never met.
+
+### Fixed
+- **The elapsed timer in the progress window stopped counting.** It read `$p.elapsed` from
+  `progress.json` verbatim, and `Update-Ui` returns early when that file is byte-identical to the last
+  read - correct for the phase list, which would otherwise reset the operator's selection on every tick,
+  but fatal for a clock. Phases that are not an action wait loop never rewrite the file at all, and
+  GuestPrepare alone can sit there for 90 seconds. So the one element whose entire job is to prove the run
+  is alive was frozen exactly when that question gets asked. The clock is now computed above the
+  unchanged-guard, on the window's own 1s tick, re-syncing on every value the file brings; it cannot drift
+  more than one write interval and it never stands still.
+- **The heartbeat was up to 20 seconds stale.** The guest refreshed `progress.json` every 10s and the host
+  re-read it every 10s, and the two stacked. Both are 1s now. The console line and the transcript keep the
+  coarser beat on purpose - one line per second buries the phase boundaries - and the host's output stays
+  change-gated, so a quiet phase is still quiet.
+
+### Documentation
+- Phase 6.1 gains the three things this package needed and the docs did not say: `-TrustedPublisherCert`,
+  cancelling with `STOP.txt` rather than killing the process (which orphans `vmmemWindowsSandbox` and
+  blocks every further run until an elevated `Restart-Service vmcompute -Force`), and scoping with
+  `-Scenarios` while iterating instead of re-proving a known failure four more times at ten minutes a
+  turn. App. Q names the certificate requirement where a driver package is actually being built.
+  SKILL.md is deliberately NOT touched: its pre-Phase-7 region had 55 bytes of headroom against the
+  5000-token budget, and `tests/SkillContextBudget.Tests.ps1` forbids making room by deleting a rule
+  or raising the budget. The certificate therefore reaches the agent through phase 6.1, which SKILL.md
+  already points at - an unsatisfying place for a failure this expensive and this silent.
+
 ## 0.33.0 - 2026-09-16 - Three research agents went looking for a command Windows had been storing all along
 
 Phase 2 dispatched a fixed three-agent research fan-out on every job. On an app that was already

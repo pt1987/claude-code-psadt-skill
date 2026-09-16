@@ -434,6 +434,27 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.34.0 - 2026-09-16
+- **Added: `-TrustedPublisherCert` on `Invoke-PsadtSandboxTest.ps1`.** An installer that stages a
+  third-party driver raises the Windows "install device software?" prompt unless the signer is already in
+  `TrustedPublisher` - and in the guest that prompt is **invisible**, because every action runs as SYSTEM
+  through a scheduled task and draws nothing on the desktop. The installer waits for an answer nobody can
+  give and the phase burns its whole timeout, looking exactly like a slow installer. Pass the `.cer` and
+  the harness imports it during GuestPrepare, the same thing an Intune `RootCATrustedCertificates` profile
+  does on the fleet. Measured on Time-Access 3010 / EDIsecure: **25 minutes of timeout versus 43 seconds**.
+  The import uses `certutil` (`Import-Certificate` returns `E_ACCESSDENIED` in the guest even when
+  elevated) and is **verified by reading the store back** - a failed import is indistinguishable from a
+  successful one when only the return value is logged, and that cost a full run.
+- **Fixed: the elapsed timer in the guest window stopped counting.** It rendered `progress.json` verbatim,
+  but `Update-Ui` returns early when that file has not changed - right for the phase list, fatal for a
+  clock, and phases that are not an action wait loop never rewrite the file at all (GuestPrepare alone can
+  sit there for 90 seconds). The one element whose job is to prove the run is alive was frozen exactly
+  when that gets asked. It now ticks on the window's own 1s timer and re-syncs on every file value.
+- **Fixed: the heartbeat was up to 20 seconds stale** - the guest wrote every 10s and the host read every
+  10s, and the two stacked. Both are 1s now; the console line and transcript keep the coarser beat so
+  phase boundaries stay legible.
+- Phase 6.1 now documents cancelling with `STOP.txt` (killing the process orphans `vmmemWindowsSandbox`
+  and blocks every further run) and scoping with `-Scenarios` while iterating. Suite 624, unchanged by this release - the new behaviour is guarded by the existing sandbox-harness and progress-UI tests.
 ### 0.33.0 - 2026-09-16
 - **Fixed: the Phase 2 research fan-out is gated.** `SKILL.md` ordered it in the imperative - *"Dispatch
   the three Researcher roles concurrently"* - one line above the two probe sentences, and rule 1 routed
@@ -454,21 +475,3 @@ second copy to keep in sync.
   so the realistic floor is two agents, not zero. Everything open but not worth an agent lands in
   `Deferred[]` with a reason, and `repair-strategy` is now a first-class question because
   `rule:all-three-deployment-types` makes Repair a deliverable.
-
-### 0.32.0 - 2026-09-15
-- **Fixed: the dossier now reads the sandbox verdict instead of asking for it.** `New-PsadtReport.ps1`
-  took identity, artefacts and return codes from the manifest but not the test result, so without a
-  hand-built `-Metadata SystemTest` it printed "the SYSTEM test was not run (no evidence)" on packages
-  whose gate was GREEN. It reads `results.sandboxTest.resultPath` now and **judges** the rows: an action
-  that exits 0 while the detection rule disagrees is a fail, not a pass - that combination is the
-  signature of a per-user install. A caller-supplied `SystemTest` still wins, and an unreadable
-  result.json keeps the honest "not run" default.
-- **Fixed: the guest progress window hung off the right edge** of the sandbox desktop, taking the TIMEOUT
-  and DETECTION columns with it. Sized against the work area and positioned explicitly now; verified in
-  the guest.
-- **Changed: a fourth BINDING trap in App. L.7** - re-running the installer over an existing install is
-  not a safe repair. Measured on JetBrains PyCharm 2026.2.2 as SYSTEM: `/S` over an existing install of
-  the same version never returned (killed at 603 s, no child process, no error), while Install and
-  Reinstall on a clean machine both exited 0. Repair is an explicit uninstall followed by an install.
-- PyCharm 2026.2.2 (908 MB, the largest package built with this skill) then passed the full gate GREEN.
-  Suite 572 -> 576.
