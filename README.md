@@ -434,6 +434,16 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.34.1 - 2026-09-16
+- **Changed: SKILL.md now names `-TrustedPublisherCert` at Phase 6**, with `-Scenarios` for iteration and
+  `STOP.txt` for cancelling. 0.34.0 documented the certificate in phase 6.1 only, because the control
+  plane had 55 bytes of headroom against its 5000-token budget - the wrong trade for a failure that is
+  expensive and silent, since an agent that never opens 6.1 repeats the 25-minute timeout blind. Room was
+  made the way the budget test prescribes: `rule:author-version-changelog` and `rule:start-menu-only`
+  moved to `references/conventions.md`, which already carried their full text and which SKILL.md routes
+  to. Both are editorial rules - their failure costs a doc edit or a stray desktop icon, not a
+  deployment. Control plane 17348 / 17500 bytes, headroom 55 -> 152. Suite 624, unchanged.
+
 ### 0.34.0 - 2026-09-16
 - **Added: `-TrustedPublisherCert` on `Invoke-PsadtSandboxTest.ps1`.** An installer that stages a
   third-party driver raises the Windows "install device software?" prompt unless the signer is already in
@@ -455,23 +465,3 @@ second copy to keep in sync.
   phase boundaries stay legible.
 - Phase 6.1 now documents cancelling with `STOP.txt` (killing the process orphans `vmmemWindowsSandbox`
   and blocks every further run) and scoping with `-Scenarios` while iterating. Suite 624, unchanged by this release - the new behaviour is guarded by the existing sandbox-harness and progress-UI tests.
-### 0.33.0 - 2026-09-16
-- **Fixed: the Phase 2 research fan-out is gated.** `SKILL.md` ordered it in the imperative - *"Dispatch
-  the three Researcher roles concurrently"* - one line above the two probe sentences, and rule 1 routed
-  every unknown into it because asking is forbidden. Three agents ran whether or not anyone needed them;
-  on an app already installed on the packaging machine, one such run cost 400k tokens to rediscover a
-  `QuietUninstallString` the Uninstall registry had been holding all along.
-- **Added: `scripts/Get-PsadtLocalEvidence.ps1`**, the ladder that decides whether an agent is warranted.
-  Four rungs, deterministic and offline: the installed PSADT module's manifest (retiring the
-  version/command-drift research topic outright), the Uninstall registry, the existing MSI and
-  switch-candidate probes composed rather than reimplemented, and this skill's own corpus plus a vendor
-  doc URL it **names but never fetches**. It reports `OpenQuestions[]` and `AgentBudget`, and that number
-  is the dispatch cap: zero open questions, zero sub-agents.
-- **Capped by family, so the cap is structural.** Questions one vendor deployment page answers fold into
-  a single agent. Three families can ever dispatch, so the budget cannot exceed three however the
-  question set grows - measured at **2 for an MSI or an app installed locally, 3 at worst**.
-- **Honest about its limits.** The external runtime prerequisite and known Intune pitfalls are marked
-  `CanCloseLocally = $false` - a statement about other people's fleets does not follow from this machine -
-  so the realistic floor is two agents, not zero. Everything open but not worth an agent lands in
-  `Deferred[]` with a reason, and `repair-strategy` is now a first-class question because
-  `rule:all-three-deployment-types` makes Repair a deliverable.

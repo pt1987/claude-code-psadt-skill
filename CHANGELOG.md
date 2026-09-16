@@ -2,6 +2,24 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.34.1 - 2026-09-16 - The rule that cost 25 minutes was the one rule not in the control plane
+
+0.34.0 shipped `-TrustedPublisherCert` and documented it in phase 6.1 only: SKILL.md had 55 bytes of
+headroom against the 5000-token budget, so the note did not fit and the release said so instead of
+solving it. That is the wrong trade for a failure that is expensive and silent - an agent that never
+opens phase 6.1 repeats the 25-minute timeout with no idea why.
+
+### Changed
+- **SKILL.md now names the certificate at Phase 6**, along with `-Scenarios` for iteration and `STOP.txt`
+  for cancelling. Room was made the way `tests/SkillContextBudget.Tests.ps1` prescribes - by moving
+  something out, not by deleting a rule or raising the budget. `rule:author-version-changelog` and
+  `rule:start-menu-only` now live in `references/conventions.md`, which SKILL.md already routes to and
+  which already carried their full text; both are editorial rules whose failure costs a documentation
+  edit or a stray desktop icon, not a deployment. Each moved anchor states why it sits behind the
+  auto-compaction line. Control plane: 17348 / 17500 bytes, up from 55 bytes of headroom to 152.
+
+Suite 624, unchanged.
+
 ## 0.34.0 - 2026-09-16 - A run can park for 25 minutes on a dialog nobody can see, and the timer said nothing
 
 Packaging Time-Access 3010 (IDC, with the EDIsecure XID8600 card printer) spent four sandbox runs on two

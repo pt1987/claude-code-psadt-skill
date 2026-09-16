@@ -48,10 +48,13 @@ form is the one that governs, because it is the one the agent reads first.
   with `LogAppend`, so otherwise every run of every version piles into one unreadable file. Generators do
   this; a hand-scaffolded launcher must too (pre-flight WARNs). Keep each Phase-6 log for audit
   (`artifacts.logs[]`).
+<!-- rule:author-version-changelog -->
 - **Author / version / changelog.** `AppScriptAuthor` in `$adtSession` = `author.person, author.company`
   (config, no hard-coded author). First script version is always `0.1` (not 1.0.0); substantive changes bump it,
   cosmetic edits need not. Mandatory changelog in the `.NOTES` header, one line per version:
   `- <ver> (YYYY-MM-DD, <author.person>): <change>`; bump `AppScriptVersion` + changelog together.
+  This rule lives here rather than in SKILL.md: getting it wrong costs a documentation edit, not a
+  deployment, so it is the kind of thing that may sit behind the auto-compaction line.
 - **Dossier, always** (upload or not - never skipped, "no upload" is not a reason to skip it). Produce
   `Intune-Dossier.html` from the fixed template `references/Report-Template.html` via
   `scripts/New-PsadtReport.ps1` - never hand-assemble the HTML. One self-contained, bilingual (DE/EN toggle,
@@ -69,8 +72,11 @@ form is the one that governs, because it is the one the agent reads first.
   `Output\<App>\`. never the PSADT default `AppIcon.png`/Banner (the upload script blocks them by SHA256).
   Verify real corner-pixel alpha and look at the image. Sources + MSI-icon fallback + verification: guide
   Appendix J. (The logo is uploaded separately to Intune's App-information tab; it is not in the `.intunewin`.)
+<!-- rule:start-menu-only -->
 - **Shortcuts.** Start Menu only (`$envCommonStartMenuPrograms`). No desktop icons; remove any the installer
-  creates, and clean up the Start Menu entry on uninstall.
+  creates, and clean up the Start Menu entry on uninstall. Like the author/version rule above, this one
+  lives here rather than in SKILL.md: a stray desktop icon is a cosmetic defect to be fixed in the next
+  revision, not a decision that runs software as SYSTEM or writes to a tenant.
 - **Intune access is state-driven, never trial-and-error.** Before Phase 9 / 10 / any cert-or-firewall policy
   read the state instead of provoking a 403: `Get-PsadtConfig.IntuneState` + `pwsh
   scripts/Test-PsadtIntuneAccess.ps1` → `Capabilities.Upload|Groups|Configuration`, three-valued (`$null` =

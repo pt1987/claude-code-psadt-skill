@@ -106,10 +106,6 @@ Short form. Full text, reasoning and the failure each one prevents: `references/
   (`<Vendor>_<App>_<Version>_<Arch>_<DeploymentType>_<yyyyMMdd-HHmmss>.log`), because PSADT's default is a
   fixed name with `LogAppend` and every run of every version then piles into one unreadable file.
   Generators do this; a hand-scaffolded launcher must too. Keep each Phase-6 log (`artifacts.logs[]`).
-<!-- rule:author-version-changelog -->
-- **Author / version / changelog.** `AppScriptAuthor` = `author.person, author.company` from config, never
-  hard-coded. First script version is always `0.1`, not 1.0.0. Mandatory `.NOTES` changelog, one line per
-  version; bump `AppScriptVersion` and the changelog together.
 <!-- rule:dossier-always -->
 - **Dossier, always** - upload or not; "no upload" is not a reason to skip it. `Intune-Dossier.html` from
   the fixed template `references/Report-Template.html` via `scripts/New-PsadtReport.ps1`, never
@@ -122,9 +118,6 @@ Short form. Full text, reasoning and the failure each one prevents: `references/
   the Output folder - never the PSADT default `AppIcon.png`/Banner, which the upload script blocks by
   SHA256. Verify real corner-pixel alpha AND look at the image. Sources + MSI-icon fallback: App. J. (The
   logo goes to Intune's App-information tab, not into the `.intunewin`.)
-<!-- rule:start-menu-only -->
-- **Shortcuts.** Start Menu only (`$envCommonStartMenuPrograms`); remove any desktop icon the installer
-  creates, and clean up the Start Menu entry on uninstall.
 <!-- rule:access-state-driven -->
 - **Intune access is state-driven, never trial-and-error.** Before Phase 9 / 10 / any cert-or-firewall
   policy, read the state instead of provoking a 403: `pwsh scripts/Test-PsadtIntuneAccess.ps1` ->
@@ -219,6 +212,11 @@ Each run appends to `results.systemTest[]` + `artifacts.logs[]`.
 one throwaway Windows Sandbox, every action as SYSTEM. No elevation on the host, host untouched,
 ~6 minutes. The verdict is keyed on the DETECTION SCRIPT - what Intune evaluates. Prerequisite, the
 `-Paths*` package assertions and when the sandbox is the wrong host: phase 6.1.
+
+**A package that stages a driver needs `-TrustedPublisherCert`.** No policy trusts that signer in the
+guest, so Windows raises the "install device software?" prompt - invisible, because every action runs as
+SYSTEM - and the phase burns its timeout looking like a slow installer. Scope with `-Scenarios` while
+iterating; cancel with `STOP.txt`, never by killing the process, which orphans the VM worker. Phase 6.1.
 
 **Never hand-roll this harness.** Running actions as SYSTEM and reading their exit codes back looks like
 ten lines of `schtasks` and is not: App. G has three bugs that each silently burned a full VM run.
