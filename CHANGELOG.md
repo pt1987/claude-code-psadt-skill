@@ -2,6 +2,35 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.34.2 - 2026-09-16 - The page counted 19 engines in one place and 14 in another
+
+A reader spotted it on the landing page: the stat tile said 19 installer engines, the Phase 2 step
+right below it said the engine was "1 of 14". The tile was right. Nothing in 624 tests looked at
+either number, because index.html lives on gh-pages and the suite only ever sees main.
+
+### Added
+- **`tests/SiteFigures.Tests.ps1` derives the page's figures from the repository and compares them.**
+  Installer engines against the switch catalog, the Phase 2 step against that same count, the script
+  tile against `scripts/` including its invocable/include split, reference files and appendices
+  against `references/`, decision gates against the `rule:gate-*` anchors in SKILL.md, and the three
+  version strings against each other. It reads index.html out of the gh-pages ref and skips itself
+  when that ref is absent, so a clone that has never fetched it sees skips rather than failures it
+  cannot act on; the workflow fetches the ref explicitly so the guard is real in CI.
+
+  Two figures are deliberately NOT asserted, and the file says so where a reader will look: `phases`
+  is the shape of the workflow rather than a count, and `Pester tests` would have to run this suite
+  from inside this suite.
+
+  The version is compared only against the page's own other mentions, never against package.json -
+  the release commit lands before the site deploys, so equality would fail on every release and
+  teach everyone to ignore the file.
+
+### Fixed
+- **Two stale figures on the page.** `1 of 14` -> `1 of 19`, and the script tile 33 -> 34
+  (31 invocable), which had been one behind since `Get-PsadtLocalEvidence.ps1` arrived in 0.33.0.
+
+Suite 624 -> 631.
+
 ## 0.34.1 - 2026-09-16 - The rule that cost 25 minutes was the one rule not in the control plane
 
 0.34.0 shipped `-TrustedPublisherCert` and documented it in phase 6.1 only: SKILL.md had 55 bytes of

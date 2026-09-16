@@ -434,6 +434,14 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.34.2 - 2026-09-16
+- **Added: `tests/SiteFigures.Tests.ps1`** - the landing page's stat tiles are now derived from the
+  repository and compared, instead of being hand-maintained and unchecked. A reader found the page
+  claiming 19 installer engines in the tile and "1 of 14" in the Phase 2 step right below it; the
+  script count had also been one behind since 0.33.0. index.html lives on gh-pages, so the suite had
+  never seen it. The guard reads it out of that ref, skips itself when the ref is absent, and the
+  workflow fetches it so CI checks it for real. Both stale figures fixed. Suite 624 -> 631.
+
 ### 0.34.1 - 2026-09-16
 - **Changed: SKILL.md now names `-TrustedPublisherCert` at Phase 6**, with `-Scenarios` for iteration and
   `STOP.txt` for cancelling. 0.34.0 documented the certificate in phase 6.1 only, because the control
@@ -444,24 +452,3 @@ second copy to keep in sync.
   to. Both are editorial rules - their failure costs a doc edit or a stray desktop icon, not a
   deployment. Control plane 17348 / 17500 bytes, headroom 55 -> 152. Suite 624, unchanged.
 
-### 0.34.0 - 2026-09-16
-- **Added: `-TrustedPublisherCert` on `Invoke-PsadtSandboxTest.ps1`.** An installer that stages a
-  third-party driver raises the Windows "install device software?" prompt unless the signer is already in
-  `TrustedPublisher` - and in the guest that prompt is **invisible**, because every action runs as SYSTEM
-  through a scheduled task and draws nothing on the desktop. The installer waits for an answer nobody can
-  give and the phase burns its whole timeout, looking exactly like a slow installer. Pass the `.cer` and
-  the harness imports it during GuestPrepare, the same thing an Intune `RootCATrustedCertificates` profile
-  does on the fleet. Measured on Time-Access 3010 / EDIsecure: **25 minutes of timeout versus 43 seconds**.
-  The import uses `certutil` (`Import-Certificate` returns `E_ACCESSDENIED` in the guest even when
-  elevated) and is **verified by reading the store back** - a failed import is indistinguishable from a
-  successful one when only the return value is logged, and that cost a full run.
-- **Fixed: the elapsed timer in the guest window stopped counting.** It rendered `progress.json` verbatim,
-  but `Update-Ui` returns early when that file has not changed - right for the phase list, fatal for a
-  clock, and phases that are not an action wait loop never rewrite the file at all (GuestPrepare alone can
-  sit there for 90 seconds). The one element whose job is to prove the run is alive was frozen exactly
-  when that gets asked. It now ticks on the window's own 1s timer and re-syncs on every file value.
-- **Fixed: the heartbeat was up to 20 seconds stale** - the guest wrote every 10s and the host read every
-  10s, and the two stacked. Both are 1s now; the console line and transcript keep the coarser beat so
-  phase boundaries stay legible.
-- Phase 6.1 now documents cancelling with `STOP.txt` (killing the process orphans `vmmemWindowsSandbox`
-  and blocks every further run) and scoping with `-Scenarios` while iterating. Suite 624, unchanged by this release - the new behaviour is guarded by the existing sandbox-harness and progress-UI tests.

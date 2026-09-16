@@ -18,6 +18,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Fetch gh-pages for the site-figures guard
+        shell: pwsh
+        # tests/SiteFigures.Tests.ps1 checks the landing page's stat tiles against what the repository
+        # actually contains. The page lives on gh-pages, which actions/checkout does not bring down,
+        # and the repo's own fetch refspec is restricted to main - so without this the guard would
+        # skip here forever and the figures would rot exactly as they did before it existed.
+        # Non-fatal on purpose: a fork without a gh-pages branch should still get a green suite.
+        run: |
+          git fetch --depth=1 origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages
+          if ($LASTEXITCODE -ne 0) { "no gh-pages branch here - the site-figures guard will skip" }
+          exit 0
+
       - name: Install Pester 5+
         shell: pwsh
         run: |
