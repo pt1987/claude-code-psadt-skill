@@ -56,6 +56,9 @@ into a script that later runs as SYSTEM.
 | A researched value is a claim until something deterministic confirms it: the MSI database, a definitive engine fingerprint, one probe run of the switch, the driver classifier | `scripts/Get-PsadtMsiFacts.ps1`, `scripts/Get-PsadtInstallerEngine.ps1`, `scripts/Get-DriverSignatureInfo.ps1`, Appendix L.1 |
 | The switch catalog reduces how much is researched on the open web, and is held to the SAME rule: its engine defaults ship in this repository, carry a dated source reference, and are still CLAIMS that only a run makes true | `references/switch-catalog/engine-defaults.json`, Appendix L.0 |
 | The catalog lookup is **offline by default**. The winget-pkgs stage is opt-in (`-WithWinget`), so no packaging run reaches for a third-party index on its own | `scripts/Get-PsadtSwitchCandidates.ps1` |
+| **Nothing is fetched until the local ladder says the question is open.** Zero open questions means zero research agents and zero pages retrieved, so the smallest attack surface is the default rather than a discipline | `scripts/Get-PsadtLocalEvidence.ps1`, `rule:research-gate`, phase 1.3 |
+| A vendor documentation URL is **named, never fetched, and never constructed** - only a URL something on this machine registered (`HelpLink`, `URLInfoAbout`, the MSI `ARPHELPLINK`) is reported, and the fetch stays in the orchestrator's data channel with its provenance attached | `scripts/Get-PsadtLocalEvidence.ps1` |
+| The ladder never runs the vendor binary to read its help output. Vendor code runs in the Phase 6 throwaway sandbox, never on the packaging host | `scripts/Get-PsadtLocalEvidence.ps1`, `scripts/Invoke-PsadtSandboxTest.ps1` |
 | Unverifiable values are surfaced as stated assumptions rather than silently adopted | `SKILL.md`, Operating mode |
 | The same treatment applies to whatever the user places in a package's `Files\` folder | `references/research-trust.md` |
 

@@ -52,7 +52,7 @@ Twelve phases, each owned by a script rather than by prose, so a step either pas
 | Phase | What happens | Owner |
 |---|---|---|
 | **0** Setup | 13 prerequisite checks, GREEN/YELLOW/RED, `-Fix` provisions | `Initialize-PsadtSkill.ps1` |
-| **1–2** Intake + research | blocker questions as clickable options; parallel research of version, silent switches, Intune pitfalls | agent (gates 1–2) |
+| **1–2** Intake + research | blocker questions as clickable options; a local-evidence ladder (installed here? binary here? already written down?) answers what it can, and a research agent is dispatched only per question it leaves open | agent (gates 1–2) |
 | **3** Scaffold | a generator writes launcher + detection + per-run log name + manifest; `New-ADTTemplate` only when none fits | `New-MsiPackage` · `New-BrowserExtensionPackage` · `New-WindowsFeaturePackage` · `New-DriverPackage` |
 | **4** Customize | all three hooks filled from the research, helpers in the Extensions module | agent |
 | **5** Pre-flight | 10 checks (encoding, AST parse, v3 cmdlets, structure, detection contract, manifest, log name, driver trust …) → GREEN/RED | `Invoke-PsadtPreflight.ps1` |
@@ -196,7 +196,7 @@ The app's **native installer is always the default**. Everything else is opt-in 
   matrix and the manual portal route: `references/app-registration.md`.
 - For **Pester tests**: Pester 5+ (`Install-Module Pester -MinimumVersion 5.0 -Scope CurrentUser`)
 - **Optional (recommended): the [superpowers](https://github.com/obra/superpowers) plugin** — if installed,
-  the research fan-out and the reviewer gate use it. Not required: without it the skill falls back to the
+  the gated research fan-out and the reviewer gate use it. Not required: without it the skill falls back to the
   native Agent tool and `/code-review`, and nothing in the workflow depends on the plugin.
 
 ## Installation

@@ -2,6 +2,81 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.33.0 - 2026-09-16 - Three research agents went looking for a command Windows had been storing all along
+
+Phase 2 dispatched a fixed three-agent research fan-out on every job. On an app that was already
+installed on the packaging machine, one of those runs cost 400k tokens to rediscover a
+`QuietUninstallString` sitting in the Uninstall registry. The fan-out was not too slow. It was not
+gated.
+
+### Fixed
+- **The research fan-out is now conditional, and the condition is a number.** `SKILL.md` ordered it in
+  the imperative - *"Dispatch the three Researcher roles concurrently"* - one line ABOVE the two probe
+  sentences, and the handoff rules hardened that into *"Researchers run concurrently and return before
+  scaffold"*. Operating-mode rule 1 then routed every unknown into it, because asking is forbidden. So
+  three agents ran whether or not anyone needed them. Phase 2 now runs a local-evidence ladder first and
+  dispatches against its `OpenQuestions[]` only; `AgentBudget` is the cap. Zero open questions, zero
+  sub-agents.
+- **The condition already existed, unreachable.** App. L.0 has defined stage 3 as *"the Phase 2 web
+  fan-out, when the stages above found nothing"* for two releases, and App. B and App. G both argue
+  against a fixed three-agent fan-out. Nothing in the Phase 2 block pointed at any of them.
+  `rule:research-gate` now lives in `SKILL.md` itself, and `tests/RuleAnchors.Tests.ps1` lists it among
+  the rules that may not be moved into a reference - a gate parked in an appendix is how this one got
+  lost the first time.
+- **Guide 1.3 stopped requiring research it no longer needs.** It labelled five web queries *"Mandatory"*
+  and made the filled table a packaging gate, so research was compulsory even when the probe had already
+  answered it. They are *query templates for an OPEN question* now, and the table gains a **Closed by**
+  column naming the rung that answers each row.
+
+### Added
+- **`scripts/Get-PsadtLocalEvidence.ps1`** - four rungs, deterministic, offline, and it REPORTS rather
+  than decides.
+  **0 tooling:** the installed PSADT module's manifest via `Import-PowerShellDataFile` (never
+  `Import-Module` - that has side effects), comparing `FunctionsToExport` against the commands this skill
+  uses. That retires Researcher role (a), the version and command-drift check, entirely: a rename is a
+  fact about a file on disk.
+  **1 installed here:** the Uninstall registry, HKLM 64-bit and 32-bit views plus HKCU. A
+  `QuietUninstallString` is not a claim - it is the vendor's own registration of a silent uninstall that
+  works, and it closes the uninstall question outright with **no installer file present at all**. That
+  case is a test.
+  **2 binary here:** composition only. ONE call to `Get-PsadtSwitchCandidates.ps1 -Json`, which already
+  carries the engine probe and the verified-switch store, plus `Get-PsadtMsiFacts.ps1` when the
+  compound-file header says MSI. A source guard asserts it does NOT call `Get-PsadtInstallerEngine.ps1`
+  a second time; that would re-scan the whole file for data already in hand.
+  **3 written down already:** this skill's own corpus (word-bounded, so a short name like "Git" does not
+  match every "GitHub"), plus a vendor doc URL taken from `HelpLink` / `URLInfoAbout` / `ARPHELPLINK`.
+  The URL is **named, never fetched** - one direct fetch by the orchestrator is the cheap middle step
+  between the ladder and an agent, and keeping the script offline is what makes "the gate is
+  deterministic" a test rather than a promise.
+- Each open question ships with its own `KnownContext`, `AcceptanceCriteria`, `SuggestedQuery` and a
+  paste-ready `AgentPromptHint`, so a dispatched agent confirms rather than rediscovers. Everything that
+  is open but not worth an agent lands in `Deferred[]` with a reason: `probe-run`,
+  `recheck-after-binary`, `accept-unanswered`, `folded`. Nothing is dropped silently.
+- **Questions one vendor page answers fold into a single agent.** Caught on the way in, and it matters:
+  on a binary the engine probe cannot identify, install, uninstall and post-install config open
+  together, so a naive "one agent per open question" dispatched **five** where the old fixed fan-out
+  sent three - worse than the thing being fixed, on exactly the case the ladder is meant to help most.
+  The rider stays visible in `Deferred[]` as `folded` and the carrier's prompt is told to answer it too.
+  Measured: an unidentifiable EXE now costs 3 agents, a known engine or an installed app 2, and the
+  suite asserts the budget can never exceed the three it replaces.
+- `tests/Get-PsadtLocalEvidence.Tests.ps1` (41 cases), pointed at Pester's `TestRegistry:` drive through
+  `-UninstallRoots` so it never reads the machine's real hives.
+- `evals/behaviour-local-evidence-before-fanout/` - the fourth behaviour eval. It fails a plan that
+  announces three parallel Researchers before anything local has been checked.
+
+### Notes
+- **Two questions can never be closed locally, and the ladder says so** with `CanCloseLocally = $false`:
+  the external runtime prerequisite (1.4) and known Intune pitfalls. A statement about other people's
+  fleets does not follow from this machine. Pretending otherwise would have been worse than the fan-out
+  being replaced, so the realistic floor is about 2 agents, not 0.
+- **`setup.exe /?` was considered and rejected.** Reading a vendor binary's help output would run vendor
+  code on the packaging HOST, three phases before the throwaway sandbox that exists for exactly that -
+  and the engines where it would help are the ones that answer `/?` with a modal dialog, or by installing
+  anyway. It is reported as a not-attempted miss naming the reason.
+- The new Phase 2 block is **60 bytes smaller** than the one it replaces. That was not incidental:
+  `tests/SkillContextBudget.Tests.ps1` had 28 bytes of headroom, and the ladder detail belongs in guide
+  1.3 anyway.
+
 ## 0.32.0 - 2026-09-15 - Every dossier said the SYSTEM test was not run, including the ones whose gate was green
 
 Packaging JetBrains PyCharm 2026.2.2 (NSIS, 908 MB) turned up one trap in the app and one hole in this

@@ -5,7 +5,7 @@ Trigger and behaviour evals for the `psadt-deploy` skill. Run with:
 ```powershell
 claude plugin eval . --ablation with-without
 claude plugin eval . --case "trigger-*"        # triggering only
-claude plugin eval . --case "behaviour-*"      # the three safety gates
+claude plugin eval . --case "behaviour-*"      # the four safety gates
 ```
 
 ## What is here
@@ -14,7 +14,7 @@ claude plugin eval . --case "behaviour-*"      # the three safety gates
 |---|---|---|
 | 9 | `should-fire` | the skill fires - German and English, typos, no punctuation, and never the word "PSADT" |
 | 8 | `should-not-fire` | the skill stays out of it, for requests that share its vocabulary |
-| 3 | `behaviour` | the three safety gates hold |
+| 4 | `behaviour` | the four safety gates hold |
 
 Eight of the nine `should-fire` cases run in an **empty directory**. That is deliberate: it is the
 state a real packaging request starts from, and it is the reason `SKILL.md` does not set the `paths`
@@ -29,8 +29,9 @@ the machine.
 
 ## Why the behaviour evals grade a plan instead of a run
 
-The three safety gates are "probe the MSI before searching the web", "dry-run before `-Execute`" and
-"no upload without a passing SYSTEM test". Executing those for real needs a vendor installer, Windows
+The four safety gates are "probe the MSI before searching the web", "run the local-evidence ladder
+before any research sub-agent and cap the fan-out at what it leaves open", "dry-run before `-Execute`"
+and "no upload without a passing SYSTEM test". Executing those for real needs a vendor installer, Windows
 Sandbox, an Entra application with admin consent and a live Intune tenant - that is a deployment, not
 an eval, and it is not something a test suite should be doing to a tenant.
 

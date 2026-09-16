@@ -256,8 +256,8 @@ The ladder returns every question in one of three states - `Closed` (local evide
 
 - `OpenQuestions[]` - the questions a sub-agent is the right tool for
 - `AgentBudget` - their count
-- `Deferred[]` - open, but a search is the wrong answer: `probe-run`, `recheck-after-binary`,
-  `accept-unanswered`. Nothing is dropped silently.
+- `Deferred[]` - still open, but not worth an agent of its own: `probe-run`, `recheck-after-binary`,
+  `accept-unanswered`, `folded`. Nothing is dropped silently.
 
 <!-- rule:research-gate -->
 **`AgentBudget` is the dispatch rule.** Zero open questions means zero sub-agents. N open questions
@@ -265,6 +265,12 @@ means at most N, one per question, and each agent gets that question's `KnownCon
 ProductCode, the provisional switch, the ARP row - so it searches to CONFIRM rather than to discover.
 A fixed three-agent fan-out is an anti-pattern (App. B), and it is where a 400k-token research pass
 came from.
+
+Questions that one vendor page answers **fold**: on a binary the engine probe cannot identify, install,
+uninstall and post-install config open together, and dispatching three agents for them would be worse
+than the fan-out being replaced. The rider stays visible in `Deferred[]` as `folded` and the carrier's
+prompt is told to answer it too. So the worst case is three agents, the common case two, and a
+re-package the store already knows can be zero.
 
 Two questions can **never** be closed locally, and the ladder says so with `CanCloseLocally = $false`:
 the **external runtime prerequisite** (1.4) and **known Intune pitfalls**. A statement about other
