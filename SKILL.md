@@ -176,7 +176,8 @@ doc URL for you to fetch) - returning `OpenQuestions[]` + `AgentBudget`.
 **`AgentBudget` IS the dispatch rule: 0 open questions = 0 sub-agents; N = at most N, one per question,
 each given that question's `KnownContext` so it confirms instead of rediscovering.** Never a fixed three,
 never one for a question the ladder closed. One WebFetch is not a fan-out.
-Findings table before scaffold: switch, exit codes, log path, leftovers, and the unbundled runtime Gate 1
+Findings before scaffold, per deployment type: install/uninstall/repair, exit codes, log path, leftovers,
+and the unbundled runtime Gate 1
 decides (phase 1.4) - a GREEN Phase 6 proves the PACKAGE works, never that the app does.
 Ladder detail, queries, per-type research (K · O.2 · P.2 · I.1) and the PSADT release-notes diff (verify
 with `Get-Command -Module PSAppDeployToolkit`, never adopt a version by number): phases 1.1/1.3, App. D/L.

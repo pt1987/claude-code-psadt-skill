@@ -52,15 +52,47 @@ gated.
   paste-ready `AgentPromptHint`, so a dispatched agent confirms rather than rediscovers. Everything that
   is open but not worth an agent lands in `Deferred[]` with a reason: `probe-run`,
   `recheck-after-binary`, `accept-unanswered`, `folded`. Nothing is dropped silently.
-- **Questions one vendor page answers fold into a single agent.** Caught on the way in, and it matters:
-  on a binary the engine probe cannot identify, install, uninstall and post-install config open
-  together, so a naive "one agent per open question" dispatched **five** where the old fixed fan-out
-  sent three - worse than the thing being fixed, on exactly the case the ladder is meant to help most.
-  The rider stays visible in `Deferred[]` as `folded` and the carrier's prompt is told to answer it too.
-  Measured: an unidentifiable EXE now costs 3 agents, a known engine or an installed app 2, and the
-  suite asserts the budget can never exceed the three it replaces.
-- `tests/Get-PsadtLocalEvidence.Tests.ps1` (41 cases), pointed at Pester's `TestRegistry:` drive through
-  `-UninstallRoots` so it never reads the machine's real hives.
+- **Questions one vendor page answers fold into a single agent, by FAMILY.** Caught in review, and it
+  mattered: a chain-based fold only fired when its named carrier was itself being dispatched, so an app
+  whose engine *was* identified (`silent-install` goes to `probe-run`, not to an agent) left uninstall,
+  repair and post-install config each taking one - **four agents, where the old fixed fan-out sent
+  three**, on the common path. There are now three families that can ever dispatch - `vendor-doc`,
+  `runtime`, `intune` - so the cap is structural rather than arithmetic, and it holds however the
+  question set grows. Measured across all four installer shapes: **3, and never more**. The rider stays
+  visible in `Deferred[]` as `folded` and the carrier's prompt is told to answer it too.
+- **A question could fall out of both output lists.** `OpenQuestions` and `Deferred` were two
+  independent predicates, and `Provisional` + the initial `dispatch-agent` matched neither - reproduced
+  with two ARP rows matching one build, where the **blocking** uninstall question vanished and the
+  counts added to 8 of 9. `Deferred` is now the *complement* of `OpenQuestions`, so every question is
+  Closed, open or deferred by construction, and a `Provisional` that never got a resolution is
+  normalised to `probe-run` rather than left carrying a stale one.
+- **A weak ARP row could get its key name laundered into a fabricated `msiexec /x`.** The code refused
+  that row's `QuietUninstallString` as too weak to trust, then trusted the *same row's* GUID-shaped key
+  enough to emit `msiexec /x {guid} /qn /norestart` at `high` and mark the question **Closed** - a
+  confident command line for a product Windows Installer has never heard of, replacing the real one. A
+  ProductCode is now only taken from the MSI database, the caller, or a strong row that is also
+  `WindowsInstaller`-registered; a near-match row's real quiet string is kept at `medium` for the probe
+  run instead.
+- **The `install-source` matcher was dead code** - it compared the installer's *file* name to
+  `InstallSource`, which is a *folder*. It never matched, which quietly removed the only `high`-confidence
+  matcher and widened how far a weak row could reach.
+- **The corpus search missed every name with a non-word edge.** `\b` asserts a word/non-word
+  *transition*, so a name ending in punctuation can never satisfy it: `Notepad++` found **0** of its 5
+  real mentions in this repo's own references. That is not cosmetic - a false miss is stated outright in
+  the `KnownContext` handed to the pitfalls agent ("this skill's corpus does NOT mention X"). Lookarounds
+  now say what was meant. The reported hit count is the true total, not the truncated one.
+- **Repair is a question again.** Scoping every agent to one ladder question would have dropped it off
+  the map entirely - not Closed, not Open, not Deferred, just absent - while `rule:all-three-deployment-types`
+  makes Repair a deliverable and SKILL.md calls it the usual miss. `repair-strategy` closes from the MSI
+  repair verb, treats a registered `ModifyPath` as a claim for the probe run, and otherwise carries
+  App. L.7's warning that re-running an installer is not a safe substitute.
+- `tests/Get-PsadtLocalEvidence.Tests.ps1` (46 cases), pointed at Pester's `TestRegistry:` drive through
+  `-UninstallRoots` so it never reads the machine's real hives. Three of them existed and asserted
+  nothing: two restated the definitions of `OpenQuestions` and `AgentBudget` (tautologies that cannot
+  fail), and one read `.Ok | Should -BeFalse` off an empty filter, which passes on `$null` whether the
+  probe failed or never ran. They are replaced by the invariant that actually matters - every question
+  in exactly one list, the budget capped across all four installer shapes - and mutation-checked: three
+  fail against the pre-fix code.
 - `evals/behaviour-local-evidence-before-fanout/` - the fourth behaviour eval. It fails a plan that
   announces three parallel Researchers before anything local has been checked.
 

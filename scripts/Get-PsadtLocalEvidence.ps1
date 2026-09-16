@@ -103,6 +103,7 @@ $rungInfo  = New-Object System.Collections.Generic.List[object]
 $installed = New-Object System.Collections.Generic.List[object]
 $docCands  = New-Object System.Collections.Generic.List[object]
 $corpusHit = New-Object System.Collections.Generic.List[object]
+$corpusTotal = 0
 
 function Add-Miss([int]$Rung, [string]$Source, [string]$Reason) {
     $misses.Add([pscustomobject]@{ Rung = $Rung; Source = $Source; Reason = $Reason })
@@ -263,7 +264,9 @@ foreach ($root in $UninstallRoots) {
 
 # Matchers, ranked; the first one that fires wins for a row. Nothing matches on Publisher alone - on a
 # developer machine that is a vendor's whole catalogue, not this app.
-$srcLeaf = $(if ($installerPresent) { Split-Path -Leaf $Path } else { $null })
+# InstallSource is the FOLDER the installer ran from, not the file. Comparing it to the installer's
+# file name never matches, which quietly made this whole matcher dead code.
+$srcDir = $(if ($installerPresent) { (Split-Path -Parent $Path).TrimEnd('\') } else { $null })
 foreach ($row in $arpRows) {
     if ($ProductCode -and $row.ProductCodeGuid -and $row.ProductCodeGuid -eq $ProductCode) {
         $row.MatchKind = 'product-code'; $row.MatchConfidence = 'verified'
@@ -271,9 +274,9 @@ foreach ($row in $arpRows) {
     } elseif ($ProductName -and $ProductVersion -and $row.DisplayName -eq $ProductName -and $row.DisplayVersion -eq $ProductVersion) {
         $row.MatchKind = 'name-version'; $row.MatchConfidence = 'verified'
         $row.MatchDetail = 'DisplayName and DisplayVersion both match exactly'
-    } elseif ($srcLeaf -and $row.InstallSource -and (Split-Path -Leaf ($row.InstallSource.TrimEnd('\'))) -eq $srcLeaf) {
+    } elseif ($srcDir -and $row.InstallSource -and $row.InstallSource.TrimEnd('\') -eq $srcDir) {
         $row.MatchKind = 'install-source'; $row.MatchConfidence = 'high'
-        $row.MatchDetail = 'InstallSource names the installer in front of us'
+        $row.MatchDetail = 'InstallSource is the folder the installer in front of us lives in'
     } elseif ($ProductName -and $row.DisplayName -eq $ProductName) {
         $row.MatchKind = 'name-only'; $row.MatchConfidence = 'medium'
         $row.MatchDetail = 'same product, different build - vendors change switches between versions'
@@ -364,11 +367,16 @@ $topCand         = @(Get-Prop $sc 'Candidates') | Select-Object -First 1
 $refDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'references'
 if ($resolvedName -and (Test-Path -LiteralPath $refDir)) {
     try {
-        # Word-bounded, not a substring match. A short product name ("Git", "R", "Go") otherwise hits
-        # every "GitHub" and "Registry" in the corpus, and a corpus hit is not cosmetic: it is handed to
-        # the pitfalls agent as established context, so a false one actively misleads it.
-        $needle = '\b' + [regex]::Escape($resolvedName) + '\b'
+        # Bounded, not a substring match. A short product name ("Git", "R", "Go") otherwise hits every
+        # "GitHub" and "Registry" in the corpus, and a corpus hit is not cosmetic: it is handed to the
+        # pitfalls agent as established context, so a false one actively misleads it - and so does a
+        # false MISS, which is stated outright in KnownContext.
+        # \b is wrong for the job: it asserts a word/non-word TRANSITION, so a name ending in a non-word
+        # character can never satisfy it. "Notepad++" found 0 of its 5 real mentions, ".NET" 5 of 11.
+        # The lookarounds say what was actually meant - not glued to more name.
+        $needle = '(?<!\w)' + [regex]::Escape($resolvedName) + '(?!\w)'
         $found = @(Select-String -Path (Join-Path $refDir '*.md') -Pattern $needle -ErrorAction SilentlyContinue)
+        $corpusTotal = $found.Count
         foreach ($f in ($found | Select-Object -First 20)) {
             $corpusHit.Add([pscustomobject]@{ File = $f.Filename; Line = $f.LineNumber; Text = $f.Line.Trim() })
         }
@@ -409,7 +417,7 @@ $rungInfo.Add([pscustomobject]@{
     Rung     = 3
     Name     = 'written-down'
     Ran      = $true
-    Context  = "corpus hits $($corpusHit.Count), named URLs $($docCands.Count)"
+    Context  = "corpus hits $corpusTotal, named URLs $($docCands.Count)"
     Findings = $corpusHit.Count + $docCands.Count
 })
 
@@ -419,11 +427,18 @@ $rungInfo.Add([pscustomobject]@{
 $questions = New-Object System.Collections.Generic.List[object]
 
 function New-Question {
-    param([string]$Id, [string]$Topic, [string]$Question, [string]$Severity, [bool]$CanCloseLocally = $true)
+    param(
+        [string]$Id, [string]$Topic, [string]$Question, [string]$Severity,
+        # Questions in the same family are answered by the same vendor page. At most ONE agent is ever
+        # dispatched per family, which is what caps the fan-out structurally rather than by hoping the
+        # arithmetic works out - see the folding pass below.
+        [string]$Family,
+        [bool]$CanCloseLocally = $true
+    )
     $q = [pscustomobject]@{
         Id = $Id; Topic = $Topic; Question = $Question; Status = 'Open'; Answer = $null
         Confidence = 'none'; Evidence = @(); ClosedBy = $null; CanCloseLocally = $CanCloseLocally
-        Severity = $Severity; Resolution = 'dispatch-agent'; WhyOpen = $null
+        Severity = $Severity; Family = $Family; Resolution = 'dispatch-agent'; WhyOpen = $null
         SuggestedQuery = @(); Sources = @(); KnownContext = @(); AcceptanceCriteria = $null
         FoldInto = $null; AgentPromptHint = $null
     }
@@ -446,15 +461,18 @@ function Set-Open {
     $Q.Resolution = $Resolution
 }
 
-$qInstall   = New-Question 'silent-install'       'install'      'Silent install CMD' 'blocking'
-$qUninstall = New-Question 'silent-uninstall'     'uninstall'    'Silent uninstall CMD' 'blocking'
-$qCodes     = New-Question 'exit-codes'           'exit-codes'   'Known exit codes (success, reboot, error)' 'important'
-$qLog       = New-Question 'installer-log'        'logging'      'Installer log file path' 'optional'
-$qDep       = New-Question 'dependency-installer' 'dependencies' 'Dependency installer (if separate)' 'important'
-$qRuntime   = New-Question 'runtime-prerequisite' 'runtime'      'External runtime prerequisite (1.4)' 'blocking' $false
-$qPitfalls  = New-Question 'intune-pitfalls'      'intune'       'Known Intune pitfalls' 'important' $false
-$qConfig    = New-Question 'post-install-config'  'config'       'Known post-install config (registry / XML)' 'important'
-$qDrift     = New-Question 'psadt-command-drift'  'tooling'      'PSADT command drift (renamed or removed cmdlets)' 'blocking'
+# Families, not topics, are what bound the fan-out: everything in 'vendor-doc' is answered by the same
+# enterprise-deployment page, so it costs one agent no matter how many of its questions are open.
+$qInstall   = New-Question 'silent-install'       'install'      'Silent install CMD' 'blocking' 'vendor-doc'
+$qUninstall = New-Question 'silent-uninstall'     'uninstall'    'Silent uninstall CMD' 'blocking' 'vendor-doc'
+$qRepair    = New-Question 'repair-strategy'      'repair'       'Repair strategy (native verb, or uninstall + install)' 'important' 'vendor-doc'
+$qCodes     = New-Question 'exit-codes'           'exit-codes'   'Known exit codes (success, reboot, error)' 'important' 'vendor-doc'
+$qLog       = New-Question 'installer-log'        'logging'      'Installer log file path' 'optional' 'vendor-doc'
+$qDep       = New-Question 'dependency-installer' 'dependencies' 'Dependency installer (if separate)' 'important' 'vendor-doc'
+$qConfig    = New-Question 'post-install-config'  'config'       'Known post-install config (registry / XML)' 'important' 'vendor-doc'
+$qRuntime   = New-Question 'runtime-prerequisite' 'runtime'      'External runtime prerequisite (1.4)' 'blocking' 'runtime' $false
+$qPitfalls  = New-Question 'intune-pitfalls'      'intune'       'Known Intune pitfalls' 'important' 'intune' $false
+$qDrift     = New-Question 'psadt-command-drift'  'tooling'      'PSADT command drift (renamed or removed cmdlets)' 'blocking' 'tooling'
 
 # --- silent install --------------------------------------------------------------------------------
 if ($topCand -and [string](Get-Prop $topCand 'Confidence') -eq 'verified') {
@@ -476,14 +494,30 @@ if ($topCand -and [string](Get-Prop $topCand 'Confidence') -eq 'verified') {
 # --- silent uninstall ------------------------------------------------------------------------------
 # This is the one the 400k-token run went looking for on the web.
 $quiet = $(if ($best) { [string](Get-Prop $best 'QuietUninstallString') } else { '' })
+$strongRow = ($best -and $best.MatchConfidence -in @('verified', 'high'))
 $parented = ($best -and (Get-Prop $best 'ParentKeyName'))
-if ($quiet -and $best.MatchConfidence -in @('verified', 'high') -and -not $parented) {
+# A ProductCode is only a ProductCode if it came from somewhere that knows. The MSI database and the
+# caller do. A braced ARP key name does NOT, unless that row is both a strong match AND registered by
+# Windows Installer - plenty of non-MSI installers use a GUID-shaped key, and a weak row's key belongs
+# to a DIFFERENT BUILD whose ProductCode is different by definition. Getting this wrong ships a
+# confident `msiexec /x` line for a product msiexec has never heard of.
+$trustedCode = Resolve-Field @($ProductCode, (Get-Prop $msi 'ProductCode'))
+if (-not $trustedCode -and $strongRow -and (Get-Prop $best 'ProductCodeGuid') -and (Get-Prop $best 'WindowsInstaller')) {
+    $trustedCode = [string](Get-Prop $best 'ProductCodeGuid')
+}
+
+if ($quiet -and $strongRow -and -not $parented) {
     Set-Answer $qUninstall $quiet 'verified' 1 'arp-registry' $best.KeyPath `
         'the vendor registered this as the silent uninstall - it is not a claim, it is a registration'
-} elseif ($resolvedCode) {
-    Set-Answer $qUninstall ("msiexec /x {0} /qn /norestart" -f $resolvedCode) 'high' `
+} elseif ($trustedCode) {
+    Set-Answer $qUninstall ("msiexec /x {0} /qn /norestart" -f $trustedCode) 'high' `
         $(if ($msi) { 2 } else { 1 }) 'engine-catalog' 'engine-defaults.json engine msi' `
         'a ProductCode is all msiexec needs; pass it to -ProductCode, never to -FilePath'
+} elseif ($quiet) {
+    # Right shape, wrong build. Worth far more than a fabricated command line, but only a run settles it.
+    Set-Answer $qUninstall $quiet 'medium' 1 'arp-registry' $best.KeyPath `
+        'registered by a row that is not an exact match for this build - vendors change switches between versions'
+    Set-Open $qUninstall 'the QuietUninstallString comes from a near-match row, not this exact build' 'probe-run'
 } elseif ($best -and (Get-Prop $best 'UninstallString')) {
     Set-Answer $qUninstall ([string](Get-Prop $best 'UninstallString')) 'medium' 1 'arp-registry' $best.KeyPath `
         'an UninstallString with no Quiet twin - the engine''s silent argument still has to be appended, and run'
@@ -491,15 +525,35 @@ if ($quiet -and $best.MatchConfidence -in @('verified', 'high') -and -not $paren
 } elseif (-not $installerPresent -and $installed.Count -eq 0) {
     Set-Open $qUninstall 'nothing installed here and no binary supplied' 'recheck-after-binary'
 } else {
-    Set-Open $qUninstall 'no ARP row, no ProductCode, and the engine default did not cover uninstall' 'dispatch-agent'
-    $qUninstall.FoldInto = 'silent-install'
+    Set-Open $qUninstall 'no ARP row, no trustworthy ProductCode, and the engine default did not cover uninstall' 'dispatch-agent'
 }
 if ($ambiguous) {
+    # Two rows claim to be this exact product. Downgrading the confidence is not enough on its own: the
+    # answer was reached through a branch that never called Set-Open, so without this the question would
+    # be Provisional AND still carrying the initial 'dispatch-agent' - a combination that belongs to
+    # neither output list. The probe run is what disambiguates, so say so.
     $qUninstall.Confidence = 'medium'
+    Set-Open $qUninstall "$verifiedCount rows match this build exactly and nothing is picked for you; the probe run decides" 'probe-run'
     $qUninstall.Evidence = @($qUninstall.Evidence) + @([pscustomobject]@{
         Rung = 1; Source = 'arp-registry'; SourceRef = 'multiple roots'; Value = $null; Confidence = 'medium'
         Detail = "ambiguous: $verifiedCount rows match exactly, and nothing is picked for you"
     })
+}
+
+# --- repair ------------------------------------------------------------------------------------------
+# Its own question because rule:all-three-deployment-types makes Repair a deliverable, and App. L.7
+# records an engine whose "just re-run the installer" repair never returned.
+if ($isMsi -or $trustedCode) {
+    Set-Answer $qRepair 'msiexec /f{omus} <ProductCode> /qn /norestart' 'high' 2 'engine-catalog' `
+        'engine-defaults.json engine msi' 'Windows Installer has a real repair verb; nothing else has to be inferred'
+} elseif ($best -and (Get-Prop $best 'ModifyPath')) {
+    Set-Answer $qRepair ([string](Get-Prop $best 'ModifyPath')) 'medium' 1 'arp-registry' $best.KeyPath `
+        'the product registered a ModifyPath, which is a maintenance entry point - whether it repairs SILENTLY is a claim'
+    Set-Open $qRepair 'a registered ModifyPath is not proof of a silent repair' 'probe-run'
+} elseif (-not $installerPresent) {
+    Set-Open $qRepair 'no binary to inspect yet' 'recheck-after-binary'
+} else {
+    Set-Open $qRepair 'no repair verb is documented for this engine, and re-running the installer over an existing install is not a safe substitute (App. L.7)' 'dispatch-agent'
 }
 
 # --- exit codes ------------------------------------------------------------------------------------
@@ -539,7 +593,7 @@ if ($corpusHit.Count -gt 0) {
     $qPitfalls.Evidence = @([pscustomobject]@{
         Rung = 3; Source = 'local-corpus'; SourceRef = ($corpusHit[0].File + ':' + $corpusHit[0].Line)
         Value = $null; Confidence = 'low'
-        Detail = "this skill's corpus already mentions this app in $($corpusHit.Count) place(s) - read them before searching"
+        Detail = "this skill's corpus already mentions this app in $corpusTotal place(s) - read them before searching"
     })
 }
 
@@ -584,28 +638,43 @@ foreach ($q in $questions) {
 }
 
 # ---------------------------------------------------------------------------------------------------
-# Fold before counting - one agent answers everything one vendor page answers
+# Normalise, then fold - in that order, because both feed the count
 # ---------------------------------------------------------------------------------------------------
-# Without this the ladder is WORSE than the fan-out it replaces on the case it is supposed to help
-# most: a binary nothing can identify opens install, uninstall and post-install config as three
-# separate questions, so "one agent per open question" would dispatch five where the old fixed fan-out
-# sent three. They are not three searches. They are three answers on one vendor deployment page.
-#
-# So a question that names a FoldInto target rides along with that target whenever the target is
-# itself being dispatched. It stays visible in Deferred with resolution 'folded', and the carrier's
-# prompt is told to answer it too - nothing is dropped, it just stops costing a second agent.
-$dispatching = @($questions | Where-Object { $_.Status -eq 'Open' -and $_.Resolution -eq 'dispatch-agent' })
-foreach ($q in $dispatching) {
-    if (-not $q.FoldInto) { continue }
-    $carrier = @($dispatching | Where-Object { $_.Id -eq $q.FoldInto -and $_.Resolution -eq 'dispatch-agent' })
-    if ($carrier.Count -eq 1) {
-        Set-Open $q ("{0} (folded into '{1}': one vendor page answers both)" -f $q.WhyOpen, $q.FoldInto) 'folded'
+# A question that ended up Provisional still carries the 'dispatch-agent' it was born with unless some
+# branch changed it. That combination belongs to neither output list, so the question would vanish from
+# a contract whose whole promise is that nothing is dropped silently. Provisional means a local claim
+# exists; the thing that settles a local claim is the probe run, never a search.
+foreach ($q in $questions) {
+    if ($q.Status -eq 'Provisional' -and $q.Resolution -eq 'dispatch-agent') {
+        Set-Open $q $(if ($q.WhyOpen) { $q.WhyOpen } else { 'a local claim exists; only a run settles it' }) 'probe-run'
     }
 }
+
+# One agent answers everything one vendor page answers. Without this the ladder is WORSE than the
+# fan-out it replaces: an app whose engine IS identified still opens uninstall, repair and
+# post-install config separately, so "one agent per open question" dispatched FOUR where the old fixed
+# fan-out sent three. They are not four searches. They are four answers on one deployment page.
+#
+# Folding by FAMILY rather than by a FoldInto chain is what makes the cap structural: there are three
+# families that can ever dispatch (vendor-doc, runtime, intune), so AgentBudget cannot exceed three no
+# matter how the question set grows. A chain could also leave a rider attached to a carrier that was
+# itself folded, and then reach no prompt at all.
 $riders = @{}
-foreach ($q in @($questions | Where-Object { $_.Resolution -eq 'folded' })) {
-    if (-not $riders.ContainsKey($q.FoldInto)) { $riders[$q.FoldInto] = New-Object System.Collections.Generic.List[string] }
-    $riders[$q.FoldInto].Add($q.Question)
+foreach ($family in @($questions | Where-Object { $_.Status -eq 'Open' -and $_.Resolution -eq 'dispatch-agent' } |
+                      ForEach-Object { $_.Family } | Sort-Object -Unique)) {
+    $members = @($questions | Where-Object { $_.Family -eq $family -and $_.Status -eq 'Open' -and $_.Resolution -eq 'dispatch-agent' })
+    if ($members.Count -le 1) { continue }
+    # The carrier is the most severe member, ties broken by the order the questions were declared, so
+    # the choice is stable across runs and does not depend on hashtable ordering.
+    $sev = @{ blocking = 0; important = 1; optional = 2 }
+    $carrier = @($members | Sort-Object @{ Expression = { $sev[[string]$_.Severity] } },
+                                        @{ Expression = { $questions.IndexOf($_) } })[0]
+    $riders[$carrier.Id] = New-Object System.Collections.Generic.List[string]
+    foreach ($q in @($members | Where-Object { $_.Id -ne $carrier.Id })) {
+        $q.FoldInto = $carrier.Id
+        Set-Open $q ("{0} (folded into '{1}': one vendor page answers both)" -f $q.WhyOpen, $carrier.Id) 'folded'
+        $riders[$carrier.Id].Add($q.Question)
+    }
 }
 
 # ---------------------------------------------------------------------------------------------------
@@ -670,7 +739,11 @@ foreach ($q in $questions) {
 # The gate
 # ---------------------------------------------------------------------------------------------------
 $open = @($questions | Where-Object { $_.Status -eq 'Open' -and $_.Resolution -eq 'dispatch-agent' })
-$deferred = @($questions | Where-Object { $_.Status -ne 'Closed' -and $_.Resolution -ne 'dispatch-agent' })
+# Deferred is defined as the COMPLEMENT, not by a second predicate. Two independent predicates is how a
+# question ends up in neither list, and "nothing is dropped silently" then stops being true without
+# anything looking wrong. Every question is now Closed, open, or deferred - by construction.
+$openIds = @($open | ForEach-Object { $_.Id })
+$deferred = @($questions | Where-Object { $_.Status -ne 'Closed' -and $_.Id -notin $openIds })
 
 $result = [pscustomobject]@{
     SchemaVersion        = 1
@@ -709,6 +782,7 @@ $result = [pscustomobject]@{
     ToolsRun             = $toolsRun.ToArray()
     DocCandidates        = $docCands.ToArray()
     CorpusHits           = $corpusHit.ToArray()
+    CorpusHitsTotal      = $corpusTotal
     Rungs                = @($rungInfo.ToArray() | ForEach-Object {
         $r = $_
         [pscustomobject]@{
@@ -741,7 +815,7 @@ if ($Json) { return ($result | ConvertTo-Json -Depth 10) }
 Write-Host ""
 Write-Host ("Product : {0} {1}" -f $result.Identity.ProductName, $result.Identity.ProductVersion) -ForegroundColor Cyan
 Write-Host ("Engine  : {0}   Installed here: {1} row(s)   Corpus: {2} hit(s)" -f `
-    $(if ($engine) { $engine } else { '-' }), $installed.Count, $corpusHit.Count) -ForegroundColor DarkGray
+    $(if ($engine) { $engine } else { '-' }), $installed.Count, $corpusTotal) -ForegroundColor DarkGray
 Write-Host ""
 $result.Questions |
     Select-Object Question, Status, Confidence,

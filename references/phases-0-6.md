@@ -236,8 +236,15 @@ machine, and Phase 2 used to pay three parallel sub-agents to go looking for the
 ```
 pwsh scripts/Get-PsadtLocalEvidence.ps1 -Path <installer>
 ```
+**Before the installer exists**, which is the normal Phase 1 state, run it on identity alone - it still
+reads the registry and the corpus, and rung 1 can close the uninstall question outright:
+```
+pwsh scripts/Get-PsadtLocalEvidence.ps1 -ProductName '<App>' -Publisher '<Vendor>' -ProductVersion '<x.y>'
+```
+**Re-run it the moment the binary lands in `Files\`.** Everything rung 2 would have answered comes back
+as `recheck-after-binary` in `Deferred[]` until then, and nothing else in the workflow goes back for it.
 
-Three rungs, all deterministic, all offline:
+Four rungs, all deterministic, all offline (rung 0 is the toolchain check from 1.1):
 
 | Rung | Question | What answers it |
 |---|---|---|
@@ -259,8 +266,8 @@ The ladder returns every question in one of three states - `Closed` (local evide
 - `Deferred[]` - still open, but not worth an agent of its own: `probe-run`, `recheck-after-binary`,
   `accept-unanswered`, `folded`. Nothing is dropped silently.
 
-<!-- rule:research-gate -->
-**`AgentBudget` is the dispatch rule.** Zero open questions means zero sub-agents. N open questions
+**`AgentBudget` is the dispatch rule** (`rule:research-gate`, anchored in SKILL.md). Zero open
+questions means zero sub-agents. N open questions
 means at most N, one per question, and each agent gets that question's `KnownContext` - the engine, the
 ProductCode, the provisional switch, the ARP row - so it searches to CONFIRM rather than to discover.
 A fixed three-agent fan-out is an anti-pattern (App. B), and it is where a 400k-token research pass
@@ -312,6 +319,7 @@ ends it, and it never replaces Phase 6 (`research-is-data`, `references/research
 | External runtime prerequisite (1.4) | `<...>` | | **never locally - agent** |
 | Known Intune pitfalls | `<...>` | | rung 3 narrows it; **otherwise agent** |
 | Known post-install config (registry / XML) | `<...>` | | rung 2 - the MSI Property / Registry / Shortcut tables |
+| Repair strategy (native verb, or uninstall + install) | `<...>` | | rung 2 for an MSI (`/f{omus}`); rung 1 `ModifyPath` is a claim, not a silent repair |
 
 Without this table filled in - every row either answered, or explicitly `Closed` / `Deferred` by the
 ladder: **do not package**.

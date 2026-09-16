@@ -219,7 +219,13 @@ Describe 'Get-PsadtLocalEvidence' {
             $q = @($r.Questions | Where-Object Id -eq 'silent-install')[0]
             $q.Status | Should -Be 'Closed'
             $q.Answer | Should -Match 'msiexec'
-            @($r.ToolsRun | Where-Object { $_.Script -eq 'Get-PsadtMsiFacts.ps1' }).Ok | Should -BeFalse
+            # Assert the entry EXISTS before asserting on it. An empty filter yields $null, and
+            # Should -BeFalse passes on $null - so without this the test read identically whether the
+            # probe ran and failed or was never invoked at all.
+            $probe = @($r.ToolsRun | Where-Object { $_.Script -eq 'Get-PsadtMsiFacts.ps1' })
+            $probe.Count | Should -Be 1 -Because 'the MSI probe must have been attempted'
+            $probe[0].Ok | Should -BeFalse
+            [string]$probe[0].Error | Should -Not -BeNullOrEmpty
         }
 
         It 'reports the help-output probe as not attempted, and says the sandbox is why' {
@@ -262,6 +268,38 @@ Describe 'Get-PsadtLocalEvidence' {
             }
         }
 
+        It 'never fabricates an msiexec command from a weak row that merely has a GUID-shaped key' {
+            # A braced ARP key is a ProductCode only for a Windows Installer product, and a weak match
+            # is a DIFFERENT BUILD, whose ProductCode differs by definition. The old code refused the
+            # row's QuietUninstallString as too weak to trust, then trusted that same row's key name
+            # enough to emit `msiexec /x {guid} /qn` at high confidence and close the question - a
+            # confident command line for a product msiexec has never heard of, replacing the real one.
+            New-ArpKey -Root $script:reg -Name '{AAAA1111-2222-3333-4444-555566667777}' -Values @{
+                DisplayName = 'Acme Reader'; DisplayVersion = '2.0.0'
+                QuietUninstallString = 'bundle.exe /uninstall /quiet'
+            } | Out-Null
+            $r = & $script:src -ProductName 'Acme Reader' -ProductVersion '3.1.0' -UninstallRoots $script:reg
+            $r.Installed[0].MatchConfidence | Should -Be 'medium' -Because 'this test is only meaningful on a weak row'
+            $q = @($r.Questions | Where-Object Id -eq 'silent-uninstall')[0]
+            $q.Answer | Should -Not -Match 'msiexec'
+            $q.Answer | Should -BeExactly 'bundle.exe /uninstall /quiet'
+            $q.Status | Should -Be 'Provisional' -Because 'a near-match row is a claim, and a run settles it'
+        }
+
+        It 'matches InstallSource against the folder the installer lives in, not its file name' {
+            # InstallSource is a directory. Comparing it to the installer's file name never matched, so
+            # the only 'high' matcher was dead code - which widened how far a weak row could reach.
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            New-ArpKey -Root $script:reg -Name 'Acme_is1' -Values @{
+                DisplayName = 'Totally Different Name'; DisplayVersion = '1.0'
+                InstallSource = (Split-Path -Parent $p) + '\'
+            } | Out-Null
+            $r = & $script:src -Path $p -ProductName 'Acme Reader' -UninstallRoots $script:reg
+            @($r.Installed).Count | Should -Be 1
+            $r.Installed[0].MatchKind | Should -Be 'install-source'
+            $r.Installed[0].MatchConfidence | Should -Be 'high'
+        }
+
         It 'never marks a question Closed on medium or low confidence' {
             $r = & $script:src -ProductName 'Acme Reader' -UninstallRoots $script:reg
             @($r.Questions | Where-Object { $_.Status -eq 'Closed' -and $_.Confidence -in @('medium', 'low', 'none') }).Count |
@@ -282,18 +320,65 @@ Describe 'Get-PsadtLocalEvidence' {
     }
 
     Context 'the gate' {
-        It 'puts only Open plus dispatch-agent questions in OpenQuestions' {
-            $r = & $script:src -ProductName 'Acme Reader' -UninstallRoots $script:reg
-            foreach ($q in @($r.OpenQuestions)) {
-                $q.Status | Should -Be 'Open'
-                $q.Resolution | Should -Be 'dispatch-agent'
+        It 'accounts for every question exactly once: Closed, open, or deferred' {
+            # THE invariant. Both previous versions of this context were tautologies - they re-asserted
+            # the definitions of OpenQuestions and AgentBudget, so neither could fail. This one can, and
+            # did: a Provisional question still carrying its initial 'dispatch-agent' matched neither
+            # output predicate and silently vanished from both lists - a BLOCKING question, from a
+            # contract whose stated promise is that nothing is dropped silently.
+            $scenarios = @(
+                @{ Name = 'nothing installed';   Args = @{ ProductName = 'Acme Reader' } }
+                @{ Name = 'exact match';         Args = @{ ProductName = 'Acme Reader'; ProductVersion = '3.1.0' } }
+                @{ Name = 'two exact matches';   Args = @{ ProductName = 'Dup App'; ProductVersion = '1.0' } }
+                @{ Name = 'older build only';    Args = @{ ProductName = 'Old App'; ProductVersion = '9.9' } }
+            )
+            New-ArpKey -Root $script:reg -Name 'Acme_is1' -Values @{
+                DisplayName = 'Acme Reader'; DisplayVersion = '3.1.0'; QuietUninstallString = '"C:\x\u.exe" /S'
+            } | Out-Null
+            'Dup_A', 'Dup_B' | ForEach-Object {
+                New-ArpKey -Root $script:reg -Name $_ -Values @{
+                    DisplayName = 'Dup App'; DisplayVersion = '1.0'; QuietUninstallString = '"C:\y\u.exe" /S'
+                } | Out-Null
+            }
+            New-ArpKey -Root $script:reg -Name 'Old_is1' -Values @{ DisplayName = 'Old App'; DisplayVersion = '1.0' } | Out-Null
+
+            foreach ($s in $scenarios) {
+                $splat = $s.Args
+                $r = & $script:src @splat -UninstallRoots $script:reg
+                $openIds = @($r.OpenQuestions).Id
+                $defIds = @($r.Deferred).Id
+                foreach ($q in @($r.Questions)) {
+                    if ($q.Status -eq 'Closed') { continue }
+                    $in = @($openIds | Where-Object { $_ -eq $q.Id }).Count + @($defIds | Where-Object { $_ -eq $q.Id }).Count
+                    $in | Should -Be 1 -Because "$($q.Id) is $($q.Status)/$($q.Resolution) and must be in exactly one list [$($s.Name)]"
+                }
+                ($r.Summary.Closed + @($r.OpenQuestions).Count + @($r.Deferred).Count) |
+                    Should -Be @($r.Questions).Count -Because "the three counts must add up [$($s.Name)]"
+                $r.AgentBudget | Should -Be @($r.OpenQuestions).Count
             }
         }
 
-        It 'reports AgentBudget as exactly the number of open questions' {
-            $r = & $script:src -ProductName 'Acme Reader' -UninstallRoots $script:reg
-            $r.AgentBudget | Should -Be @($r.OpenQuestions).Count
-            $r.Summary.AgentBudget | Should -Be $r.AgentBudget
+        It 'caps the budget at three in EVERY shape of installer, not just the one the fold was written for' {
+            # The fold used to key off a FoldInto chain whose target had to be dispatching. When the
+            # engine WAS identified, silent-install went to probe-run, no carrier existed, and uninstall
+            # / repair / config each took an agent: four, where the fixed fan-out sent three. Folding by
+            # family makes the cap structural - there are only three families that can ever dispatch.
+            $cases = @(
+                @{ Name = 'identified engine'; File = { New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data (6.2.0)') } }
+                @{ Name = 'MSI';               File = { New-TestCfb } }
+                @{ Name = 'unknown engine';    File = { New-TestPe } }
+                @{ Name = 'no binary at all';  File = { $null } }
+            )
+            foreach ($c in $cases) {
+                $p = & $c.File
+                if ($p) { Track $p | Out-Null }
+                $splat = @{ ProductName = 'Acme Reader' }
+                if ($p) { $splat['Path'] = $p }
+                $r = & $script:src @splat -UninstallRoots 'TestRegistry:\Empty'
+                $r.AgentBudget | Should -BeLessOrEqual 3 -Because "[$($c.Name)] must never cost more than the fixed three it replaces"
+                @($r.OpenQuestions | ForEach-Object { $_.Family } | Sort-Object -Unique).Count |
+                    Should -Be $r.AgentBudget -Because "[$($c.Name)] at most one agent per family"
+            }
         }
 
         It 'defers a question the binary would answer, instead of spending an agent on it' {
@@ -349,9 +434,20 @@ Describe 'Get-PsadtLocalEvidence' {
             $r = & $script:src -ProductName 'Acme Reader' -UninstallRoots $script:reg
             $ids = @($r.Questions).Id
             $ids.Count | Should -Be (@($ids | Sort-Object -Unique).Count)
-            'silent-install', 'silent-uninstall', 'exit-codes', 'installer-log', 'dependency-installer',
-            'runtime-prerequisite', 'intune-pitfalls', 'post-install-config', 'psadt-command-drift' |
+            'silent-install', 'silent-uninstall', 'repair-strategy', 'exit-codes', 'installer-log',
+            'dependency-installer', 'runtime-prerequisite', 'intune-pitfalls', 'post-install-config',
+            'psadt-command-drift' |
                 ForEach-Object { $ids | Should -Contain $_ }
+        }
+
+        It 'asks about Repair, because rule:all-three-deployment-types makes it a deliverable' {
+            # The old Researcher role owned "silent/uninstall/repair switches". Scoping every agent to
+            # one ladder question would have dropped repair off the map entirely - not Closed, not Open,
+            # not Deferred, just absent, while SKILL.md still calls Repair the usual miss.
+            $r = & $script:src -ProductName 'Acme Reader' -UninstallRoots $script:reg
+            $q = @($r.Questions | Where-Object Id -eq 'repair-strategy')
+            $q.Count | Should -Be 1
+            $q[0].Family | Should -Be 'vendor-doc' -Because 'the same vendor page answers it'
         }
     }
 
