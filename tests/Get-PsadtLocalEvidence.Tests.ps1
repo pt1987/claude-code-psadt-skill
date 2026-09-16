@@ -95,6 +95,17 @@ Describe 'Get-PsadtLocalEvidence' {
             $miss = @($r.Rungs | Where-Object { $_.Rung -eq 2 }).Misses
             ($miss.Reason -join ' ') | Should -Match 'missing\.exe'
         }
+
+        It 'says out loud that rung 2 did not run, instead of looking like a healthy no-binary run' {
+            # Found during the Claude Code test run. A -Path that does not resolve produced exactly the
+            # same table as passing no -Path at all - every rung-2 question on 'recheck-after-binary' -
+            # so a typo in the path was indistinguishable from "not downloaded yet", and the run looked
+            # healthy while answering nothing.
+            $out = & $script:src -Path 'C:\nope\missing.exe' -ProductName 'X' -UninstallRoots $script:reg 6>&1 |
+                Out-String
+            $out | Should -Match 'DID NOT RUN'
+            $out | Should -Match ([regex]::Escape('C:\nope\missing.exe'))
+        }
     }
 
     Context 'rung 1 - is it already installed here' {

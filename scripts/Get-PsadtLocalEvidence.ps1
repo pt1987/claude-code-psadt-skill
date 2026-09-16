@@ -816,6 +816,13 @@ Write-Host ""
 Write-Host ("Product : {0} {1}" -f $result.Identity.ProductName, $result.Identity.ProductVersion) -ForegroundColor Cyan
 Write-Host ("Engine  : {0}   Installed here: {1} row(s)   Corpus: {2} hit(s)" -f `
     $(if ($engine) { $engine } else { '-' }), $installed.Count, $corpusTotal) -ForegroundColor DarkGray
+# A -Path that does not resolve produces the same table as no -Path at all: every rung-2 question
+# deferred to 'recheck-after-binary'. That reads as "the binary is not here yet" when what actually
+# happened is a wrong path, and the run looks healthy while answering nothing. Say it out loud.
+if ($Path -and -not $installerPresent) {
+    Write-Host ("Rung 2 DID NOT RUN - no file at: {0}" -f $Path) -ForegroundColor Red
+    Write-Host "  Everything below is deferred because the binary was not read, not because it cannot be read." -ForegroundColor Red
+}
 Write-Host ""
 $result.Questions |
     Select-Object Question, Status, Confidence,
