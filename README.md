@@ -434,6 +434,27 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.33.0 - 2026-09-16
+- **Fixed: the Phase 2 research fan-out is gated.** `SKILL.md` ordered it in the imperative - *"Dispatch
+  the three Researcher roles concurrently"* - one line above the two probe sentences, and rule 1 routed
+  every unknown into it because asking is forbidden. Three agents ran whether or not anyone needed them;
+  on an app already installed on the packaging machine, one such run cost 400k tokens to rediscover a
+  `QuietUninstallString` the Uninstall registry had been holding all along.
+- **Added: `scripts/Get-PsadtLocalEvidence.ps1`**, the ladder that decides whether an agent is warranted.
+  Four rungs, deterministic and offline: the installed PSADT module's manifest (retiring the
+  version/command-drift research topic outright), the Uninstall registry, the existing MSI and
+  switch-candidate probes composed rather than reimplemented, and this skill's own corpus plus a vendor
+  doc URL it **names but never fetches**. It reports `OpenQuestions[]` and `AgentBudget`, and that number
+  is the dispatch cap: zero open questions, zero sub-agents.
+- **Capped by family, so the cap is structural.** Questions one vendor deployment page answers fold into
+  a single agent. Three families can ever dispatch, so the budget cannot exceed three however the
+  question set grows - measured at **2 for an MSI or an app installed locally, 3 at worst**.
+- **Honest about its limits.** The external runtime prerequisite and known Intune pitfalls are marked
+  `CanCloseLocally = $false` - a statement about other people's fleets does not follow from this machine -
+  so the realistic floor is two agents, not zero. Everything open but not worth an agent lands in
+  `Deferred[]` with a reason, and `repair-strategy` is now a first-class question because
+  `rule:all-three-deployment-types` makes Repair a deliverable.
+
 ### 0.32.0 - 2026-09-15
 - **Fixed: the dossier now reads the sandbox verdict instead of asking for it.** `New-PsadtReport.ps1`
   took identity, artefacts and return codes from the manifest but not the test result, so without a
@@ -451,18 +472,3 @@ second copy to keep in sync.
   Reinstall on a clean machine both exited 0. Repair is an explicit uninstall followed by an install.
 - PyCharm 2026.2.2 (908 MB, the largest package built with this skill) then passed the full gate GREEN.
   Suite 572 -> 576.
-
-### 0.31.0 - 2026-09-14
-- **Added: the guest window shows every phase of the run at once.** Until now it showed one line, the step
-  running right now, so a run three phases in looked like one stuck on its first and a failed phase left
-  nothing to read. It is a WPF master/detail window now: tick, cross or live marker per phase, and for the
-  selected one its exit code, duration, start and end, timeout, detection result and its own transcript.
-  Still a separate process polling a file, still passive - it never drives the run and closing it stops
-  nothing.
-- **Added: `progress.json` carries a `phases[]` plan derived from `-Scenarios`.** The hardcoded `total = 14`
-  it published before was wrong for every partial run, and wrong for the full gate too, which has 15 steps.
-  The older top-level fields are unchanged.
-- **Measured in the guest before the port, not after:** WPF loads there under Windows PowerShell 5.1,
-  the real XAML parses, and the window paints at render tier 0 with no vGPU - a PNG of it came back out of
-  the VM as the proof. New guards in `tests/SandboxProgressUi.Tests.ps1` cover ASCII, parsing, XAML loading
-  and the phase plan. Suite 554 -> 569.
