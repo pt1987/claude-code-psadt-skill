@@ -16,6 +16,8 @@
 
 ---
 
+<img width="3200" height="2000" alt="psadt-workflow-v035" src="https://github.com/user-attachments/assets/d9b1c137-3e0a-4a80-a40f-9a234903bb97" />
+
 ## What is this?
 
 A **Claude Code skill**: a reusable instruction package that teaches the agent how to build,
@@ -25,8 +27,6 @@ skill runs the workflow - intake, research, scaffolding, all three deployment ty
 optional Graph upload.
 
 It loads progressively: the agent sees only the name and description until a task makes it relevant.
-
-<img width="3200" height="2000" alt="psadt-workflow-v035" src="https://github.com/user-attachments/assets/d9b1c137-3e0a-4a80-a40f-9a234903bb97" />
 
 ### What that looks like in practice
 
