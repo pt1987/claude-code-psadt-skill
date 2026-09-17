@@ -8,7 +8,7 @@
 The logo is uploaded separately (Intune **App information** tab / Phase 9); it is NOT part of the
 `.intunewin` (no repack on logo change). Obtain the **REAL** application logo (PNG, transparent, >=512px,
 square preferred) → `<pkg>\Assets\<App>-Logo.png` AND a copy in `Output\<App>\`. **Never** ship the PSADT
-default `Assets\AppIcon.png`/`Banner.Classic.png` (see H.10 — the upload script blocks them by SHA256).
+default `Assets\AppIcon.png`/`Banner.Classic.png` (see H.10 - the upload script blocks them by SHA256).
 
 ### J.1 License-clear sources, in priority order
 
@@ -34,18 +34,18 @@ default `Assets\AppIcon.png`/`Banner.Classic.png` (see H.10 — the upload scrip
    $thumb = ((Invoke-RestMethod $api -Headers @{'User-Agent'='PSADT-pkg/1.0'}).query.pages.PSObject.Properties.Value).imageinfo[0].thumburl
    Invoke-WebRequest $thumb -OutFile '<pkg>\Assets\<App>-Logo.png' -Headers @{'User-Agent'='PSADT-pkg/1.0'}
    ```
-   Avoid third-party PNG portals (stickpng, toppng, nicepng, ...) — hotlink protection/ads/poor quality.
+   Avoid third-party PNG portals (stickpng, toppng, nicepng, ...) - hotlink protection/ads/poor quality.
 4. **MSI Icon-table fallback** (when web download fails). `Get-PsadtMsiFacts.ps1` lists the `Icon` table
    entries, so check there first whether the MSI even carries one.
    **Check the frame table before trusting this route.** The reader below assumes a 32-bpp DIB frame; an
    older installer often carries nothing better than **48x48 at 8 bpp** (PuTTY 0.85 does), and then
    `FromDib32` throws *"Source array was not long enough"* because a palette frame is a fraction of the
    expected size. Read the ICO directory first (`bpp` sits at offset `base+6` of each 16-byte entry) and
-   fall back to a web source when the largest frame is below ~256px or not 32 bpp — a correct 48px icon is
+   fall back to a web source when the largest frame is below ~256px or not 32 bpp - a correct 48px icon is
    still too small for the Intune tile.
    MSI installers embed `.ico` files in an `Icon`
    table. `System.Drawing.Icon` silently falls back to 48x48 when the 256x256 frame is PNG-compressed inside
-   the `.ico` on .NET 4.x — parse the raw ICO binary and extract the largest frame directly:
+   the `.ico` on .NET 4.x - parse the raw ICO binary and extract the largest frame directly:
    ```powershell
    Add-Type -AssemblyName System.Drawing
    Add-Type -TypeDefinition @'
@@ -86,7 +86,7 @@ default `Assets\AppIcon.png`/`Banner.Classic.png` (see H.10 — the upload scrip
 
 ### J.2 Verify (resolution + ACTUAL transparency + correct brand)
 
-`IsAlphaPixelFormat` only says the pixel *format* supports alpha — it is True even for a fully opaque image
+`IsAlphaPixelFormat` only says the pixel *format* supports alpha - it is True even for a fully opaque image
 (a 7-Zip SVG rendered with an opaque black background still reported `Alpha=True`). Sample a real corner pixel:
 ```powershell
 Add-Type -AssemblyName System.Drawing

@@ -10,7 +10,7 @@
 
 ## Appendix B: Anti-pattern list
 
-1. **Em-dash/smart quote in double-quoted strings**. `"Repair failed — DB status [$status]."` kills the entire script.
+1. **Em-dash/smart quote in double-quoted strings**. `"Repair failed - DB status [$status]."` kills the entire script.
 2. **UTF-8 without BOM + special characters**. Write a BOM or stick to pure ASCII.
 3. **v3 cmdlet names** (see 3.5).
 4. **Top-level code outside try/catch**.

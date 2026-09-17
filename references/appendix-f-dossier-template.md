@@ -20,11 +20,11 @@
 
 ## Appendix F: Package report (Intune dossier + technical report)
 
-**The report is generated for EVERY package — uploaded or not — by `scripts/New-PsadtReport.ps1` from the fixed
+**The report is generated for EVERY package - uploaded or not - by `scripts/New-PsadtReport.ps1` from the fixed
 template `references/Report-Template.html`. Do NOT hand-assemble the HTML.** Output is always
 `Intune-Dossier.html` in the artifact folder (`artifacts.outputFolder` =
 `<paths.outputRoot>\<Vendor>_<App>_<Version>_<Arch>\`). It is one self-contained, **bilingual (DE/EN toggle)** document:
-part 1 is the Intune dossier (the tables F.1–F.9 below), part 2 is the technical package report (deployment
+part 1 is the Intune dossier (the tables F.1-F.9 below), part 2 is the technical package report (deployment
 hooks, PSADT cmdlets used, pre-flight results, the Phase 6 SYSTEM-test result, logo + `.intunewin`
 verification). The logo is embedded as a base64 data URI; the description **preview is rendered client-side
 from its Markdown source**. **Exception:** the F.2 description block is **Markdown**, because the Intune app
@@ -53,7 +53,7 @@ Phase 6 is the binding gate for upload.
 
 | Key | Meaning |
 |---|---|
-| `Lang` | initial language `de` (default) / `en` — both are always embedded regardless |
+| `Lang` | initial language `de` (default) / `en` - both are always embedded regardless |
 | `AppName`, `AppVersion`, `Publisher`, `Developer`, `Owner` | header + App Info |
 | `PkgRev`, `ScriptVersion`, `Created`, `Author`, `PsadtVersion`, `ModuleVersion` | header meta + cmdlet note |
 | `SubDe`/`SubEn`, `StatusDe`/`StatusEn` | header subtitle + status pill (HTML entities allowed) |
@@ -71,7 +71,7 @@ Phase 6 is the binding gate for upload.
 | `SystemTest` (+`SystemTestNoteDe/En`) | array of `@{ StepDe; StepEn; Exit; Detection; Cls; Result }` |
 | `LogoSource`, `LogoResolution`, `LogoGuardOk` (bool), `IntuneWin`, `SetupFile`, `Location` | Logo & package-file section |
 
-The tables F.1–F.9 below are the source-of-truth field reference (what each value means); the generator maps
+The tables F.1-F.9 below are the source-of-truth field reference (what each value means); the generator maps
 them onto the template. Keep them for depth and for the manual Admin-Center route.
 
 ### F.1 App information
@@ -96,7 +96,7 @@ them onto the template. Keep them for depth and for the manual Admin-Center rout
 
 The Intune app description field supports **only Markdown** (not HTML) and renders it in the Company Portal. Copy the block 1:1, replace `<...>`.
 
-(end-user output — language.dossier, default German)
+(end-user output - language.dossier, default German)
 
 ```markdown
 **<AppName>** ist <Ein-Satz-Zweck>.
@@ -270,7 +270,7 @@ One row per target group. At least one Required OR Available assignment, otherwi
 
 ### F.10 Review + Create
 
-Before the `Create`, go through all tabs. After `Create`: Intune does not sync immediately — there is a 30-60 min wait until the client sees the package. Trigger it manually via Company Portal -> Settings -> Sync.
+Before the `Create`, go through all tabs. After `Create`: Intune does not sync immediately - there is a 30-60 min wait until the client sees the package. Trigger it manually via Company Portal -> Settings -> Sync.
 
 ### F.11 Example filled-in (Oracle Database 21c XE from this project)
 

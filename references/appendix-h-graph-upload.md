@@ -30,7 +30,7 @@ Never send both `rules` and `detectionRules`/`requirementRules` together.
 **Non-MSI apps (EXE installers: Vivaldi, Chrome-style, NSIS, Squirrel) → PowerShell-script detection rule.**
 There is no ProductCode, so use a `win32LobAppPowerShellScriptRule` with `ruleType='detection'` and the
 base64 of the detect script (classic contract: stdout + `exit 0` when installed). A **detection** script rule
-accepts ONLY these properties — Graph rejects the others with `BadRequest: The <X> property may not be set for
+accepts ONLY these properties - Graph rejects the others with `BadRequest: The <X> property may not be set for
 Win32LobAppPowerShellScriptRule instances used for app detection`:
 ```powershell
 $rules = @([ordered]@{
@@ -42,7 +42,7 @@ $rules = @([ordered]@{
 })
 ```
 Do NOT set `displayName`, `runAsAccount`, `operationType`, `operator`, or `comparisonValue` on a *detection*
-script rule — those are valid only on *requirement* script rules. `Invoke-IntuneWin32Upload.ps1` exposes this
+script rule - those are valid only on *requirement* script rules. `Invoke-IntuneWin32Upload.ps1` exposes this
 as `-DetectionScriptPath` (use instead of `-MsiProductCode`). Verified live with the Vivaldi package (2026-06-06).
 
 ### H.3 `@odata.type` must serialise FIRST

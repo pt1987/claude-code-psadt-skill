@@ -19,7 +19,7 @@ These lessons come from concrete packaging projects and apply to PSADT v4 Intune
 
 ### 2026-04-21/22 - Database package (large installer, ~2 GB, with post-install DB verify)
 
-1. **Em-dash encoding bug**: the script had 74 em-dashes (`—`) as UTF-8 without a BOM. In double-quoted strings PowerShell 5.1 broke during parsing. Exit 1, Intune showed `0x80070001`, no local logs. Fix: all em-dashes to `-`, arrows `→` to `->`, set the UTF-8 BOM.
+1. **Em-dash encoding bug**: the script had 74 em-dashes (`-`) as UTF-8 without a BOM. In double-quoted strings PowerShell 5.1 broke during parsing. Exit 1, Intune showed `0x80070001`, no local logs. Fix: all em-dashes to `-`, arrows `→` to `->`, set the UTF-8 BOM.
 
 2. **Transient post-install-check false positive**: a functional check right after `msiexec` finished came up empty - the services registered by the installer were still in `Starting`, the listener/API not yet reachable. The single check returned `NO_OUTPUT` / an empty result, which the script interpreted as "not installed" and triggered a 30-minute drop+recreate fallback action - even though the installation was actually successful. Fix: first wait for the service to be Running (max 3 min), then a check function with a retry loop (6x, 30s apart), and only after that the fallback. **General lesson**: for every post-install check that depends on asynchronously started state (services, listeners, registry keys that a service writes) ALWAYS use a retry loop + service-ready wait, never single-shot. Applies to all installers with service registration (DBs, message queues, search indexers, license daemons, ...).
 

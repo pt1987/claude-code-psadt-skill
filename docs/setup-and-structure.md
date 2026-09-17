@@ -7,7 +7,7 @@
 `scripts/Initialize-PsadtSkill.ps1` (also reachable by saying *"psadt setup"* / *"psadt doctor"*) checks
 every prerequisite in one pass and reports **GREEN / YELLOW / RED**. Every line comes with a concrete fix
 hint, and `-Fix` applies the ones that need no decision (module installs, the tool download, the
-`language.*` defaults, `paths.intuneWinAppUtil`, and migrating a pre-0.19 config). It is idempotent — run it
+`language.*` defaults, `paths.intuneWinAppUtil`, and migrating a pre-0.19 config). It is idempotent - run it
 as often as you like.
 
 Only four values genuinely need you; the doctor lists them in `.Missing` and takes them via `-Set`:
@@ -22,16 +22,16 @@ pwsh scripts/Initialize-PsadtSkill.ps1 -Fix -Set @{
 | Setting | Purpose |
 |---|---|
 | `paths.packageRoot` / `outputRoot` | Where packages are built and where artifacts are written |
-| `paths.intuneWinAppUtil` | Content-prep tool location — filled by `-Fix` |
-| `language.script` / `dossier` | Script language (EN) vs. dossier language (DE for the Company Portal) — filled by `-Fix` |
+| `paths.intuneWinAppUtil` | Content-prep tool location - filled by `-Fix` |
+| `language.script` / `dossier` | Script language (EN) vs. dossier language (DE for the Company Portal) - filled by `-Fix` |
 | `author.person` / `company` | Stamped into every package's `AppScriptAuthor` |
-| `intune.*` *(optional)* | Direct upload: tenant/client, credential reference, verified roles — written by `New-PsadtEntraApp.ps1` |
-| `intune.groups.*` *(optional)* | Opt-in group assignment (`enabled` / `create` / `membershipType` / `naming`) — guide Appendix M |
+| `intune.*` *(optional)* | Direct upload: tenant/client, credential reference, verified roles - written by `New-PsadtEntraApp.ps1` |
+| `intune.groups.*` *(optional)* | Opt-in group assignment (`enabled` / `create` / `membershipType` / `naming`) - guide Appendix M |
 
 ### Where the setup is stored
 
-`config.json`, `secret.dpapi` and `tools/` live in the **config home** — `%LOCALAPPDATA%\psadt-deploy\`,
-overridable with `$env:PSADT_DEPLOY_HOME` — **not** in the skill folder, so they survive a `git pull`, a
+`config.json`, `secret.dpapi` and `tools/` live in the **config home** - `%LOCALAPPDATA%\psadt-deploy\`,
+overridable with `$env:PSADT_DEPLOY_HOME` - **not** in the skill folder, so they survive a `git pull`, a
 re-clone and a re-install. They are machine-local and never committed. A `config.json` from a pre-0.19
 install (beside `scripts/`) keeps working read-only; the doctor flags it and `-Fix` migrates it, renaming
 the originals to `*.migrated` rather than deleting anything.

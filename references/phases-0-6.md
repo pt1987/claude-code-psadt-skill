@@ -387,11 +387,11 @@ New-ADTTemplate -Destination '<RootFolder>' -Name '<AppName>'
 ```
 
 Creates `<RootFolder>\<AppName>\` with the complete v4 structure. `New-ADTTemplate` in v4.1.x takes ONLY
-`-Destination` / `-Name` / `-Version` / `-Force` / `-Show` / `-PassThru` — it does NOT accept app-metadata
+`-Destination` / `-Name` / `-Version` / `-Force` / `-Show` / `-PassThru` - it does NOT accept app-metadata
 parameters. The default is `-Version 4` (current v4 style); `-Version 3` gives the v3 compatibility template
 (you no longer need that in 2026).
 
-**App metadata is NOT a `New-ADTTemplate` parameter** — do not pass `-AppVendor/-AppName/-AppVersion/-AppArch/...`
+**App metadata is NOT a `New-ADTTemplate` parameter** - do not pass `-AppVendor/-AppName/-AppVersion/-AppArch/...`
 (v4.1.x throws "A parameter cannot be found that matches parameter name 'AppVendor'"). Instead, after scaffolding,
 fill the metadata directly in the generated `Invoke-AppDeployToolkit.ps1`'s `$adtSession = @{ ... }` hashtable
 (AppVendor / AppName / AppVersion / AppArch / AppLang / AppRevision / AppSuccessExitCodes / AppRebootExitCodes /
@@ -522,7 +522,7 @@ Run everything in this phase. Each failure = DO NOT continue.
 
 ### 5.1 Encoding check (UTF-8 with BOM or ASCII-only)
 
-PowerShell 5.1 reads a .ps1 without a BOM as Windows-1252. UTF-8 multibytes (em-dash `—`, arrow `→`, umlauts, typographic quotes, ellipsis `…`) fall apart. In double-quoted strings a misinterpreted em-dash **closes** the string prematurely (UTF-8 `E2 80 94` -> CP1252 `â€"`, last byte = `"`). Parse error. The script NEVER runs. Intune shows `0x80070001`, no local logs.
+PowerShell 5.1 reads a .ps1 without a BOM as Windows-1252. UTF-8 multibytes (em-dash `-`, arrow `→`, umlauts, typographic quotes, ellipsis `…`) fall apart. In double-quoted strings a misinterpreted em-dash **closes** the string prematurely (UTF-8 `E2 80 94` -> CP1252 `â€"`, last byte = `"`). Parse error. The script NEVER runs. Intune shows `0x80070001`, no local logs.
 
 ```powershell
 $s = '<path-to-ps1>'
