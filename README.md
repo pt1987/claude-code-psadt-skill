@@ -18,9 +18,9 @@
 
 ## What is this?
 
-A **Claude Code skill** (not a plugin): a reusable instruction package that teaches the agent how to build,
-package, test, troubleshoot and deploy a **PSADT v4.x Intune Win32 app**. You describe the application; the
-skill runs the workflow — intake, research, scaffolding, all three deployment types
+A **Claude Code skill**: a reusable instruction package that teaches the agent how to build,
+package, test, troubleshoot and deploy a **PSADT v4.x Intune Win32 app**. You name the application; the
+skill runs the workflow - intake, research, scaffolding, all three deployment types
 (Install / Uninstall / Repair), pre-flight checks, a SYSTEM test, packaging, the dossier, and the
 optional Graph upload.
 
