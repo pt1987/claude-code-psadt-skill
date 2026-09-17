@@ -2,6 +2,91 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.35.0 - 2026-09-17 - Packaging Firefox took 70 minutes, and almost none of it was Firefox
+
+Packaging Mozilla Firefox 156.0 took ~70 minutes against an expectation of ~20, and ended without an
+upload. The measurement, taken from file timestamps and `result.json` rather than from memory:
+**21 min 52 s** passed between invoking the skill and the first VM run, and **36 min 30 s** went into
+seven Windows Sandbox runs - four of them full five-scenario gates at 7.0 / 6.4 / 5.9 / 6.9 minutes,
+**all RED, all iterations on the same helper**.
+
+The bug was never exotic. The resolver matched the wrong DisplayName, then the wrong one again, then
+the uninstaller returned before it had deleted anything, then a property turned out not to be a
+string. What made it expensive is that none of those four facts were obtainable without burning a VM
+run to guess at them - and that two things which would have prevented it were already in this
+repository and reached nobody. The advice to scope a run while iterating sat in
+`references/phases-0-6.md`; the control plane called the full loop the "Default route", so the full
+loop ran four times. The NSIS trap - *"a bare Uninstall.exe /S returns BEFORE it has finished"* - has
+been in `engine-defaults.json` since it was written; the engine was classified `msi`, correct for the
+outer layer of a wrapper MSI, so the NSIS entry was never consulted.
+
+**Prose that is present but structurally unreachable is not guidance.** This release changes defaults,
+evidence, generated code and checks instead of adding more of it. Verified end to end on three
+applications that had never been packaged here: Audacity 4.0.0 (MSI) in 12:12, VS Code 1.138.0 (Inno)
+in 22:10 by hand, and draw.io 31.4.5 (NSIS) in **10:49 with a single VM run**, all GREEN on the first
+gate attempt.
+
+### Added
+- **`scripts/New-ExePackage.ps1`** - the EXE family had no generator, so every Inno/NSIS/electron-builder
+  package was hand-scaffolded. That cost ~3 minutes of hand-patching and two self-inflicted scripting
+  errors on VS Code, and it meant three hard-won lessons had to be REMEMBERED by whoever wrote the
+  hooks. They are generated now: resolve the uninstaller from the ARP entry at run time (never hardcode
+  `unins000.exe`, which becomes `unins001.exe` if anything else installs beside it); never trust the
+  uninstaller's exit code; detect with a version FLOOR over two sources. `{InstallDir}` in
+  `-UninstallArgs` is substituted at run time, so an NSIS `_?=<dir>` uninstall works without a hardcoded
+  path. Refuses an `.msi` (that is the other generator's job) and refuses an `AppVersion` that cannot
+  parse as a detection baseline. Generated files are re-read and rejected if any `__TOKEN__` survived
+  its `Replace()` chain - which caught a real miss during development.
+- **Every sandbox action snapshots the installed-application entry, successful ones included.**
+  `Get-ArpRows` / `Save-InstalledAppSnapshot` take a baseline before Install and write the delta after
+  each action to `<Output>\SandboxTest\installed-apps\`, with `InstallLocation` and
+  `QuietUninstallString` (previously captured by nothing) and with the property TYPES as PSADT hands
+  them to the launcher. The Install row is lifted onto the result as `InstalledAppFacts`. Previously the
+  dump fired only when a detection result CONTRADICTED its action - and after a successful Install,
+  nothing contradicts anything, so the strings a resolver must match were never on disk.
+- **Fail-fast in the gate.** Once Install or Uninstall is red, Reinstall, Repair and the final
+  Uninstall are skipped and the report says why: they assert against the machine the failed action was
+  supposed to leave behind and could only re-prove the same failure. Each of the four RED Firefox runs
+  had carried on through all five scenarios - roughly 3 minutes of dead VM time per run.
+- **Pre-flight check `AsyncUninstall`.** WARNs when an uninstall shells out to a vendor EXE and trusts
+  its exit code without `_?=<installdir>` or a verification. Host-side, about a second, and it fires on
+  exactly the shape that cost two VM runs. WARN and not FAIL on purpose: absence is genuinely proven one
+  phase later by `-PathsAbsentAfterUninstall`, so a gate-verified package must not turn red. Repair is
+  excluded - 7-Zip, Notepad++ and PyCharm all repair by re-running the installer, where "verify the app
+  is gone" is the opposite of correct.
+- **`-Quick`** runs only the binding Install+Uninstall pair, for deliberate iteration on a package
+  already known to be broken. It reports `GREEN_PARTIAL`.
+- **Sub-timings for guest preparation** (`guestPrepareSeconds`, `wmiSeconds`, `smartAppControlSeconds`),
+  because the largest block of fixed overhead in a run was not attributable to anything without numbers.
+
+### Changed
+- **Phase names are readable.** The progress window said `SystemTaskCanary` and `GuestStaging`, which
+  meant nothing to anyone who had not read the harness source; they are now "Probing: can anything run
+  as SYSTEM?" and "Copying the package into the VM". The IDS are unchanged on purpose - `result.json`
+  records them, `New-PsadtReport.ps1` matches them, `-Scenarios` names them and the fail-fast check
+  looks them up - so only the labels moved.
+- **Guest preparation no longer attempts a WMI `salvagerepository` pass.** It failed on every observed
+  run of this Sandbox image before `resetrepository` succeeded, and salvage exists to PRESERVE a
+  repository that is discarded minutes later anyway. The fixed 5-second waits are polls now. Measured
+  on the same package and gate: fixed overhead per run **139 s -> 81 s**, and the gap between the two
+  canaries **89 s -> 23 s**.
+- **SKILL.md Phase 6 states the two load-bearing facts in the control plane**, where they are read
+  rather than in a reference: one full gate by default, and Phases 7+8 run WHILE the VM does. The
+  latter was already documented in `phases-0-6.md` §6.3 and was ignored for six consecutive runs -
+  about half an hour of wall clock spent watching a progress counter. Byte-neutral: the "never
+  hand-roll this harness" paragraph moved out, its content already being in phases-0-6.md and App. G.
+
+### Fixed
+- **A partial verdict could have shipped.** `New-PsadtReport.ps1` threw only when NO SYSTEM test
+  existed, so a `GREEN_PARTIAL` run - which renders a perfectly plausible table - satisfied the upload
+  gate. It now refuses any verdict that is not `GREEN` and names the re-run command. The DEV-VM route,
+  which has no sandbox verdict at all, is untouched.
+- **`results.sandboxTest` records which scenarios ran** (`scenarios`, `fullGate`). Without it the
+  refusal above could not name what a partial run had actually covered.
+
+Suite 631 -> 657.
+
+
 ## 0.34.2 - 2026-09-16 - The page counted 19 engines in one place and 14 in another
 
 A reader spotted it on the landing page: the stat tile said 19 installer engines, the Phase 2 step

@@ -643,19 +643,52 @@ lessons in Appendix G.
 discipline any more: the decision is `decisions.upload` in the package manifest, and
 `New-PsadtReport.ps1 -ManifestPath` throws on a missing SYSTEM test when it is `true`.
 
-### 6.1 Default route: the whole loop in a Windows Sandbox
+### 6.1 Default route: the loop in a Windows Sandbox
 
 ```powershell
+# The default IS the gate - all five scenarios, the only route to GREEN.
 pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath '<pkg>' `
     -PathsPresentAfterInstall 'C:\Program Files\<App>\<app>.exe' `
-    -PathsAbsentAfterInstall  'C:\Program Files\<App>\updater\GUP.exe'
+    -PathsAbsentAfterUninstall 'C:\Program Files\<App>\<app>.exe'
+
+# Deliberate iteration on a package already known to be broken: the binding pair only.
+pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath '<pkg>' -Quick -PathsPresentAfterInstall ...
 ```
 
-One command, one throwaway VM, ~6 minutes: Install -> detection -> Uninstall -> detection -> Reinstall ->
-Repair -> final Uninstall, **every action as SYSTEM** through a scheduled task, exactly like the Intune
-Management Extension. Returns `{ Verdict, Steps, FailedAssertions, Assertions, ResultPath, LogFolder }`,
-writes `results.sandboxTest` plus one `results.systemTest[]` entry per action, and copies the PSADT logs
-back to the host.
+One command, one throwaway VM, **every action as SYSTEM** through a scheduled task, exactly like the
+Intune Management Extension. Returns
+`{ Verdict, Steps, FailedAssertions, Assertions, InstalledAppFacts, ResultPath, LogFolder }`, writes
+`results.sandboxTest` plus one `results.systemTest[]` entry per action, and copies the PSADT logs back
+to the host.
+
+**One run by default, because a VM run has a floor price.** Measured 2026-09-17 on the VS Code gate:
+406 s total, of which **139 s is fixed overhead** - VM boot, guest prep, the two canaries, teardown -
+before a single deployment action executes. So "test cheaply first, then gate" quietly buys a second
+boot: ~2.3 minutes, plus the pair itself. A package that is right the first time pays that for nothing,
+and with the evidence snapshot and the pre-flight checks in place, right-the-first-time is now the
+common case (Audacity 4.0.0 and VS Code 1.138.0, both 2026-09-17, both green on the first attempt).
+
+**Fail-fast is what makes a single full run safe.** The old objection to gating first - "iterating on
+the full gate wastes minutes when the package is broken" - was real, and it is answered in the harness
+rather than by a smaller default: the moment Install or Uninstall is red, Reinstall, Repair and the
+final Uninstall are SKIPPED and the report says why. They assert against the machine the failed action
+was supposed to leave behind, so they could only ever re-prove the same failure. Measured 2026-09-16 on
+Firefox 156.0: four consecutive RED runs (**7.0 / 6.4 / 5.9 / 6.9 min**) each carried on through all
+five scenarios after the uninstall had already failed - roughly 3 minutes of dead VM time per run.
+A broken package therefore now costs about what the short pair costs, without anyone having to choose
+in advance. `-Quick` remains for deliberate iteration; it reports `GREEN_PARTIAL`, which
+`New-PsadtReport.ps1` refuses to build an upload dossier on, so a shortened run can never be mistaken
+for the gate. `-Quick` together with an explicit `-Scenarios` throws rather than silently picking one.
+
+**Every action snapshots the installed-application entry, successful ones included.** The Install
+step's own ARP row - `DisplayName`, `DisplayVersion`, `UninstallString`, `QuietUninstallString`,
+`InstallLocation`, and the property TYPES as PSADT hands them to the launcher - comes back as
+`InstalledAppFacts` and lands under `<Output>\SandboxTest\installed-apps\`. **Write resolver hooks
+against those strings, never against a guess.** This exists because guessing them cost four VM runs in
+one session: the ARP `DisplayName` was `Mozilla Firefox (x64 en-US)` with the version in a SEPARATE
+`DisplayVersion` property, and `InstallLocation` arrives as `[System.IO.DirectoryInfo]`, so a hook
+calling `.TrimEnd()` on it threw `MethodNotFound` at run time. Before this, the dump ran only when a
+detection result contradicted its action - and after a successful Install, nothing contradicts anything.
 
 **A vendor-specific success code has to be in BOTH lists.** `-SuccessExitCodes` on this harness (default
 `0, 1707, 3010, 1641`) is a DIFFERENT list from the `-SuccessExitCodes` on each `Start-ADTProcess` inside
@@ -706,11 +739,11 @@ process or closing the sandbox window instead orphans the `vmmemWindowsSandbox` 
 `Stop-Process` from an unelevated session and blocks every further run until an elevated
 `Restart-Service vmcompute -Force` or a reboot.
 
-**Scope the run while iterating.** `-Scenarios @('Install')` answers "does the install work at all"; the
-full five-scenario set is the upload gate and is worth its minutes only once Install is green. Uninstall,
-Repair and the reinstall pass all need a successfully installed machine to mean anything - run them after
-a failed Install and they re-prove the same failure at ten minutes a turn. What actually ran is recorded,
-so a partial run reports `GREEN_PARTIAL` and can never be mistaken for the gate.
+**Scope it down further while iterating.** `-Scenarios Install` alone answers "does the install work at
+all" and is right after a failed Install - Uninstall, Repair and the reinstall pass all need a
+successfully installed machine to mean anything, so running them against a broken Install just re-proves
+the same failure a few minutes at a time. What actually ran is recorded, so any short run reports
+`GREEN_PARTIAL`.
 
 When the sandbox is NOT the right host: the app needs domain join, a real TPM, GPU acceleration, a reboot
 to complete (the VM is discarded), or hardware the VM does not have. Then use 6.2.
@@ -757,6 +790,13 @@ Appendix G (the harness bugs, and why this is not ten lines of `schtasks`).
 Packaging and the dossier do not depend on the test result; only the verdict *recorded in* the dossier
 does. Start the sandbox test, build the `.intunewin` and the report while it runs, then fold the result in
 and regenerate the dossier. Serialising them adds the whole test duration to the wall clock for nothing.
+
+**This is an instruction, not a hint: start the VM and then keep working in the SAME turn.** It was
+already written here and was still ignored for six consecutive runs on 2026-09-16, each one a ~6-minute
+wait in which nothing else happened - roughly half an hour of wall clock spent watching a progress
+counter. Anything that does not need the verdict belongs in that window: the `.intunewin`, the logo, the
+return-code table, the Company-Portal description, the upload metadata. The harness prints the same
+reminder when it starts.
 
 ### 6.4 The manual interactive test a GREEN verdict cannot replace
 

@@ -434,6 +434,29 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
+### 0.35.0 - 2026-09-17
+- **Added: `scripts/New-ExePackage.ps1`** - the EXE family (Inno, NSIS, electron-builder) had no
+  generator, so every such package was hand-scaffolded. It now generates hooks that resolve the
+  uninstaller from the ARP entry at run time, WAIT for the app to actually disappear instead of
+  trusting an exit code, and detect with a version floor over the ARP entry and the binary.
+- **Added: every action snapshots the installed-application entry, successful Installs included** -
+  including `InstallLocation`, `QuietUninstallString` and the property types PSADT hands the launcher,
+  surfaced as `InstalledAppFacts`. The old dump ran only when detection contradicted an action, so the
+  strings a resolver hook has to match were never on disk and were guessed at, one VM run per guess.
+- **Added: fail-fast** - a red Install or Uninstall now skips Reinstall/Repair/FinalUninstall, which
+  could only re-prove the same failure. Each of four RED Firefox runs had spent ~3 minutes doing so.
+- **Added: pre-flight `AsyncUninstall`** warns when an uninstall trusts the exit code of a vendor EXE
+  (the NSIS family relaunches from `%TEMP%` and returns instantly: 116 ms, exit 0, nothing deleted).
+- **Changed: readable phase names** on the progress window (`SystemTaskCanary` -> "Probing: can
+  anything run as SYSTEM?"); the ids stay, because every consumer keys on them.
+- **Changed: guest preparation dropped the always-failing WMI salvage pass and polls instead of
+  sleeping** - fixed overhead per run 139 s -> 81 s.
+- **Fixed: a `GREEN_PARTIAL` run satisfied the upload gate** in `New-PsadtReport.ps1`.
+
+  Verified on three applications never packaged here: Audacity 4.0.0 (MSI) 12:12, VS Code 1.138.0
+  (Inno) 22:10, draw.io 31.4.5 (NSIS) **10:49 with a single VM run** - all GREEN on the first gate
+  attempt, against ~70 min and no gate at all for Firefox beforehand. Suite 631 -> 657.
+
 ### 0.34.2 - 2026-09-16
 - **Added: `tests/SiteFigures.Tests.ps1`** - the landing page's stat tiles are now derived from the
   repository and compared, instead of being hand-maintained and unchecked. A reader found the page

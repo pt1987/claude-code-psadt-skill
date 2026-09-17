@@ -74,16 +74,32 @@ param(
     # genuinely slow package rather than paying for it on every run.
     [ValidateRange(60, 3600)][int]$ActionTimeoutSeconds = 600,
 
-    # Which parts of the loop to run. The default is the full Phase 6 gate and nothing less is allowed
-    # to pass for an upload. A shorter set is for ITERATION: proving a silent switch does not need the
-    # repair and reinstall passes, and running them anyway turns a 10-minute question into an hour.
-    # What actually ran is recorded in the report, so a partial run can never be mistaken for the gate.
+    # Which parts of the loop to run. The default is the FULL five-scenario gate, because that is the
+    # only thing an upload may be built on and running it twice costs a second VM boot for nothing.
+    #
+    # The obvious objection - "iterating on the gate wastes minutes when the package is broken" - is
+    # real, and it is answered by the fail-fast logic further down rather than by a smaller default:
+    # once Install or Uninstall is red, the remaining scenarios are skipped, so a broken package costs
+    # roughly what the short pair costs anyway. That is strictly better than choosing between the two
+    # up front. Measured 2026-09-16/17: the fixed overhead of one VM run - boot, guest prep, canaries,
+    # teardown - is 139 s, so a needless second run is ~2.3 minutes before a single action executes,
+    # and both packages that session passed on the first attempt.
+    #
+    # -Quick still exists for deliberate iteration on a package known to be broken.
+    #
     # Deliberately NOT [ValidateSet]: a parameter attribute runs BEFORE the body, so `pwsh -File ...
     # -Scenarios Install,Uninstall` - the documented form, and the one the -File binder turns into a
     # single "Install,Uninstall" string - was rejected out of hand, before Expand-CommaSeparated below
     # could split it. Measured 2026-09-14: the run never started and only said the argument "does not
     # belong to the set". The names are checked after the split instead, with the same error in substance.
     [string[]]$Scenarios = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall'),
+
+    # Run only the Install+Uninstall pair - the binding pair, and where essentially every package bug
+    # lives. For deliberate iteration when a package is already known to be broken. Reports
+    # GREEN_PARTIAL, which New-PsadtReport.ps1 refuses to build an upload dossier on.
+    # Mutually exclusive with -Scenarios: asking for both a specific set and the short pair is a
+    # contradiction, and silently picking one hides it.
+    [switch]$Quick,
 
     # Ceiling for the whole run, measured on the host. Protects against a VM that never boots.
     [ValidateRange(5, 180)][int]$TotalTimeoutMinutes = 45,
@@ -225,8 +241,14 @@ function Expand-CommaSeparated([string[]]$Values) {
 $PathsPresentAfterInstall = Expand-CommaSeparated $PathsPresentAfterInstall
 $PathsAbsentAfterInstall = Expand-CommaSeparated $PathsAbsentAfterInstall
 $PathsAbsentAfterUninstall = Expand-CommaSeparated $PathsAbsentAfterUninstall
-$Scenarios = Expand-CommaSeparated $Scenarios
 $knownScenarios = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+if ($Quick) {
+    if ($PSBoundParameters.ContainsKey('Scenarios')) {
+        throw '-Quick and -Scenarios are mutually exclusive: -Quick IS the Install+Uninstall pair. Pass one or the other.'
+    }
+    $Scenarios = @('Install', 'Uninstall')
+}
+$Scenarios = Expand-CommaSeparated $Scenarios
 $unknownScenarios = @($Scenarios | Where-Object { $knownScenarios -notcontains $_ })
 if ($unknownScenarios.Count) {
     throw ("-Scenarios: unknown name(s) " + ($unknownScenarios -join ', ') +
@@ -281,6 +303,41 @@ $script:phaseData = @{}
 $script:phaseClock = Get-Date
 $script:phaseStartAt = $null
 
+function Get-PhaseLabel {
+    <#
+      What a phase is CALLED versus what it MEANS. The id is load-bearing - result.json records it,
+      New-PsadtReport.ps1 matches 'Install'/'Uninstall'/..., -Scenarios names them and the fail-fast
+      check looks them up - so ids never change. The label is for the person watching a VM, where
+      "SystemTaskCanary" and "PsadtModuleCanary" said nothing to anyone who had not read this source:
+      one is a permission probe, the other a toolkit-import probe.
+      The map lives inside the function so the whole thing travels as one unit into the guest runner.
+    #>
+    param([string]$Id)
+    $labels = @{
+        'Elevation'         = 'Checking admin rights'
+        'SystemTaskCanary'  = 'Probing: can anything run as SYSTEM?'
+        'GuestPrepare'      = 'Preparing the VM'
+        'GuestStaging'      = 'Copying the package into the VM'
+        'PsadtModuleCanary' = 'Probing: does the PSADT toolkit load?'
+        'Install'           = 'Installing'
+        'Uninstall'         = 'Uninstalling'
+        'Reinstall'         = 'Installing again (over the top)'
+        'Repair'            = 'Repairing'
+        'FinalUninstall'    = 'Uninstalling (final, leaves the machine clean)'
+        'DetectionAfterInstall'        = 'Detection rule: is it found after install?'
+        'DetectionAfterUninstall'      = 'Detection rule: is it gone after uninstall?'
+        'DetectionAfterReinstall'      = 'Detection rule: is it found after reinstall?'
+        'DetectionAfterRepair'         = 'Detection rule: is it found after repair?'
+        'DetectionAfterFinalUninstall' = 'Detection rule: is it gone at the end?'
+    }
+    if ($labels.ContainsKey($Id)) { return $labels[$Id] }
+    # A diagnostic re-run is labelled after the phase it belongs to rather than left as a raw id.
+    if ($Id -match '^(.+)\.Diagnostic$' -and $labels.ContainsKey($Matches[1])) {
+        return ($labels[$Matches[1]] + ' (diagnostic re-run)')
+    }
+    return $Id
+}
+
 function Initialize-PhasePlan {
     param([string[]]$Scenarios)
     $plan = [System.Collections.Generic.List[string]]::new()
@@ -294,7 +351,7 @@ function Initialize-PhasePlan {
     $script:phaseData = @{}
     foreach ($n in $script:phaseOrder) {
         $script:phaseData[$n] = [ordered]@{
-            name = $n; status = 'pending'; exitCode = $null; seconds = $null
+            name = $n; label = (Get-PhaseLabel $n); status = 'pending'; exitCode = $null; seconds = $null
             started = ''; ended = ''; timeout = 0; detection = ''; logTail = @()
         }
     }
@@ -328,6 +385,9 @@ function Set-Progress {
         ([ordered]@{
                 package = $script:progressPackage
                 step    = $Step
+                # The readable form, for the host console and the in-VM window. `step` stays the id
+                # because result.json and every consumer key on it.
+                stepLabel = (Get-PhaseLabel $Step)
                 state   = $State
                 elapsed = $Elapsed
                 timeout = $Timeout
@@ -789,9 +849,126 @@ function Invoke-Deployment {
         Write-Host "   !! $($step.diagnostic)" -ForegroundColor Yellow
     }
 
+    # Unconditional, including after a SUCCESSFUL action: the strings a resolver hook has to match are
+    # only knowable from the machine, and the VM is discarded minutes later.
+    $newApps = @(Save-InstalledAppSnapshot -Label $Label)
+    if ($newApps.Count -gt 0) {
+        # Carried in result.json (and therefore in the returned Steps) so the caller sees the real
+        # DisplayName / InstallLocation without opening a file. Capped - this is a pointer, not a dump.
+        $step.installedApp = @($newApps | Select-Object -First 5 DisplayName, DisplayVersion, Publisher,
+            UninstallString, QuietUninstallString, InstallLocation)
+    }
+
     Add-Step $Label $step
     Add-Assertion "$Label exit code" $ok "exit=$($r.ExitCode) timedOut=$($r.TimedOut)"
     return $r
+}
+
+# --- installed-application evidence -------------------------------------------------------------
+# Every action records what the machine ACTUALLY looks like afterwards - not only the actions that
+# surprised us. A bug in a resolver hook is a bug about STRINGS (the real DisplayName, the real
+# InstallLocation) and about TYPES, and each guess costs a whole VM run to disprove.
+# Measured 2026-09-16 on Firefox 156.0: four consecutive RED runs were spent rediscovering that the
+# DisplayName is "Mozilla Firefox (x64 en-US)" with the version in a SEPARATE DisplayVersion
+# property, and that InstallLocation arrives as [System.IO.DirectoryInfo] rather than a string. None
+# of it was ever on disk, because the only dump ran when a detection result contradicted its action -
+# and after a successful Install nothing contradicts anything.
+$script:arpBaseline = $null
+$script:snapshotSeq = 0
+
+function Get-ArpRows {
+    $roots = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+    foreach ($u in (Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue)) {
+        $roots += "Registry::$($u.Name)\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+        $roots += "Registry::$($u.Name)\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+    }
+    foreach ($root in $roots) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        foreach ($k in (Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
+            $pr = Get-ItemProperty -LiteralPath $k.PSPath -ErrorAction SilentlyContinue
+            if ($pr -and $pr.DisplayName) {
+                [pscustomobject]@{
+                    Hive = $root; Key = $k.PSChildName; DisplayName = $pr.DisplayName
+                    DisplayVersion = $pr.DisplayVersion; Publisher = $pr.Publisher
+                    UninstallString = $pr.UninstallString
+                    QuietUninstallString = $pr.QuietUninstallString
+                    InstallLocation = $pr.InstallLocation
+                    InstallSource = $pr.InstallSource
+                    WindowsInstaller = $pr.WindowsInstaller
+                    SystemComponent = $pr.SystemComponent
+                }
+            }
+        }
+    }
+}
+
+function Get-AdtApplicationFacts {
+    # The launcher does not read the registry directly - it resolves the installed app through PSADT's
+    # Get-ADTApplication, and THAT object is not the raw hive. Its InstallLocation is a
+    # [System.IO.DirectoryInfo], so a hook calling .TrimEnd() on it throws MethodNotFound at run time
+    # and no static check sees it coming. Record the type of every property, not just its value.
+    param([string[]]$DisplayNames)
+    if (-not $DisplayNames -or $DisplayNames.Count -eq 0) { return 'no new ARP entry to resolve' }
+    $psd1 = Join-Path $pkg 'PSAppDeployToolkit\PSAppDeployToolkit.psd1'
+    if (-not (Test-Path -LiteralPath $psd1)) { return 'PSAppDeployToolkit.psd1 not found in the package' }
+    try {
+        Import-Module -Name $psd1 -Force -ErrorAction Stop
+        $out = foreach ($name in ($DisplayNames | Select-Object -Unique)) {
+            $apps = @(Get-ADTApplication -Name $name -NameMatch 'Exact' -ErrorAction SilentlyContinue)
+            if (-not $apps) { "Get-ADTApplication -Name '$name' -NameMatch Exact returned nothing"; continue }
+            foreach ($a in $apps) {
+                "=== Get-ADTApplication -Name '$name' ==="
+                foreach ($p in $a.PSObject.Properties) {
+                    $t = if ($null -eq $p.Value) { '<null>' } else { $p.Value.GetType().FullName }
+                    '{0,-24} [{1}] = {2}' -f $p.Name, $t, $p.Value
+                }
+            }
+        }
+        return ($out -join [Environment]::NewLine)
+    }
+    catch {
+        # Never let evidence collection fail the run - an unusable dump is still better than a dead VM.
+        return "Get-ADTApplication unavailable in this guest: $($_.Exception.Message)"
+    }
+}
+
+function Save-InstalledAppSnapshot {
+    param([string]$Label, [switch]$Baseline)
+    try {
+        $dir = Join-Path $results 'installed-apps'
+        New-Item -ItemType Directory -Path $dir -Force -ErrorAction SilentlyContinue | Out-Null
+        $rows = @(Get-ArpRows)
+        $script:snapshotSeq++
+        $seq = '{0:d2}' -f $script:snapshotSeq
+        $stem = Join-Path $dir "$seq-$Label"
+
+        if ($Baseline) {
+            $script:arpBaseline = @($rows | ForEach-Object { "$($_.Hive)|$($_.Key)" })
+            "baseline: $($rows.Count) installed applications before the first action" |
+                Set-Content -LiteralPath "$stem.txt" -Encoding UTF8
+            return @()
+        }
+
+        # The delta against the pre-Install baseline IS the app's own entry - no scanning 100+ rows.
+        $new = @()
+        if ($null -ne $script:arpBaseline) {
+            $new = @($rows | Where-Object { $script:arpBaseline -notcontains "$($_.Hive)|$($_.Key)" })
+        }
+        $body = @("### new since baseline: $($new.Count) of $($rows.Count) total", '')
+        $body += ($new | Sort-Object DisplayName | Format-List | Out-String -Width 300)
+        $body += ''
+        $body += '### Get-ADTApplication view (values AND types, this is what the launcher sees)'
+        $body += (Get-AdtApplicationFacts -DisplayNames @($new | ForEach-Object { $_.DisplayName }))
+        ($body -join [Environment]::NewLine) | Set-Content -LiteralPath "$stem.txt" -Encoding UTF8
+        if ($new.Count -gt 0) {
+            ($new | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath "$stem.new.json" -Encoding UTF8
+        }
+        return $new
+    }
+    catch { return @() }
 }
 
 function Invoke-Detection {
@@ -809,35 +986,8 @@ function Invoke-Detection {
     # disagree, the ARP entries the rule was looking at are captured first. Measured 2026-09-14:
     # Greenshot installed with exit 0 in 14 s and was then reported as not detected.
     if ($detected -ne $ExpectDetected) {
-        try {
-            $dir = Join-Path $results 'detection-diagnostics'
-            New-Item -ItemType Directory -Path $dir -Force -ErrorAction SilentlyContinue | Out-Null
-            $roots = @(
-                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-            )
-            foreach ($u in (Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue)) {
-                $roots += "Registry::$($u.Name)\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
-                $roots += "Registry::$($u.Name)\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
-            }
-            $rows = foreach ($root in $roots) {
-                if (-not (Test-Path -LiteralPath $root)) { continue }
-                foreach ($k in (Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
-                    $pr = Get-ItemProperty -LiteralPath $k.PSPath -ErrorAction SilentlyContinue
-                    if ($pr -and $pr.DisplayName) {
-                        [pscustomobject]@{
-                            Hive = $root; Key = $k.PSChildName; DisplayName = $pr.DisplayName
-                            DisplayVersion = $pr.DisplayVersion; Publisher = $pr.Publisher
-                            UninstallString = $pr.UninstallString
-                        }
-                    }
-                }
-            }
-            ($rows | Sort-Object DisplayName | Format-List | Out-String -Width 300) |
-                Set-Content -LiteralPath (Join-Path $dir "$Label.arp.txt") -Encoding UTF8
-            Write-Host ("   !! detection disagreed with the action - ARP dump written ({0} entries)" -f @($rows).Count) -ForegroundColor Yellow
-        }
-        catch { }
+        $disagreed = Save-InstalledAppSnapshot -Label "$Label-detection-disagreed"
+        Write-Host ("   !! detection disagreed with the action - installed-app snapshot written ({0} new entries)" -f @($disagreed).Count) -ForegroundColor Yellow
     }
 
     Add-Step $Label @{ exitCode = $r.ExitCode; timedOut = $r.TimedOut; detected = $detected; stdout = $r.Output.Trim() }
@@ -891,6 +1041,7 @@ try {
     }
 
     # --- Guest preparation: PowerShell module resources the sandbox image is missing -----------------
+    $guestPrepareStart = Get-Date
     # PSADT imports Microsoft.PowerShell.Archive when it loads. That module localises its messages via
     # Import-LocalizedData, and Windows PowerShell 5.1 does NOT fall back to another culture when the
     # resource folder for the current UI culture is absent - the import throws, and every
@@ -938,6 +1089,7 @@ try {
     # Both are safe here: the VM is discarded when the run ends. The outcome is recorded either way and
     # the session canary below turns a still-broken WMI into a named failure instead of 7 x 60008.
     $wmiState = 'unknown'
+    $wmiStart = Get-Date
     try {
         $svc = Get-Service -Name 'Winmgmt' -ErrorAction Stop
         if ($svc.StartType -eq 'Disabled') { Set-Service -Name 'Winmgmt' -StartupType Automatic }
@@ -952,20 +1104,29 @@ try {
     } catch {
         $firstError = $_.Exception.Message
         $wmiState = "denied ($firstError)"
-        foreach ($attempt in @('salvage', 'reset')) {
-            try {
-                Write-Host "   !! WMI refused Win32_ComputerSystem ($firstError) - trying winmgmt /${attempt}repository" -ForegroundColor Yellow
-                & { $ErrorActionPreference = 'Continue'; & winmgmt.exe "/${attempt}repository" 2>&1 | Out-Null }
-                Restart-Service -Name 'Winmgmt' -Force -ErrorAction SilentlyContinue
-                Start-Sleep -Seconds 5
-                $null = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
-                $wmiState = "OK after winmgmt /${attempt}repository (was: $firstError)"
-                break
-            } catch {
-                $wmiState = "STILL denied after winmgmt /${attempt}repository ($($_.Exception.Message))"
-            }
+        # RESET only - no salvage pass. Salvage is the gentle repair that preserves the existing
+        # repository, and preserving anything in a VM that is discarded minutes later buys nothing. It
+        # also failed on every observed run of this Sandbox image (2026-09-16/17, four runs) before
+        # reset succeeded, so it was a guaranteed-wasted winmgmt invocation plus a sleep on the
+        # critical path of EVERY run. If a future image makes salvage meaningful, the state string
+        # below is what will show it.
+        try {
+            Write-Host "   !! WMI refused Win32_ComputerSystem ($firstError) - running winmgmt /resetrepository" -ForegroundColor Yellow
+            & { $ErrorActionPreference = 'Continue'; & winmgmt.exe '/resetrepository' 2>&1 | Out-Null }
+            Restart-Service -Name 'Winmgmt' -Force -ErrorAction SilentlyContinue
+            # Poll instead of a flat sleep: WMI usually answers well before the old fixed 5 s.
+            $wmiDeadline = (Get-Date).AddSeconds(15)
+            do {
+                $probe = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction SilentlyContinue
+                if (-not $probe) { Start-Sleep -Milliseconds 500 }
+            } while (-not $probe -and (Get-Date) -lt $wmiDeadline)
+            if (-not $probe) { throw 'Win32_ComputerSystem still returned nothing' }
+            $wmiState = "OK after winmgmt /resetrepository (was: $firstError)"
+        } catch {
+            $wmiState = "STILL denied after winmgmt /resetrepository ($($_.Exception.Message))"
         }
     }
+    $wmiSeconds = [int]((Get-Date) - $wmiStart).TotalSeconds
     $sac = Disable-GuestSmartAppControl
 
     # Driver-trust certificates, mirroring what the fleet gets from policy.
@@ -1031,7 +1192,11 @@ try {
         }
     }
 
-    Add-Step 'GuestPrepare' @{ smartAppControl = $sac.State; uiCulture = (Get-UICulture).Name; wmi = $wmiState; resourcesShimmed = $(if ($shimmed.Count) { $shimmed -join ', ' } else { 'none needed' }); trustedPublisher = $(if ($certsImported.Count) { $certsImported -join '; ' } else { 'none supplied' }) }
+    # Sub-timings are recorded because this step is the single largest block of fixed overhead in a run
+    # - measured 2026-09-17 on the VS Code gate: 89 s between the first canary and the module canary,
+    # against 139 s of total overhead - and none of it was attributable without numbers. Anything that
+    # gets optimised here should be optimised against these, not against a guess.
+    Add-Step 'GuestPrepare' @{ smartAppControl = $sac.State; smartAppControlSeconds = $sac.Seconds; uiCulture = (Get-UICulture).Name; wmi = $wmiState; wmiSeconds = $wmiSeconds; guestPrepareSeconds = [int]((Get-Date) - $guestPrepareStart).TotalSeconds; resourcesShimmed = $(if ($shimmed.Count) { $shimmed -join ', ' } else { 'none needed' }); trustedPublisher = $(if ($certsImported.Count) { $certsImported -join '; ' } else { 'none supplied' }) }
 
     # The mapped package folder is read-only and PSADT unblocks files under its own root, so work on a
     # copy. Two things here are about SPEED, and both were measured against a 481 MB package
@@ -1096,30 +1261,60 @@ try {
     $report.fullGate = (@('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall') |
         Where-Object { $scenarios -notcontains $_ }).Count -eq 0
 
+    # What Add/Remove Programs looks like BEFORE anything is installed, so every later snapshot can be
+    # reduced to "what this package added" instead of a hundred unrelated rows.
+    Save-InstalledAppSnapshot -Label 'Baseline' -Baseline | Out-Null
+
+    # FAIL FAST. Install and Uninstall are load-bearing: every later scenario asserts against the machine
+    # they leave behind, so once one of them is red, Reinstall / Repair / FinalUninstall cannot prove
+    # anything - they re-prove the same failure and bill the operator minutes for it. Measured
+    # 2026-09-16 on Firefox 156.0: four consecutive full-gate runs each carried on through all five
+    # scenarios after the Uninstall had already failed, roughly 3 minutes of dead VM time per run.
+    # This is NOT a way of running less of the gate: a run that stops here is red anyway, and a green
+    # run still executes every scenario. It only stops paying for assertions that cannot mean anything.
+    $script:abortReason = $null
+    function Test-GateStillMeaningful {
+        param([string]$Label)
+        $step = $report.steps | Where-Object { $_.step -eq $Label } | Select-Object -First 1
+        $failed = @($report.assertions | Where-Object { -not $_.ok -and $_.name -like "*$Label*" })
+        if (($step -and -not $step.success) -or $failed.Count) {
+            $script:abortReason = "$Label failed - Reinstall/Repair/FinalUninstall skipped: they assert against the machine $Label was supposed to leave behind and could only re-prove this same failure."
+            return $false
+        }
+        return $true
+    }
+
     Invoke-Deployment -Label 'Install'   -DeploymentType 'Install'   | Out-Null
     Test-Paths -Label 'present after install' -Paths $pathsPresentAfterInstall -ShouldExist $true
     Test-Paths -Label 'absent after install'  -Paths $pathsAbsentAfterInstall  -ShouldExist $false
     Invoke-Detection -Label 'DetectionAfterInstall' -ExpectDetected $true | Out-Null
+    $continue = Test-GateStillMeaningful -Label 'Install'
 
-    if ($scenarios -contains 'Uninstall') {
+    if ($continue -and $scenarios -contains 'Uninstall') {
         Invoke-Deployment -Label 'Uninstall' -DeploymentType 'Uninstall' | Out-Null
         Test-Paths -Label 'absent after uninstall' -Paths $pathsAbsentAfterUninstall -ShouldExist $false
         Invoke-Detection -Label 'DetectionAfterUninstall' -ExpectDetected $false | Out-Null
+        $continue = Test-GateStillMeaningful -Label 'Uninstall'
     }
 
-    if ($scenarios -contains 'Reinstall') {
+    if ($script:abortReason) {
+        Write-Host "   !! $($script:abortReason)" -ForegroundColor Yellow
+        $report.abortedAfter = $script:abortReason
+    }
+
+    if ($continue -and $scenarios -contains 'Reinstall') {
         Invoke-Deployment -Label 'Reinstall' -DeploymentType 'Install'   | Out-Null
         Invoke-Detection -Label 'DetectionAfterReinstall' -ExpectDetected $true | Out-Null
     }
 
-    if ($scenarios -contains 'Repair') {
+    if ($continue -and $scenarios -contains 'Repair') {
         Invoke-Deployment -Label 'Repair'    -DeploymentType 'Repair'    | Out-Null
         Test-Paths -Label 'absent after repair' -Paths $pathsAbsentAfterInstall -ShouldExist $false
         Invoke-Detection -Label 'DetectionAfterRepair' -ExpectDetected $true | Out-Null
     }
 
     # Phase 6 requires the machine to be left uninstalled - but only a run that got that far may claim it.
-    if ($scenarios -contains 'FinalUninstall') {
+    if ($continue -and $scenarios -contains 'FinalUninstall') {
         Invoke-Deployment -Label 'FinalUninstall' -DeploymentType 'Uninstall' | Out-Null
         Invoke-Detection -Label 'DetectionAfterFinalUninstall' -ExpectDetected $false | Out-Null
     }
@@ -1332,6 +1527,16 @@ Start-Process -FilePath $sandboxExe -ArgumentList "`"$wsbPath`"" | Out-Null
 
 Write-Host ''
 Write-Host 'Sandbox started.' -ForegroundColor Cyan
+$isFullGate = (@($knownScenarios | Where-Object { $Scenarios -notcontains $_ }).Count -eq 0)
+if ($isFullGate) {
+    Write-Host ('  Scope: FULL GATE ({0}) - this run can reach GREEN.' -f ($Scenarios -join ', ')) -ForegroundColor Cyan
+    Write-Host '  Install or Uninstall red -> the rest is skipped; they could only re-prove the same failure.' -ForegroundColor DarkCyan
+}
+else {
+    Write-Host ('  Scope: partial ({0}) - verdict will be GREEN_PARTIAL.' -f ($Scenarios -join ', ')) -ForegroundColor Cyan
+    Write-Host '  Re-run WITHOUT -Quick/-Scenarios before uploading; only a GREEN full gate satisfies Phase 6.' -ForegroundColor Cyan
+}
+Write-Host '  Packaging (Phase 7) and the dossier (Phase 8) do not depend on this run - do them NOW, in parallel.' -ForegroundColor DarkCyan
 Write-Host '  In the VM a progress window opens by itself. If it does not, run SHOW-PROGRESS.cmd' -ForegroundColor Cyan
 Write-Host '  from the _PsadtSandboxTest folder on the guest desktop.' -ForegroundColor Cyan
 Write-Host ('  Cancel cleanly at any time:  New-Item -ItemType File -Force -Path "{0}\STOP.txt"' -f $workFolder) -ForegroundColor Cyan
@@ -1360,7 +1565,8 @@ while ((Get-Date) -lt $hostDeadline) {
         try {
             $p = Get-Content -LiteralPath $progressPath -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
             if ($p) {
-                $line = '{0}/{1}  {2} - {3}' -f $p.done, $p.total, $p.step, $p.state
+                $shown = if ($p.PSObject.Properties.Name -contains 'stepLabel' -and $p.stepLabel) { $p.stepLabel } else { $p.step }
+                $line = '{0}/{1}  {2} - {3}' -f $p.done, $p.total, $shown, $p.state
                 if ([int]$p.timeout -gt 0) { $line += ('  {0}s of {1}s' -f $p.elapsed, $p.timeout) }
                 if ($p.detail) { $line += ('  |  {0}' -f $p.detail) }
                 if ($line -ne $lastShown) {
@@ -1523,6 +1729,10 @@ try {
         & (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath $PackagePath -Updates @{
             'results.sandboxTest' = @{
                 verdict          = $result.verdict
+                # WHICH scenarios ran, not just the verdict. Without it a GREEN_PARTIAL in the manifest
+                # cannot say what it covered, and the upload gate's refusal has to name an empty list.
+                scenarios        = @($result.scenarios)
+                fullGate         = [bool]$result.fullGate
                 failedAssertions = @($result.failedAssertions)
                 resultPath       = $resultPath
                 evidenceFolder   = $evidenceFolder
@@ -1565,11 +1775,23 @@ if (-not $KeepWorkFolder -and $evidenceFolder) {
 # Report what is actually on disk, never what was intended.
 $workFolderRemaining = if (Test-Path -LiteralPath $workRoot) { $workFolder } else { $null }
 
+# The ARP entry the Install actually created, lifted to the top level: a resolver hook is written
+# against these exact strings, and hunting them in an evidence folder is what turns one bug into
+# several VM runs.
+$installedAppFacts = $null
+foreach ($s in @($result.steps)) {
+    if ($s.step -eq 'Install' -and $s.PSObject.Properties.Name -contains 'installedApp') {
+        $installedAppFacts = $s.installedApp
+        break
+    }
+}
+
 return [pscustomobject]@{
     Verdict           = $result.verdict
     Steps             = $result.steps
     FailedAssertions  = @($result.failedAssertions)
     Assertions        = $result.assertions
+    InstalledAppFacts = $installedAppFacts
     Error             = $result.error
     ResultPath        = $resultPath
     LogFolder         = $logFolder

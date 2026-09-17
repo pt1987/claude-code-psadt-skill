@@ -104,6 +104,86 @@ Describe 'Invoke-PsadtPreflight' {
     }
 }
 
+Describe 'Pre-flight check 6b: an uninstall that trusts an exit code' {
+    # Firefox 156.0, 2026-09-16: the uninstall hook called the vendor's helper.exe with /S, the process
+    # relaunched itself from %TEMP% and returned in 116 ms with exit 0, and the whole installation was
+    # still on disk. PSADT reported a clean uninstall. Two VM runs (~12 min) to find, because nothing
+    # static looked at it. This check is that missing look.
+
+    BeforeAll {
+        $script:pf2 = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\Invoke-PsadtPreflight.ps1')).ProviderPath
+        $script:u8 = New-Object System.Text.UTF8Encoding $false
+        function script:New-UninstallPkg {
+            param([string]$UninstallBody, [string]$RepairBody = '')
+            $dir = Join-Path $TestDrive ('up_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            $launcher = @"
+[CmdletBinding()]
+param([string]`$DeploymentType)
+`$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version 1
+`$adtSession = @{ AppName = 'X' }
+function Install-ADTDeployment   { }
+function Uninstall-ADTDeployment { $UninstallBody }
+function Repair-ADTDeployment    { $RepairBody }
+try { & "`$(`$adtSession.DeploymentType)-ADTDeployment" } catch { exit 60001 }
+"@
+            [System.IO.File]::WriteAllText((Join-Path $dir 'Invoke-AppDeployToolkit.ps1'), $launcher, $script:u8)
+            $mf = @{ schema = 1
+                app     = @{ vendor = 'Contoso'; name = 'App'; version = '1.0'; arch = 'x64' }
+                package = @{ type = 'installer' } }
+            [System.IO.File]::WriteAllText((Join-Path $dir 'psadt-package.json'), ($mf | ConvertTo-Json -Depth 8), $script:u8)
+            return $dir
+        }
+    }
+
+    It 'warns when a vendor uninstaller is run and only its exit code is trusted' {
+        $pkg = script:New-UninstallPkg -UninstallBody "Start-ADTProcess -FilePath `$helper -ArgumentList '/S'"
+        $r = & $script:pf2 -PackagePath $pkg
+        $c = $r.Checks | Where-Object { $_.Name -eq 'AsyncUninstall' } | Select-Object -First 1
+        $c.Status | Should -Be 'WARN'
+    }
+
+    It 'stays a WARN, so a package proven by -PathsAbsentAfterUninstall does not turn red' {
+        # Absence is genuinely proven one phase later by the sandbox assertion. Failing here would turn
+        # working, gate-verified packages red and buy nothing.
+        $pkg = script:New-UninstallPkg -UninstallBody "Start-ADTProcess -FilePath `$helper -ArgumentList '/S'"
+        (& $script:pf2 -PackagePath $pkg).Overall | Should -Be 'GREEN'
+    }
+
+    It 'accepts the NSIS _?= form, which makes the uninstaller synchronous' {
+        $pkg = script:New-UninstallPkg -UninstallBody "Start-ADTProcess -FilePath `$helper -ArgumentList @('/S', `"_?=`$installDir`")"
+        $c = (& $script:pf2 -PackagePath $pkg).Checks | Where-Object { $_.Name -eq 'AsyncUninstall' } | Select-Object -First 1
+        $c.Status | Should -Be 'PASS'
+    }
+
+    It 'accepts a hook that waits for the app to disappear and throws if it does not' {
+        # The remedy that actually worked for Firefox: Mozilla's customised build ignores _?=, so the
+        # only honest completion signal is the binary being gone.
+        $body = "Start-ADTProcess -FilePath `$helper -ArgumentList '/S'; if (Test-Path `$exe) { throw 'still there' }"
+        $pkg = script:New-UninstallPkg -UninstallBody $body
+        $c = (& $script:pf2 -PackagePath $pkg).Checks | Where-Object { $_.Name -eq 'AsyncUninstall' } | Select-Object -First 1
+        $c.Status | Should -Be 'PASS'
+    }
+
+    It 'ignores a repair that re-runs the INSTALLER with /S' {
+        # 7-Zip, Notepad++ and PyCharm all repair by re-installing. Demanding "verify the app is gone"
+        # there is the opposite of correct, and an earlier draft of this check failed all three.
+        $pkg = script:New-UninstallPkg -UninstallBody 'Start-ADTMsiProcess -Action Uninstall -ProductCode $code' `
+            -RepairBody "Start-ADTProcess -FilePath `"`$(`$adtSession.DirFiles)\setup.exe`" -ArgumentList '/S'"
+        $c = (& $script:pf2 -PackagePath $pkg).Checks | Where-Object { $_.Name -eq 'AsyncUninstall' } | Select-Object -First 1
+        $c.Status | Should -Be 'PASS'
+    }
+
+    It 'leaves a plain msiexec uninstall alone' {
+        # msiexec returns synchronously and its exit code means something - the overwhelming majority of
+        # packages, and none of them should see this warning.
+        $pkg = script:New-UninstallPkg -UninstallBody 'Start-ADTMsiProcess -Action Uninstall -ProductCode $code'
+        $c = (& $script:pf2 -PackagePath $pkg).Checks | Where-Object { $_.Name -eq 'AsyncUninstall' } | Select-Object -First 1
+        $c.Status | Should -Be 'PASS'
+    }
+}
+
 Describe 'Pre-flight check 8/9: manifest + per-run log (0.21.0)' {
     BeforeAll {
         # A minimal launcher that satisfies checks 1-7 so the verdict only reflects 8 and 9.

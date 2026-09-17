@@ -193,6 +193,48 @@ Describe 'New-PsadtReport -ManifestPath (0.21.0)' {
         { & $script:gen -ManifestPath $script:mfPath -OutputPath $script:outHtml } | Should -Not -Throw
     }
 
+    It 'refuses an upload dossier on a PARTIAL sandbox verdict' {
+        # Since Invoke-PsadtSandboxTest.ps1 defaults to the Install+Uninstall iteration pair, the usual
+        # result is now GREEN_PARTIAL - which renders a perfectly plausible table (Install passed,
+        # Uninstall passed) while Reinstall, Repair and the final Uninstall never ran. Without this,
+        # flipping that default would have quietly WEAKENED the upload gate instead of only making
+        # iteration cheaper. Only a full-gate GREEN may ship.
+        $m = $script:fullIdentity.Clone()
+        $m.decisions = @{ upload = $true }
+        $m.results = @{ sandboxTest = @{ verdict = 'GREEN_PARTIAL'; scenarios = @('Install', 'Uninstall') } }
+        & $script:writeMf $m
+        $st = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'OK' })
+        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*not GREEN*'
+
+        # The same package, once the full gate has actually run, ships.
+        $m.results = @{ sandboxTest = @{ verdict = 'GREEN'; scenarios = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall') } }
+        & $script:writeMf $m
+        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml } |
+            Should -Not -Throw
+    }
+
+    It 'names the re-run command when it refuses a partial verdict' {
+        $m = $script:fullIdentity.Clone()
+        $m.decisions = @{ upload = $true }
+        $m.results = @{ sandboxTest = @{ verdict = 'GREEN_PARTIAL'; scenarios = @('Install', 'Uninstall') } }
+        & $script:writeMf $m
+        $st = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'OK' })
+        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*-FullGate*'
+    }
+
+    It 'leaves the DEV-VM route alone, which has no sandbox verdict at all' {
+        # Invoke-PsadtSystemTest.ps1 produces no result.json and no verdict; a caller-supplied SystemTest
+        # is the whole evidence there. The new check must not turn that into an unshippable package.
+        $m = $script:fullIdentity.Clone()
+        $m.decisions = @{ upload = $true }
+        & $script:writeMf $m
+        $st = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'OK' })
+        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml } |
+            Should -Not -Throw
+    }
+
     It 'accepts the upload gate once SYSTEM-test results are supplied' {
         $m = $script:fullIdentity.Clone()
         $m.decisions = @{ upload = $true }

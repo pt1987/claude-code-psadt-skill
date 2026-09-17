@@ -111,11 +111,16 @@ if ($ManifestPath) {
     #
     # A caller-supplied SystemTest still wins: Set-FromManifest never overwrites a key that is already
     # present, and the DEV-VM route (Invoke-PsadtSystemTest.ps1) has no result.json to read.
+    # Carried out of the block below so the upload gate can see it. A GREEN_PARTIAL run produces rows
+    # like any other, so "rows exist" is NOT evidence that the gate was met.
+    $sandboxVerdict = [string]$mf.results.sandboxTest.verdict
+
     if (-not $Metadata.ContainsKey('SystemTest')) {
         $sbxResultPath = [string]$mf.results.sandboxTest.resultPath
         if ($sbxResultPath -and (Test-Path -LiteralPath $sbxResultPath)) {
             try {
                 $sbx = Get-Content -LiteralPath $sbxResultPath -Raw | ConvertFrom-Json
+                if ([string]$sbx.verdict) { $sandboxVerdict = [string]$sbx.verdict }
 
                 # Whether the rule was expected to find the app after each action. This is what makes a
                 # row a PASS or a FAIL - an action that exits 0 while detection disagrees is not a pass.
@@ -192,6 +197,20 @@ if ($ManifestPath) {
     # the manifest, so the gate can be enforced here instead of relying on the operator remembering it.
     if ($mf.decisions.upload -eq $true -and -not $Metadata.ContainsKey('SystemTest')) {
         throw "decisions.upload is true but no SYSTEM-test result was supplied. Run Invoke-PsadtSystemTest.ps1 (Install + Uninstall) first - Phase 6 is the binding gate for upload - or set decisions.upload to false."
+    }
+
+    # ...and a PARTIAL run does not satisfy it. Since Invoke-PsadtSandboxTest.ps1 defaults to the
+    # Install+Uninstall iteration pair, the common case is now a GREEN_PARTIAL result that renders a
+    # perfectly plausible table - Install passed, Uninstall passed - while Reinstall, Repair and the
+    # final Uninstall were never run. Without this check, flipping that default would have quietly
+    # WEAKENED the upload gate instead of only making iteration cheaper.
+    # A caller-supplied -Metadata SystemTest (the DEV-VM route) has no sandbox verdict and is left alone.
+    if ($mf.decisions.upload -eq $true -and $sandboxVerdict -and $sandboxVerdict -ne 'GREEN') {
+        $ranScenarios = @($mf.results.sandboxTest.scenarios)
+        $scenarioText = if ($ranScenarios.Count) { $ranScenarios -join ', ' } else { 'unknown' }
+        throw ("decisions.upload is true but the SYSTEM test verdict is '$sandboxVerdict', not GREEN " +
+            "(scenarios that ran: $scenarioText). Only the full five-scenario gate counts for an upload - " +
+            "re-run: pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg> -FullGate")
     }
 
     # The Company-Portal description is the one field in this document an end user reads, and it is

@@ -140,7 +140,10 @@ function ConvertTo-PhaseItem {
         default { 'queued' }
     }
     [pscustomobject]@{
-        Name         = [string]$Phase.name
+        # The human label when the runner supplies one, the raw id otherwise. The id is what
+        # result.json and every consumer key on; this window is for a person watching a VM, and
+        # "SystemTaskCanary" told that person nothing.
+        Name         = if ($Phase.PSObject.Properties.Name -contains 'label' -and $Phase.label) { [string]$Phase.label } else { [string]$Phase.name }
         Status       = $status
         StatusLabel  = $label
         Sub          = $sub

@@ -150,7 +150,7 @@ Describe 'the runner publishes the phase plan the window renders' {
         # whatever happens to sit in between - here that included a `continue` outside any loop, and
         # Pester aborts an entire block on that instead of reporting it (pester#2669).
         $ast = [System.Management.Automation.Language.Parser]::ParseInput($tpl, [ref]$null, [ref]$null)
-        $wanted = 'Initialize-PhasePlan', 'Add-PhaseLine', 'Set-Progress', 'Add-Step'
+        $wanted = 'Initialize-PhasePlan', 'Add-PhaseLine', 'Set-Progress', 'Add-Step', 'Get-PhaseLabel'
         $funcs = $ast.FindAll({
                 param($n)
                 $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $wanted -contains $n.Name

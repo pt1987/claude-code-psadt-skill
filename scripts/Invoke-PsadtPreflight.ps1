@@ -156,6 +156,84 @@ else {
     }
     if (-not $badGuid) { Add-Check 'ProductCode' 'PASS' 'no GUID passed to -FilePath' 'Invoke-AppDeployToolkit.ps1' }
 
+    # 6b: a vendor uninstaller launched with /S alone, when it is the NSIS-style kind that relaunches
+    # itself from %TEMP% and returns immediately. The launcher then waits on a process that has already
+    # exited, sees exit 0, and reports a completed uninstall that deleted nothing - the single most
+    # expensive failure shape this skill knows, because it is invisible in every log and only a
+    # file-existence assertion catches it. Measured 2026-09-16 on Firefox 156.0: helper.exe /S returned
+    # in 116 ms with exit 0 and the whole installation still on disk; one full VM run to see it, another
+    # to explain it. The engine catalog has carried the fix for this since it was written
+    # (references/switch-catalog/engine-defaults.json, nsis: "_?=<installdir> makes it synchronous").
+    # Deliberately engine-agnostic: it keys off the CALL SHAPE, so it fires for a wrapper MSI whose inner
+    # engine was never classified - which is exactly the case that got past everything else.
+    # Two remedies are accepted, because only one of them works everywhere. "_?=<installdir>" is the
+    # documented NSIS switch and makes the uninstaller run in place - but Mozilla's customised build
+    # ignores it (verified in the same session: still ~1.7 s, files still present). What always works is
+    # refusing to return until the app is actually gone. A hook that verifies absence and throws is
+    # therefore just as correct as one that passes _?=, and must not be failed for it.
+    $verifiesAbsence = {
+        param($fnAst)
+        $hasTest = @($fnAst.FindAll({ param($n)
+                    $n -is [System.Management.Automation.Language.CommandAst] -and
+                    $n.GetCommandName() -in @('Test-Path', 'Get-Item', 'Get-ChildItem')
+                }, $true)).Count -gt 0
+        $hasThrow = @($fnAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.ThrowStatementAst] }, $true)).Count -gt 0
+        $hasTest -and $hasThrow
+    }
+
+    # Scan the launcher AND the Extensions module. The skill's own convention puts custom helpers in
+    # PSAppDeployToolkit.Extensions.psm1, so the real uninstall call almost never sits in the launcher -
+    # a launcher-only scan would miss the exact shape this check exists for. Every function is scanned,
+    # not just the uninstall hooks: an Install hook that removes a legacy version hits the same trap.
+    $asyncScanTargets = @(, @('Invoke-AppDeployToolkit.ps1', $last))
+    foreach ($ef in $extFiles) {
+        $ep = Get-Ast $ef
+        if ($ep.Errors -and $ep.Errors.Count) { continue }
+        $asyncScanTargets += , @((Split-Path $ef -Leaf), $ep.Ast)
+    }
+
+    # The rule is about the CALL, not the file name: -FilePath is almost always a variable resolved at
+    # run time ($helper, from the ARP UninstallString), so matching "helper.exe" statically finds
+    # nothing - verified against the real Firefox package, where the name never appears as a literal.
+    # What IS decidable: an uninstall that runs a raw vendor EXE through Start-ADTProcess and then
+    # trusts its exit code. msiexec is exempt - it returns synchronously and its exit code means
+    # something - which keeps this off the overwhelming majority of packages that use Start-ADTMsiProcess.
+    $asyncUninst = @()
+    foreach ($target in $asyncScanTargets) {
+      $srcName = $target[0]
+      foreach ($fn in $target[1].FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+        # UNINSTALL paths only - the launcher's uninstall hook and the extension helpers it delegates
+        # to, which is where the convention puts them. Repair is deliberately excluded: for most
+        # packages a repair means re-running the INSTALLER (7-Zip, Notepad++ and PyCharm all do exactly
+        # that with /S), and demanding "verify the app is gone" there is the opposite of correct.
+        if ($fn.Name -notmatch '(?i)(^Uninstall-ADTDeployment$|uninstall)') { continue }
+        foreach ($c in $fn.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true)) {
+            if ($c.GetCommandName() -ne 'Start-ADTProcess') { continue }
+            $els = $c.CommandElements
+            $args = ''
+            for ($i = 0; $i -lt $els.Count; $i++) {
+                $el = $els[$i]
+                if ($el -isnot [System.Management.Automation.Language.CommandParameterAst]) { continue }
+                if ($el.ParameterName -ieq 'ArgumentList') {
+                    $args = if ($el.Argument) { $el.Argument.Extent.Text } elseif (($i + 1) -lt $els.Count) { $els[$i + 1].Extent.Text } else { '' }
+                }
+            }
+            if ($args -match '_\?=') { continue }
+            if (& $verifiesAbsence $fn) { continue }
+            $asyncUninst += "$srcName/$($fn.Name): $($c.Extent.Text.Split("`n")[0].Trim())"
+        }
+      }
+    }
+    if ($asyncUninst.Count -gt 0) {
+        # WARN, not FAIL: absence is genuinely PROVEN one phase later, by the sandbox run's
+        # -PathsAbsentAfterUninstall assertion, and a package that passed that gate is correct even
+        # with a bare exit-code check. Failing it here would turn working, gate-verified packages red
+        # and buy nothing. The warning exists to be read BEFORE the first VM run, which is the moment
+        # it is worth minutes.
+        Add-Check 'AsyncUninstall' 'WARN' ("the uninstall runs a vendor EXE through Start-ADTProcess and trusts its exit code. The NSIS-style uninstaller family relaunches itself from %TEMP% and returns instantly: measured on Firefox 156.0, helper.exe /S came back in 116 ms with exit 0 and the entire installation still on disk - invisible in every log, two VM runs to find. Either pass '_?=<installdir>', or wait for the binary to disappear and throw if it does not. At minimum, assert it: -PathsAbsentAfterUninstall on the Phase 6 run. " + (($asyncUninst | Select-Object -First 2) -join ' | ')) 'Invoke-AppDeployToolkit.ps1'
+    }
+    else { Add-Check 'AsyncUninstall' 'PASS' 'uninstall verifies removal, or does not shell out to a vendor uninstaller' 'Invoke-AppDeployToolkit.ps1' }
+
     # 4: top-level statements (heuristic, WARN-only). Allow the template's own top-level content.
     $suspect = @()
     if ($last.EndBlock -and $last.EndBlock.Statements) {

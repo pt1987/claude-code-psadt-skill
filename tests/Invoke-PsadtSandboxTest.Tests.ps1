@@ -503,6 +503,143 @@ Describe 'Invoke-PsadtSandboxTest' {
             @($errors).Count | Should -Be 0
         }
     }
+
+    Context 'phase names a human can read' {
+        # The ids are load-bearing (result.json, New-PsadtReport, -Scenarios, the fail-fast lookup) and
+        # must NOT be renamed; the labels are what the operator watching the VM sees. Before this,
+        # the window said "SystemTaskCanary" and "GuestStaging", which meant nothing to anyone who had
+        # not read the harness source.
+        BeforeEach { $script:lblRunner = Get-Content -LiteralPath (& $script:script -PackagePath $script:pkg -GenerateOnly).RunnerPath -Raw }
+
+        It 'carries a label for every phase in the plan' {
+            $script:lblRunner | Should -Match 'function Get-PhaseLabel'
+            foreach ($id in 'Elevation', 'SystemTaskCanary', 'GuestPrepare', 'GuestStaging', 'PsadtModuleCanary',
+                'Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall',
+                'DetectionAfterInstall', 'DetectionAfterFinalUninstall') {
+                $script:lblRunner | Should -Match "'$id'\s*=\s*'"
+            }
+        }
+
+        It 'keeps the ids themselves unchanged, because consumers key on them' {
+            $script:lblRunner | Should -Match "\`$plan\.Add\('Install'\)"
+            $script:lblRunner | Should -Match "'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall'"
+        }
+
+        It 'publishes the label alongside the id, never instead of it' {
+            $script:lblRunner | Should -Match 'stepLabel = \(Get-PhaseLabel \$Step\)'
+            $script:lblRunner | Should -Match 'step    = \$Step'
+            $script:lblRunner | Should -Match 'label = \(Get-PhaseLabel \$n\)'
+        }
+
+        It 'labels a diagnostic re-run after the phase it belongs to' {
+            $script:lblRunner | Should -Match '\\\.Diagnostic\$'
+            $script:lblRunner | Should -Match 'diagnostic re-run'
+        }
+    }
+
+    Context 'installed-application evidence' {
+        # 2026-09-16, Firefox 156.0: four consecutive RED full-gate runs (7.0/6.4/5.9/6.9 min) were spent
+        # rediscovering strings the guest already knew - the ARP DisplayName is "Mozilla Firefox
+        # (x64 en-US)" with the version in a SEPARATE DisplayVersion property, and InstallLocation comes
+        # back as [System.IO.DirectoryInfo]. None of it reached disk, because the dump only ran when a
+        # detection result contradicted its action, and after a successful Install nothing contradicts.
+        # BeforeEach, not BeforeAll: the package fixture itself is built in the Describe's BeforeEach,
+        # so a BeforeAll here would run while $script:pkg is still $null.
+        BeforeEach { $script:evRunner = Get-Content -LiteralPath (& $script:script -PackagePath $script:pkg -GenerateOnly).RunnerPath -Raw }
+
+        It 'defines the snapshot writer and the ARP reader' {
+            $script:evRunner | Should -Match 'function Get-ArpRows'
+            $script:evRunner | Should -Match 'function Save-InstalledAppSnapshot'
+        }
+
+        It 'captures the fields a resolver hook actually needs' {
+            # UninstallString alone was never enough: the uninstall hook resolves InstallLocation, and
+            # QuietUninstallString is what a correct silent uninstall uses when the vendor supplies one.
+            $script:evRunner | Should -Match 'InstallLocation\s*=\s*\$pr\.InstallLocation'
+            $script:evRunner | Should -Match 'QuietUninstallString\s*=\s*\$pr\.QuietUninstallString'
+        }
+
+        It 'records the TYPE of each property, not only its value' {
+            # The launcher reads the app through PSADT, not the raw hive, and .TrimEnd() on a
+            # [System.IO.DirectoryInfo] throws MethodNotFound at run time - invisible to every static check.
+            $script:evRunner | Should -Match 'function Get-AdtApplicationFacts'
+            $script:evRunner | Should -Match 'GetType\(\)\.FullName'
+        }
+
+        It 'snapshots after EVERY action, not only when detection disagreed' {
+            # The regression this guards: a snapshot reachable only from the disagreement branch is
+            # exactly the state that cost four VM runs.
+            $script:evRunner | Should -Match '\$newApps = @\(Save-InstalledAppSnapshot -Label \$Label\)'
+            $depl = [regex]::Match($script:evRunner, 'function Invoke-Deployment\s*\{.*?\n\}', 'Singleline').Value
+            $depl | Should -Match 'Save-InstalledAppSnapshot'
+            $depl | Should -Not -Match 'ExpectDetected'
+        }
+
+        It 'takes a baseline before the first Install so the delta is just this package' {
+            $script:evRunner | Should -Match "Save-InstalledAppSnapshot -Label 'Baseline' -Baseline"
+            $baselineAt = $script:evRunner.IndexOf("Save-InstalledAppSnapshot -Label 'Baseline' -Baseline")
+            $installAt = $script:evRunner.IndexOf("Invoke-Deployment -Label 'Install'")
+            $baselineAt | Should -BeGreaterThan 0
+            $installAt | Should -BeGreaterThan $baselineAt
+        }
+
+        It 'carries the new ARP entry into the step so the caller never has to open a file' {
+            $script:evRunner | Should -Match '\$step\.installedApp'
+        }
+    }
+
+    Context 'two-stage loop: iteration by default, gate on demand' {
+        It 'surfaces the Install ARP entry on the returned object' {
+            $src = Get-Content -LiteralPath $script:script -Raw
+            $src | Should -Match 'InstalledAppFacts'
+        }
+
+        It 'defaults to the FULL gate, so a correct package needs exactly one VM run' {
+            # The fixed overhead of a run - boot, guest prep, canaries, teardown - measured at 139 s on
+            # 2026-09-17. A second run pays that again before a single action executes, and the
+            # "iterating on the gate is wasteful" objection is answered by fail-fast below instead.
+            $src = Get-Content -LiteralPath $script:script -Raw
+            $src | Should -Match "\[string\[\]\]\`$Scenarios = @\('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall'\)"
+        }
+
+        It 'offers -Quick for deliberate iteration and reduces it to the binding pair' {
+            $src = Get-Content -LiteralPath $script:script -Raw
+            $src | Should -Match '\[switch\]\$Quick'
+            $src | Should -Match "\`$Scenarios = @\('Install', 'Uninstall'\)"
+        }
+
+        It 'refuses -Quick together with an explicit -Scenarios' {
+            { & $script:script -PackagePath $script:pkg -Quick -Scenarios 'Install' -GenerateOnly } |
+                Should -Throw '*mutually exclusive*'
+        }
+
+        It 'stays partial with -Quick and reaches the full set without it' {
+            # fullGate/GREEN_PARTIAL is the invariant that keeps a shortened run from being mistaken
+            # for the upload gate.
+            $gen = & $script:script -PackagePath $script:pkg -GenerateOnly
+            (Get-Content -LiteralPath $gen.RunnerPath -Raw) | Should -Match "'Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall'"
+        }
+
+        It 'skips the downstream scenarios once Install or Uninstall is red' {
+            # The measured waste this removes: four RED Firefox runs each carried on through Reinstall,
+            # Repair and FinalUninstall after the Uninstall had already failed - about 3 minutes of dead
+            # VM time per run, proving nothing, because every later scenario asserts against the machine
+            # the failed action was supposed to leave behind.
+            $gen = & $script:script -PackagePath $script:pkg -GenerateOnly
+            $runner = Get-Content -LiteralPath $gen.RunnerPath -Raw
+            $runner | Should -Match 'function Test-GateStillMeaningful'
+            $runner | Should -Match "\`$continue = Test-GateStillMeaningful -Label 'Install'"
+            $runner | Should -Match "\`$continue = Test-GateStillMeaningful -Label 'Uninstall'"
+            foreach ($later in 'Reinstall', 'Repair', 'FinalUninstall') {
+                $runner | Should -Match "if \(\`$continue -and \`$scenarios -contains '$later'\)"
+            }
+        }
+
+        It 'still only calls a five-scenario run GREEN' {
+            $src = Get-Content -LiteralPath $script:script -Raw
+            $src | Should -Match "GREEN_PARTIAL"
+        }
+    }
 }
 
 Describe 'Invoke-PsadtSandboxTest array parameters' {

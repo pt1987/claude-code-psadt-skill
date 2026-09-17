@@ -208,18 +208,18 @@ Company-Portal uninstall returns 0x80070001). Per-check explanations and the enc
 - and that decision is recorded as `decisions.upload` in the manifest, which is what the dossier enforces.
 Each run appends to `results.systemTest[]` + `artifacts.logs[]`.
 
-**Default route: `pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg>`.** The WHOLE loop inside
-one throwaway Windows Sandbox, every action as SYSTEM. No elevation on the host, host untouched,
-~6 minutes. The verdict is keyed on the DETECTION SCRIPT - what Intune evaluates. Prerequisite, the
-`-Paths*` package assertions and when the sandbox is the wrong host: phase 6.1.
+**Default route: `pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg>`.** One throwaway Windows
+Sandbox, every action as SYSTEM. No elevation, host untouched. Runs the FULL gate by default: a VM boot
+costs 139s fixed, so a second run is never cheap. Red Install/Uninstall SKIPS the rest (they could only
+re-prove it); `-Quick` is the deliberate pair. **Start the VM, then do Phases 7+8 in the SAME turn** -
+neither needs the verdict, and waiting idle costs the whole run twice. Verdict keyed on the DETECTION
+SCRIPT - what Intune evaluates. Each run snapshots the real installed-app entry (`InstalledAppFacts`):
+write hooks against those strings, never a guess. `-Paths*`, prerequisite, wrong-host case: phase 6.1.
 
 **A package that stages a driver needs `-TrustedPublisherCert`.** No policy trusts that signer in the
 guest, so Windows raises the "install device software?" prompt - invisible, because every action runs as
-SYSTEM - and the phase burns its timeout looking like a slow installer. Scope with `-Scenarios` while
-iterating; cancel with `STOP.txt`, never by killing the process, which orphans the VM worker. Phase 6.1.
-
-**Never hand-roll this harness.** Running actions as SYSTEM and reading their exit codes back looks like
-ten lines of `schtasks` and is not: App. G has three bugs that each silently burned a full VM run.
+SYSTEM - and the phase burns its timeout looking like a slow installer. Cancel with `STOP.txt`, never by
+killing the process, which orphans the VM worker. Never hand-roll this harness: App. G, phase 6.1.
 
 **After GREEN, offer a manual interactive test** for an unfamiliar app/vendor or a suspected runtime
 prerequisite - situational, not a gate. A missing runtime, a first-run wizard or an absent licence all
