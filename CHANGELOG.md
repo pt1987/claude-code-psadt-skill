@@ -2,29 +2,42 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
-## 0.35.0 - 2026-09-17 - Packaging Firefox took 70 minutes, and almost none of it was Firefox
+## 0.35.0 - 2026-09-17 - Most of a packaging run was the skill, not the package
 
-Packaging Mozilla Firefox 156.0 took ~70 minutes against an expectation of ~20, and ended without an
-upload. The measurement, taken from file timestamps and `result.json` rather than from memory:
-**21 min 52 s** passed between invoking the skill and the first VM run, and **36 min 30 s** went into
-seven Windows Sandbox runs - four of them full five-scenario gates at 7.0 / 6.4 / 5.9 / 6.9 minutes,
-**all RED, all iterations on the same helper**.
+**A performance release.** Same work, measured end to end on applications that had never been packaged
+here:
 
-The bug was never exotic. The resolver matched the wrong DisplayName, then the wrong one again, then
-the uninstaller returned before it had deleted anything, then a property turned out not to be a
-string. What made it expensive is that none of those four facts were obtainable without burning a VM
-run to guess at them - and that two things which would have prevented it were already in this
-repository and reached nobody. The advice to scope a run while iterating sat in
-`references/phases-0-6.md`; the control plane called the full loop the "Default route", so the full
-loop ran four times. The NSIS trap - *"a bare Uninstall.exe /S returns BEFORE it has finished"* - has
-been in `engine-defaults.json` since it was written; the engine was classified `msi`, correct for the
-outer layer of a wrapper MSI, so the NSIS entry was never consulted.
+| | before | after |
+|---|---|---|
+| Firefox 156.0 (MSI wrapper) | ~70 min, gate never reached | - |
+| Audacity 4.0.0 (MSI) | - | **12:12**, 2 VM runs |
+| VS Code 1.138.0 (Inno) | - | **22:10**, 2 VM runs, hand-scaffolded |
+| draw.io 31.4.5 (NSIS) | - | **10:49, ONE VM run** |
 
-**Prose that is present but structurally unreachable is not guidance.** This release changes defaults,
-evidence, generated code and checks instead of adding more of it. Verified end to end on three
-applications that had never been packaged here: Audacity 4.0.0 (MSI) in 12:12, VS Code 1.138.0 (Inno)
-in 22:10 by hand, and draw.io 31.4.5 (NSIS) in **10:49 with a single VM run**, all GREEN on the first
-gate attempt.
+All three GREEN on the first gate attempt. Four things were paying for that gap, and all four are
+fixed here rather than documented:
+
+1. **A second VM run nobody needed.** Fixed overhead per run - boot, guest prep, canaries, teardown -
+   measures 139 s, so "test cheaply first, then gate" silently buys 2.3 minutes before a single action
+   executes. The gate is the default again; fail-fast makes that safe.
+2. **Guest preparation cost 85 s of that.** Most of it was a WMI `salvagerepository` pass that failed
+   on every observed run before `reset` succeeded - and salvage exists to PRESERVE a repository that is
+   discarded minutes later. Overhead is now **139 s -> 81 s**.
+3. **Every failed run re-proved the same failure.** Four RED Firefox gates each carried on through
+   Reinstall, Repair and the final Uninstall after the Uninstall had already failed: ~3 minutes of dead
+   VM time per run.
+4. **The EXE family had no generator**, so Inno/NSIS packages were hand-scaffolded - ~3 minutes of
+   hand-patching and two self-inflicted scripting errors on VS Code alone.
+
+Underneath all four sat one cause worth naming. The Firefox run spent **21 min 52 s before the first
+VM even started** and **36 min 30 s across seven sandbox runs**, four of them RED on the same helper -
+and the two things that would have prevented it were already in this repository and reached nobody.
+The advice to scope a run while iterating sat in `references/phases-0-6.md` while the control plane
+called the full loop the "Default route". The NSIS trap - *"a bare Uninstall.exe /S returns BEFORE it
+has finished"* - has been in `engine-defaults.json` since it was written, but the engine was classified
+`msi`, correct for the outer layer of a wrapper MSI, so the NSIS entry was never consulted.
+**Prose that is present but structurally unreachable is not guidance**, so this release changes
+defaults, evidence, generated code and checks instead of adding more of it.
 
 ### Added
 - **`scripts/New-ExePackage.ps1`** - the EXE family had no generator, so every Inno/NSIS/electron-builder

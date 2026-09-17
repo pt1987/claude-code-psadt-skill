@@ -434,7 +434,9 @@ The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries
 every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
 second copy to keep in sync.
 
-### 0.35.0 - 2026-09-17
+### 0.35.0 - 2026-09-17 — a performance release
+*draw.io 31.4.5 (NSIS) now packages in **10:49 with a single VM run**, Audacity 4.0.0 (MSI) in 12:12,
+both GREEN on the first gate attempt - against ~70 minutes and no gate at all beforehand.*
 - **Added: `scripts/New-ExePackage.ps1`** - the EXE family (Inno, NSIS, electron-builder) had no
   generator, so every such package was hand-scaffolded. It now generates hooks that resolve the
   uninstaller from the ARP entry at run time, WAIT for the app to actually disappear instead of
