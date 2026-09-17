@@ -2,13 +2,13 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>psadt-deploy — PSADT v4 to Intune, in verified phases</title>
+<title>psadt-deploy - PSADT v4 to Intune, in verified phases</title>
 <meta name="description" content="A Claude Code skill that drives the full lifecycle of a PSAppDeployToolkit v4.x Intune Win32 package: intake, research, scaffold, pre-flight, a SYSTEM test in Windows Sandbox, packaging, dossier and an optional Graph upload.">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#161826">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
-<meta property="og:title" content="psadt-deploy — PSADT v4 to Intune, in verified phases">
+<meta property="og:title" content="psadt-deploy - PSADT v4 to Intune, in verified phases">
 <meta property="og:description" content="Thirteen phases, each owned by a script rather than by prose. A step either passed or it did not.">
 <meta property="og:url" content="https://pt1987.github.io/claude-code-psadt-skill/">
 <script>window.__resources = {"https://unpkg.com/react@18.3.1/umd/react.production.min.js":"assets/react.production-d949f1c3.js","https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js":"assets/react-dom.production-35f4f974.js"};</script>
@@ -18,7 +18,7 @@
 <body>
 <x-dc>
 <helmet>
-<style>/* Nocturne — design-system tokens and component classes. This file is the source of truth for the system's look; retune it here and see readme.md. */
+<style>/* Nocturne - design-system tokens and component classes. This file is the source of truth for the system's look; retune it here and see readme.md. */
 /* cyrillic-ext */
 @font-face {
   font-family: 'Inter';
@@ -278,8 +278,8 @@
   --color-surface: #232532;
   --color-text: #e9e9ed;
   --color-accent: #9184d9; /* review round 7 (Barron): the accent moves to
-     the product's blurple — OKLCH hue 289.2, the hue of the app's own Pro
-     accent (#9a8fe0, --om-accent-pro) — at the same lightness the steel
+     the product's blurple - OKLCH hue 289.2, the hue of the app's own Pro
+     accent (#9a8fe0, --om-accent-pro) - at the same lightness the steel
      accent held (L 0.660, so the documented ratios survive) and chroma
      in the product blurple's own range (its token sits at C 0.118; the
      accent takes 0.125, from the old steel's 0.030):
@@ -288,7 +288,7 @@
      hue, same L 0.734, chroma at the same 2:3 proportion it held */
   --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
 
-  /* Tonal ramps — generated in OKLCH on one shared lightness scale, so the
+  /* Tonal ramps - generated in OKLCH on one shared lightness scale, so the
      same step of any role matches the others in visual value. */
   --color-neutral-100: #f3f5fe;
   --color-neutral-200: #e4e7f5;
@@ -320,12 +320,12 @@
   --color-accent-2-800: #423e5d;
   --color-accent-2-900: #2b293a;
 
-  /* Deck section-divider ground — review round 3: saturation as presence.
+  /* Deck section-divider ground - review round 3: saturation as presence.
      Dividers take a saturated deep indigo (hue 277, the neutral ramp's own
-     family; C 0.094 — written when the accent held C 0.030, before the
+     family; C 0.094 - written when the accent held C 0.030, before the
      round-7 blurple raised it past the ground's) with a lighter bloom and
      a ghost tint of the same hue, while the slide grounds stay
-     desaturated. Deck-scale fills only — not interface colors. */
+     desaturated. Deck-scale fills only - not interface colors. */
   --color-section: #262a60;
   --color-section-glow: #353b80;
   --color-section-ghost: #4c5397;
@@ -345,7 +345,7 @@
   --radius-md: 8px;
   --radius-lg: 14px;
 
-  /* Elevation — derived from the ground: soft ink-tinted shadows on a
+  /* Elevation - derived from the ground: soft ink-tinted shadows on a
      light theme, a hairline edge + ambient darkness on a dark one. */
   --shadow-sm: 0 0 0 1px #3f424d;
   --shadow-md: 0 0 0 1px #595d6c, 0 6px 18px rgba(0,0,0,0.55);
@@ -362,7 +362,7 @@ h1, h2, h3, h4 { font-family: var(--font-heading); font-weight: var(--font-headi
 .lighten{mix-blend-mode:lighten;background-color:transparent}
 
 /* ══════════════════════════════════════════════════════════════════════════
-   Components — built with the tokens above. Plain CSS
+   Components - built with the tokens above. Plain CSS
    on plain HTML: no JavaScript, no build step. Each class is documented in
    readme.md and demonstrated in foundations/ and components/.
    ══════════════════════════════════════════════════════════════════════ */
@@ -393,8 +393,8 @@ figcaption {
 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 ::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
 
-/* — rules — */
-/* Rules fade to transparent at both ends instead of stopping cleanly — a
+/* - rules - */
+/* Rules fade to transparent at both ends instead of stopping cleanly - a
    Nocturne signature. The ramp is 48px an end (one deck baseline unit),
    painted from the same divider token. Freestanding rules fade; box
    outlines, in-control separators, and short accent marks stay solid. */
@@ -405,12 +405,12 @@ figcaption {
     var(--color-divider) calc(100% - 48px), transparent);
 }
 
-/* — buttons — */
+/* - buttons - */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   cursor: pointer; text-decoration: none;
   font-family: var(--font-heading); font-weight: var(--font-heading-weight);
-  font-size: 14px; line-height: 1.2; color: var(--color-text); /* matches the .input's 14px —
+  font-size: 14px; line-height: 1.2; color: var(--color-text); /* matches the .input's 14px -
      the pair sits side by side in sign-up rows */
   background: transparent; border: 1px solid transparent;
   padding: var(--space-2) calc(var(--space-3) * 1.2);
@@ -430,7 +430,7 @@ figcaption {
 .btn-icon { width: 36px; height: 36px; padding: 0; }
 .btn-block { width: 100%; margin-top: var(--space-2); }
 
-/* — forms — */
+/* - forms - */
 .field > label {
   display: block; font-size: 12px; margin-bottom: 5px;
   color: color-mix(in srgb, var(--color-text) 70%, transparent);
@@ -471,7 +471,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .seg-opt:not(:has(input:checked)):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .seg-opt:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 
-/* — cards — */
+/* - cards - */
 .card {
   display: flex; flex-direction: column; gap: var(--space-2);
   padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-surface);
@@ -490,7 +490,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .elev-md { box-shadow: var(--shadow-md); }
 .elev-lg { box-shadow: var(--shadow-lg); }
 
-/* — tags — */
+/* - tags - */
 .tag {
   display: inline-flex; align-items: center; font-size: 11px;
   letter-spacing: 0.02em; padding: 3px 10px;
@@ -501,7 +501,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .tag-neutral { background: var(--color-neutral-800); color: var(--color-neutral-100); }
 .tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent); }
 
-/* — navigation — */
+/* - navigation - */
 .nav {
   display: flex; align-items: center; gap: var(--space-4);
   padding: var(--space-3) var(--space-4);
@@ -514,7 +514,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .nav a { color: inherit; text-decoration: none; font-size: 14px; }
 .nav a:hover, .nav a[aria-current='page'] { color: var(--color-accent); }
 
-/* — tables — */
+/* - tables - */
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table th {
   text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
@@ -546,7 +546,7 @@ textarea.input { min-height: 90px; resize: vertical; }
       color-mix(in srgb, var(--color-text) 8%, transparent) calc(100% - 48px), transparent) no-repeat bottom / 100% 1px;
 }
 
-/* — dialog — */
+/* - dialog - */
 .dialog-backdrop {
   position: fixed; inset: 0; display: grid; place-items: center;
   padding: var(--space-4);
@@ -636,7 +636,7 @@ textarea.input { min-height: 90px; resize: vertical; }
       <div>
         <p style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-300); margin: 0 0 20px">Claude Code skill · <a class="release-link" href="https://github.com/pt1987/claude-code-psadt-skill/blob/main/CHANGELOG.md" rel="noopener" title="Changelog">v0.35.0 · 2026-09-17</a></p>
         <h1 data-hero-title="" style="font-size: 64px; line-height: 1.02; letter-spacing: -0.03em; margin: 0 0 24px; text-wrap: balance">PSADT v4 to Intune,<br>in verified phases.</h1>
-        <p style="font-size: 19px; line-height: 1.5; color: var(--color-neutral-300); max-width: 46ch; margin: 0 0 32px">Thirteen phases, each owned by a script rather than by prose. A step either passed or it did not — and the thing that decides is the same every time.</p>
+        <p style="font-size: 19px; line-height: 1.5; color: var(--color-neutral-300); max-width: 46ch; margin: 0 0 32px">Thirteen phases, each owned by a script rather than by prose. A step either passed or it did not - and the thing that decides is the same every time.</p>
         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
           <a class="btn btn-primary" href="#start" style="padding: 10px 18px; font-size: 15px">Install the skill</a>
           <a class="btn btn-secondary" href="#phases" style="padding: 10px 18px; font-size: 15px">See the workflow</a>
@@ -787,7 +787,7 @@ textarea.input { min-height: 90px; resize: vertical; }
     <div data-wrap="" style="max-width: 1160px; margin: 0 auto; padding: 88px 28px">
       <p style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-300); margin: 0 0 14px">Appendix L.2</p>
       <h2 style="font-size: 38px; letter-spacing: -0.025em; margin: 0 0 16px">Nineteen installer engines, and the trap in each</h2>
-      <p style="font-size: 16px; line-height: 1.6; color: var(--color-neutral-300); max-width: 64ch; margin: 0 0 32px">Identified by fingerprint, not by guesswork, and consulted before any web search. Twelve of the fourteen carry a trap the switch table alone will not tell you — and two, MSIX and App-V, are routed away from PSADT rather than wrapped in it.</p>
+      <p style="font-size: 16px; line-height: 1.6; color: var(--color-neutral-300); max-width: 64ch; margin: 0 0 32px">Identified by fingerprint, not by guesswork, and consulted before any web search. Twelve of the fourteen carry a trap the switch table alone will not tell you - and two, MSIX and App-V, are routed away from PSADT rather than wrapped in it.</p>
       <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px">
         <sc-for list="{{ engineChips }}" as="e" hint-placeholder-count="14">
           <button type="button" sc-camel-on-click="{{ e.go }}" style="{{ e.style }}">
@@ -819,7 +819,7 @@ textarea.input { min-height: 90px; resize: vertical; }
         <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 16px; flex: 1; min-width: 0"><span style="color: var(--color-neutral-600)">$ </span>{{ installCmd }}</span>
         <button class="btn btn-primary" type="button" sc-camel-on-click="{{ copy }}">{{ copyLabel }}</button>
       </div>
-      <p style="font-size: 12.5px; color: var(--color-neutral-500); margin: 16px 0 0">Figures as of v0.35.0 and verified against the repository at that version — the linked source is authoritative, not this page. Not affiliated with or endorsed by Microsoft.</p>
+      <p style="font-size: 12.5px; color: var(--color-neutral-500); margin: 16px 0 0">Figures as of v0.35.0 and verified against the repository at that version - the linked source is authoritative, not this page. Not affiliated with or endorsed by Microsoft.</p>
     </div>
   </section>
 
@@ -839,18 +839,18 @@ textarea.input { min-height: 90px; resize: vertical; }
 <script type="text/x-dc" data-dc-script="" data-props="{&quot;motion&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;full&quot;,&quot;subtle&quot;,&quot;off&quot;],&quot;default&quot;:&quot;full&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Motion&quot;},&quot;installCommand&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;npx psadt-deploy-skill&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Content&quot;}}">
 const PHASES = [
   { num: '0', name: 'Setup', owner: 'Initialize-PsadtSkill.ps1', blurb: 'Thirteen prerequisite checks, each GREEN, YELLOW or RED.', verdict: { label: 'GREEN', green: true, text: '-Fix provisions everything that needs no human decision. What is left is a decision, not a chore.' }, items: [ { label: 'PowerShell 5.1+ or 7+', meta: 'required' }, { label: 'PSADT v4 toolkit', meta: 'fetched' }, { label: 'IntuneWinAppUtil', meta: '%LOCALAPPDATA%' }, { label: 'Windows Sandbox feature', meta: 'enabled' }, { label: '13 prerequisite checks', meta: 'GREEN' } ] },
-  { num: '1', name: 'Intake', owner: 'agent · gate 1', blurb: 'The application is named and scoped. Blockers arrive as clickable options, not as a questionnaire.', gate: 'Gate 1 — scope. What is being packaged, for which architecture, and what counts as done.', verdict: { label: 'SCOPED', text: 'Identity is fixed here: vendor, application, version, architecture. Everything downstream is named after it.' }, items: [ { label: 'Vendor · app · version · arch', meta: 'identity' }, { label: 'Gate 1 — scope', meta: 'decision' }, { label: 'Blockers as options', meta: 'clickable' } ] },
-  { num: '2', name: 'Research', owner: 'agent · gate 2', blurb: 'Version, silent switches and known Intune pitfalls are researched in parallel, not asked.', gate: 'Gate 2 — deployment semantics. Per-machine or per-user, and what a repair should actually do.', verdict: { label: 'RESEARCHED, NOT ASKED', text: "Findings are stated as assumptions you can correct — and the 17 reference appendices are consulted before any web search." }, items: [ { label: 'Current version', meta: 'researched' }, { label: 'Silent switches', meta: 'researched' }, { label: 'Known Intune pitfalls', meta: 'researched' }, { label: 'Installer engine', meta: '1 of 19' }, { label: 'Gate 2 — semantics', meta: 'decision' } ] },
-  { num: '3', name: 'Scaffold', owner: 'New-MsiPackage · New-DriverPackage · …', blurb: 'A generator writes the package in one pass — not four separate handoffs.', verdict: { label: 'ONE PASS', text: 'Launcher, detection, log name and manifest are written together, so they cannot disagree with each other.' }, items: [ { label: 'Launcher', meta: 'generated' }, { label: 'Detection script', meta: 'exit-code contract' }, { label: 'Per-run log name', meta: '_Install_<ts>.log' }, { label: 'psadt-package.json', meta: 'one truth' } ] },
-  { num: '4', name: 'Customize', owner: 'agent', blurb: 'All three hooks filled from the research; custom helpers go in the Extensions module, never in the main script.', verdict: { label: 'ALL THREE TYPES', text: 'Install, Uninstall and Repair are filled together even when only install is needed today — a Company Portal uninstall needs a real hook, not a placeholder.' }, items: [ { label: 'Install hook', meta: 'filled' }, { label: 'Uninstall hook', meta: 'filled' }, { label: 'Repair hook', meta: 'filled' }, { label: 'Extensions module', meta: 'custom helpers' } ] },
-  { num: '5', name: 'Pre-flight', owner: 'Invoke-PsadtPreflight.ps1', blurb: 'Ten check categories. A gate, not a report.', verdict: { label: 'GREEN', green: true, text: 'The verdict is GREEN or RED — and RED tells you which file failed, by name.' }, items: [ { label: 'Encoding · BOM · AST parse', meta: 'PASS' }, { label: 'v3 cmdlets · hook structure', meta: 'PASS' }, { label: 'ProductCode · top-level code', meta: 'PASS' }, { label: 'Detection contract · manifest', meta: 'PASS' }, { label: 'Log name · driver trust', meta: 'PASS' } ] },
-  { num: '6', name: 'SYSTEM test', owner: 'Invoke-PsadtSandboxTest.ps1', blurb: 'Three harness pre-checks first (a SYSTEM task, WMI, a real toolkit session), then five deployment actions, each followed by a detection evaluation — ten recorded package steps.', gate: 'Gate 3 — SYSTEM-test consent. The Sandbox route runs the whole loop in a throwaway VM with no elevation and leaves the host untouched; the DEV-VM route needs an elevated session.', verdict: { label: 'GREEN', green: true, text: 'Run as NT AUTHORITY\\SYSTEM against a machine that has never seen the app — the way the Intune Management Extension does it. Binding before any upload. Needs Windows Pro, Enterprise or Education with virtualisation; enabling the Sandbox feature is a one-time elevated step.' }, items: [ { label: '1 Install → detect', meta: 'SYSTEM' }, { label: '2 Uninstall → detect', meta: 'SYSTEM' }, { label: '3 Reinstall → detect', meta: 'SYSTEM' }, { label: '4 Repair → detect', meta: 'SYSTEM' }, { label: '5 Uninstall → detect', meta: 'SYSTEM' } ] },
+  { num: '1', name: 'Intake', owner: 'agent · gate 1', blurb: 'The application is named and scoped. Blockers arrive as clickable options, not as a questionnaire.', gate: 'Gate 1 - scope. What is being packaged, for which architecture, and what counts as done.', verdict: { label: 'SCOPED', text: 'Identity is fixed here: vendor, application, version, architecture. Everything downstream is named after it.' }, items: [ { label: 'Vendor · app · version · arch', meta: 'identity' }, { label: 'Gate 1 - scope', meta: 'decision' }, { label: 'Blockers as options', meta: 'clickable' } ] },
+  { num: '2', name: 'Research', owner: 'agent · gate 2', blurb: 'Version, silent switches and known Intune pitfalls are researched in parallel, not asked.', gate: 'Gate 2 - deployment semantics. Per-machine or per-user, and what a repair should actually do.', verdict: { label: 'RESEARCHED, NOT ASKED', text: "Findings are stated as assumptions you can correct - and the 17 reference appendices are consulted before any web search." }, items: [ { label: 'Current version', meta: 'researched' }, { label: 'Silent switches', meta: 'researched' }, { label: 'Known Intune pitfalls', meta: 'researched' }, { label: 'Installer engine', meta: '1 of 19' }, { label: 'Gate 2 - semantics', meta: 'decision' } ] },
+  { num: '3', name: 'Scaffold', owner: 'New-MsiPackage · New-DriverPackage · …', blurb: 'A generator writes the package in one pass - not four separate handoffs.', verdict: { label: 'ONE PASS', text: 'Launcher, detection, log name and manifest are written together, so they cannot disagree with each other.' }, items: [ { label: 'Launcher', meta: 'generated' }, { label: 'Detection script', meta: 'exit-code contract' }, { label: 'Per-run log name', meta: '_Install_<ts>.log' }, { label: 'psadt-package.json', meta: 'one truth' } ] },
+  { num: '4', name: 'Customize', owner: 'agent', blurb: 'All three hooks filled from the research; custom helpers go in the Extensions module, never in the main script.', verdict: { label: 'ALL THREE TYPES', text: 'Install, Uninstall and Repair are filled together even when only install is needed today - a Company Portal uninstall needs a real hook, not a placeholder.' }, items: [ { label: 'Install hook', meta: 'filled' }, { label: 'Uninstall hook', meta: 'filled' }, { label: 'Repair hook', meta: 'filled' }, { label: 'Extensions module', meta: 'custom helpers' } ] },
+  { num: '5', name: 'Pre-flight', owner: 'Invoke-PsadtPreflight.ps1', blurb: 'Ten check categories. A gate, not a report.', verdict: { label: 'GREEN', green: true, text: 'The verdict is GREEN or RED - and RED tells you which file failed, by name.' }, items: [ { label: 'Encoding · BOM · AST parse', meta: 'PASS' }, { label: 'v3 cmdlets · hook structure', meta: 'PASS' }, { label: 'ProductCode · top-level code', meta: 'PASS' }, { label: 'Detection contract · manifest', meta: 'PASS' }, { label: 'Log name · driver trust', meta: 'PASS' } ] },
+  { num: '6', name: 'SYSTEM test', owner: 'Invoke-PsadtSandboxTest.ps1', blurb: 'Three harness pre-checks first (a SYSTEM task, WMI, a real toolkit session), then five deployment actions, each followed by a detection evaluation - ten recorded package steps.', gate: 'Gate 3 - SYSTEM-test consent. The Sandbox route runs the whole loop in a throwaway VM with no elevation and leaves the host untouched; the DEV-VM route needs an elevated session.', verdict: { label: 'GREEN', green: true, text: 'Run as NT AUTHORITY\\SYSTEM against a machine that has never seen the app - the way the Intune Management Extension does it. Binding before any upload. Needs Windows Pro, Enterprise or Education with virtualisation; enabling the Sandbox feature is a one-time elevated step.' }, items: [ { label: '1 Install → detect', meta: 'SYSTEM' }, { label: '2 Uninstall → detect', meta: 'SYSTEM' }, { label: '3 Reinstall → detect', meta: 'SYSTEM' }, { label: '4 Repair → detect', meta: 'SYSTEM' }, { label: '5 Uninstall → detect', meta: 'SYSTEM' } ] },
   { num: '7', name: 'Package', owner: 'Invoke-PsadtPackage.ps1', blurb: 'One command produces a verified .intunewin, named after the app rather than after the toolkit.', verdict: { label: 'VERIFIED', text: 'Checked after the fact instead of trusting that the packaging tool did what it said.' }, items: [ { label: '.intunewin built', meta: 'Vendor_App_Version_x64' }, { label: 'Detection.xml · SetupFile', meta: 'verified' }, { label: 'Size · SHA256', meta: 'verified' } ] },
-  { num: '8', name: 'Dossier', owner: 'New-PsadtReport.ps1', blurb: 'One self-contained bilingual HTML file — generated whether you upload or not.', verdict: { label: 'ALWAYS GENERATED', text: 'App info, a paste-ready Company Portal description, the return-code map, the detection rule and driver trust — plus the technical report. No external requests.' }, items: [ { label: 'Intune dossier', meta: 'bilingual' }, { label: 'Company Portal text', meta: 'paste-ready' }, { label: 'Return codes · detection', meta: 'documented' }, { label: 'Technical report', meta: 'pre-flight · SYSTEM test' } ] },
-  { num: '9', name: 'Upload', owner: 'Invoke-IntuneWin32Upload.ps1', optional: true, blurb: 'Access read as state, then a dry run, then confirmation, then a raw Graph push.', gate: 'Gate 4 — upload confirmation. Nothing reaches the tenant before you say so.', verdict: { label: 'NON-DESTRUCTIVE', text: 'A raw Graph win32LobApp push with no third-party module. Older versions coexist by default, so you wire supersedence yourself.' }, items: [ { label: 'Access capabilities', meta: 'granted · missing · unknown' }, { label: 'Dry run', meta: 'no writes' }, { label: 'Gate 4 — confirm', meta: 'decision' }, { label: 'Graph win32LobApp push', meta: 'older version kept' } ] },
+  { num: '8', name: 'Dossier', owner: 'New-PsadtReport.ps1', blurb: 'One self-contained bilingual HTML file - generated whether you upload or not.', verdict: { label: 'ALWAYS GENERATED', text: 'App info, a paste-ready Company Portal description, the return-code map, the detection rule and driver trust - plus the technical report. No external requests.' }, items: [ { label: 'Intune dossier', meta: 'bilingual' }, { label: 'Company Portal text', meta: 'paste-ready' }, { label: 'Return codes · detection', meta: 'documented' }, { label: 'Technical report', meta: 'pre-flight · SYSTEM test' } ] },
+  { num: '9', name: 'Upload', owner: 'Invoke-IntuneWin32Upload.ps1', optional: true, blurb: 'Access read as state, then a dry run, then confirmation, then a raw Graph push.', gate: 'Gate 4 - upload confirmation. Nothing reaches the tenant before you say so.', verdict: { label: 'NON-DESTRUCTIVE', text: 'A raw Graph win32LobApp push with no third-party module. Older versions coexist by default, so you wire supersedence yourself.' }, items: [ { label: 'Access capabilities', meta: 'granted · missing · unknown' }, { label: 'Dry run', meta: 'no writes' }, { label: 'Gate 4 - confirm', meta: 'decision' }, { label: 'Graph win32LobApp push', meta: 'older version kept' } ] },
   { num: '10', name: 'Assignment', owner: 'Invoke-IntuneAppAssignment.ps1', optional: true, blurb: 'Entra security groups by a configured naming scheme, created or reused.', verdict: { label: 'ASSIGNED', text: 'Required, Available and Uninstall intents wired to groups that follow your own naming scheme.' }, items: [ { label: 'Entra groups', meta: 'created or reused' }, { label: 'Required', meta: 'intent' }, { label: 'Available', meta: 'intent' }, { label: 'Uninstall', meta: 'intent' } ] },
   { num: '11', name: 'Real devices', owner: 'agent', blurb: 'A real device in an Intune test group - the delivery path Phase 6 cannot see.', verdict: { label: 'TESTED', text: 'Phase 6 proved the package works. This proves it arrives, on a device that behaves like a fleet device rather than a build machine.' }, items: [ { label: 'IME delivery', meta: 'AppWorkload.log' }, { label: 'Test group', meta: 'real devices' }, { label: 'Detection re-checked', meta: 'in Intune' } ] },
-  { num: '12', name: 'Rollout', owner: 'agent', blurb: 'Pilot, then staged production.', verdict: { label: 'SHIPPED', green: true, text: 'The package that reaches production is the one that passed the SYSTEM test — the same artifact, not a rebuild.' }, items: [ { label: 'Pilot group', meta: 'staged' }, { label: 'Staged production', meta: 'waves' }, { label: 'Same artifact', meta: 'no rebuild' } ] },
+  { num: '12', name: 'Rollout', owner: 'agent', blurb: 'Pilot, then staged production.', verdict: { label: 'SHIPPED', green: true, text: 'The package that reaches production is the one that passed the SYSTEM test - the same artifact, not a rebuild.' }, items: [ { label: 'Pilot group', meta: 'staged' }, { label: 'Staged production', meta: 'waves' }, { label: 'Same artifact', meta: 'no rebuild' } ] },
 ]
 
 const STATS = [
@@ -863,7 +863,7 @@ const STATS = [
 ]
 
 const CHECKS = [
-  { name: 'Encoding', what: 'no non-ASCII without a BOM — the classic silent parse failure' },
+  { name: 'Encoding', what: 'no non-ASCII without a BOM - the classic silent parse failure' },
   { name: 'Parse', what: 'the launcher parses as valid PowerShell AST' },
   { name: 'v3-cmdlets', what: 'no PSADT v3 command survives in a v4 package' },
   { name: 'Structure', what: 'all three hooks present and correctly shaped' },
@@ -882,7 +882,7 @@ const LOOP = [
 
 const DRIVERS = [
   { verdict: 'GREEN', tone: 'green', when: 'Microsoft-signed (WHQL, Attestation or inbox)', then: 'Pre-stage with pnputil, then run the installer. No certificate work.' },
-  { verdict: 'WARN', tone: 'warn', when: 'Vendor-signed, user-mode', then: 'The signer certificate becomes a deliverable — preferably an Intune policy, not a package import. Own it in exactly one place.' },
+  { verdict: 'WARN', tone: 'warn', when: 'Vendor-signed, user-mode', then: 'The signer certificate becomes a deliverable - preferably an Intune policy, not a package import. Own it in exactly one place.' },
   { verdict: 'RED', tone: 'red', when: 'Vendor-signed kernel-mode, Secure Boot on', then: 'Refused. TrustedPublisher removes the PnP prompt but never satisfies Code Integrity, so the driver would install and then fail to load. An explicit opt-out exists for fleets that genuinely run Secure Boot off.' },
 ]
 
@@ -893,75 +893,75 @@ const ENGINES = [
   { name: 'InstallShield (InstallScript)', silent: 'setup.exe /s /f1"setup.iss"', detect: 'registry / file', trap: 'Record the response file first with setup.exe /r /f1"setup.iss".' },
   { name: 'Inno Setup', silent: 'setup.exe /VERYSILENT /NORESTART', detect: 'QuietUninstallString', trap: '/VERYSILENT reboots the machine by itself when a restart is needed. /NORESTART is mandatory.' },
   { name: 'NSIS', silent: 'setup.exe /S', detect: 'registry / file', trap: 'Uninstall.exe /S returns BEFORE it is done. _?=<installdir> makes it synchronous.' },
-  { name: 'Advanced Installer', silent: 'msiexec /i pkg.msi /qn', detect: 'ProductCode', trap: 'A fresh ProductCode per build is typical — re-probe every time.' },
+  { name: 'Advanced Installer', silent: 'msiexec /i pkg.msi /qn', detect: 'ProductCode', trap: 'A fresh ProductCode per build is typical - re-probe every time.' },
   { name: 'WiX Burn bundle', silent: 'bundle.exe /quiet /norestart', detect: 'BundleProviderKey', trap: 'A single ProductCode is the wrong detection key for a bundle.' },
   { name: 'Squirrel (Electron)', silent: 'Setup.exe --silent', detect: 'file version under %LocalAppData%', trap: 'Usually per-user; a machine-wide Win32 install needs care.' },
-  { name: 'MSIX / AppX', silent: 'Add-AppxProvisionedPackage -Online', detect: 'Get-AppxProvisionedPackage', trap: 'As SYSTEM, Add-AppxPackage registers the app for SYSTEM only — and reports success. Routed to Intune’s native LOB app type instead of being wrapped.' },
+  { name: 'MSIX / AppX', silent: 'Add-AppxProvisionedPackage -Online', detect: 'Get-AppxProvisionedPackage', trap: 'As SYSTEM, Add-AppxPackage registers the app for SYSTEM only - and reports success. Routed to Intune’s native LOB app type instead of being wrapped.' },
   { name: 'App-V', silent: 'Publish-AppvClientPackage -Global', detect: 'Get-AppvClientPackage', trap: 'Add alone publishes to nobody. Without -Global a SYSTEM publish targets SYSTEM.' },
-  { name: 'install4j (Java)', silent: 'installer.exe -q', detect: 'registry / file version', trap: 'NOT /S — that opens the language dialog and hangs forever.' },
+  { name: 'install4j (Java)', silent: 'installer.exe -q', detect: 'registry / file version', trap: 'NOT /S - that opens the language dialog and hangs forever.' },
   { name: 'IzPack (Java)', silent: 'installer.jar auto-install.xml', detect: 'registry / file', trap: 'Response-file driven.' },
-  { name: 'InstallAware / Wise', silent: '/s or /silent', detect: 'registry / file', trap: 'Confirm per build — often an MSI underneath.' },
+  { name: 'InstallAware / Wise', silent: '/s or /silent', detect: 'registry / file', trap: 'Confirm per build - often an MSI underneath.' },
 ]
 
 
 const TIPS = {
-  'PowerShell 5.1+ or 7+': "The doctor's PowerShell7 check FAILs when the host is 5.1 — re-run with pwsh. Windows PowerShell 5.1 stays warn-only: it is needed by the Phase 6 SYSTEM test, not by packaging.",
+  'PowerShell 5.1+ or 7+': "The doctor's PowerShell7 check FAILs when the host is 5.1 - re-run with pwsh. Windows PowerShell 5.1 stays warn-only: it is needed by the Phase 6 SYSTEM test, not by packaging.",
   'PSADT v4 toolkit': 'PsadtModule check: without PSAppDeployToolkit there is no scaffold at all. -Fix installs it from the PSGallery.',
   'IntuneWinAppUtil': "Microsoft's content-prep tool lives in the config home's tools/ folder; -Fix downloads the current release. No tool, no .intunewin.",
   'Windows Sandbox feature': 'Containers-DisposableClientVM, probed through WMI so the check itself needs no elevation. Enabling it is a one-time elevated step plus one restart.',
-  '13 prerequisite checks': 'Overall is GREEN (all clear), YELLOW (warnings only — packaging works) or RED (a hard blocker). Only a FAIL turns it red; every check carries a Fix hint.',
+  '13 prerequisite checks': 'Overall is GREEN (all clear), YELLOW (warnings only - packaging works) or RED (a hard blocker). Only a FAIL turns it red; every check carries a Fix hint.',
   'Vendor · app · version · arch': 'Exact product name and vendor as they appear in the Company Portal, marketing plus file version, language and architecture. Everything downstream is named after this.',
-  'Gate 1 — scope': 'Scope, licensing, target audience, install context and coexistence with older versions are settled before a line of code exists. Whatever stays open is deployment risk.',
-  'Blockers as options': 'Only the values the tool cannot invent are asked — packageRoot, outputRoot and the author fields — and they arrive as clickable options, not as a questionnaire.',
+  'Gate 1 - scope': 'Scope, licensing, target audience, install context and coexistence with older versions are settled before a line of code exists. Whatever stays open is deployment risk.',
+  'Blockers as options': 'Only the values the tool cannot invent are asked - packageRoot, outputRoot and the author fields - and they arrive as clickable options, not as a questionnaire.',
   'Current version': 'Local PSADT module against the latest release: 4.0.x → 4.1.x renamed parameters, so a stale module is caught before scaffolding, never after.',
-  'Silent switches': 'Silent install AND uninstall command line, exit codes, log path and dependencies — each with its source. Without that table filled in: do not package.',
+  'Silent switches': 'Silent install AND uninstall command line, exit codes, log path and dependencies - each with its source. Without that table filled in: do not package.',
   'Known Intune pitfalls': 'Vendor admin guide and release notes first, community sources for validation, plus any post-install registry or XML configuration the app needs.',
-  'Installer engine': "Confirmed by its definitive fingerprint and verified behaviourally — a coincidental 'nsis' substring once made an install4j installer look like NSIS, and /S hung on the language dialog forever.",
-  'Gate 2 — semantics': 'Per-machine or per-user, what a repair should actually do, and whether group assignment is wanted at all.',
-  'Launcher': 'New-ADTTemplate builds the correct v4 structure — never hand-made folders. App metadata is filled into the $adtSession hashtable afterwards; v4.1.x rejects it as parameters.',
+  'Installer engine': "Confirmed by its definitive fingerprint and verified behaviourally - a coincidental 'nsis' substring once made an install4j installer look like NSIS, and /S hung on the language dialog forever.",
+  'Gate 2 - semantics': 'Per-machine or per-user, what a repair should actually do, and whether group assignment is wanted at all.',
+  'Launcher': 'New-ADTTemplate builds the correct v4 structure - never hand-made folders. App metadata is filled into the $adtSession hashtable afterwards; v4.1.x rejects it as parameters.',
   'Detection script': 'The contract Intune evaluates: exit 0 with non-empty stdout means installed, exit 0 with empty stdout means not installed, exit ≠ 0 is a detection error and Intune retries.',
   'Per-run log name': 'One log file per run: <Vendor>_<App>_<Version>_<Arch>_Install_<timestamp>.log. Pre-0.21 packages appended every run into a single file.',
-  'psadt-package.json': 'Identity, the decisions taken at the gates, the research findings, every phase result and every artifact — written by generators, read by later phases, required by pre-flight.',
+  'psadt-package.json': 'Identity, the decisions taken at the gates, the research findings, every phase result and every artifact - written by generators, read by later phases, required by pre-flight.',
   'Install hook': 'Install-ADTDeployment with its Pre/Install/Post sections. Start-ADTProcess always gets -SuccessExitCodes, or it throws on anything but 0.',
   'Uninstall hook': 'A Company Portal uninstall needs a real Uninstall-ADTDeployment. A placeholder passes packaging and fails the user.',
-  'Repair hook': 'Repair-ADTDeployment is filled to whatever repair was defined at Gate 2 — filled together with the other two, even when only install ships today.',
+  'Repair hook': 'Repair-ADTDeployment is filled to whatever repair was defined at Gate 2 - filled together with the other two, even when only install ships today.',
   'Extensions module': 'Custom helpers belong in PSAppDeployToolkit.Extensions.psm1, not in the launcher: reuse, clean namespaces, and the main script stays readable. It is loaded automatically.',
-  '1 Install → detect': 'Install runs as SYSTEM through a scheduled task, then the detection script decides — exactly how the Intune Management Extension does it.',
+  '1 Install → detect': 'Install runs as SYSTEM through a scheduled task, then the detection script decides - exactly how the Intune Management Extension does it.',
   '2 Uninstall → detect': 'Detection has to flip to not-installed. Install and Uninstall must both pass; either one failing stops the upload.',
   '3 Reinstall → detect': 'Proves the package survives being applied over itself, which is what an in-place version bump does in the fleet.',
-  '4 Repair → detect': 'The repair path is exercised rather than assumed — the action Company Portal offers and nobody tests.',
+  '4 Repair → detect': 'The repair path is exercised rather than assumed - the action Company Portal offers and nobody tests.',
   '5 Uninstall → detect': 'The teardown leaves the machine clean. Every action starts from a VM that has never seen the app, so "it passed because the last run left something behind" cannot happen.',
-  '.intunewin built': 'Invoke-PsadtPackage.ps1 is the only supported route. Before it, every app produced Invoke-AppDeployToolkit.intunewin — and concurrent uploads collided in one temp folder.',
-  'Detection.xml · SetupFile': 'The archive\'s inner Detection.xml must carry SetupFile=Invoke-AppDeployToolkit.exe — always the .exe, never the .ps1, for WDAC compatibility and the 64-bit bootstrap.',
-  'Size · SHA256': 'A size far above Files plus the 20–50 MB toolkit means a nested .intunewin: -o pointed inside -c. Repackage with an external output folder.',
+  '.intunewin built': 'Invoke-PsadtPackage.ps1 is the only supported route. Before it, every app produced Invoke-AppDeployToolkit.intunewin - and concurrent uploads collided in one temp folder.',
+  'Detection.xml · SetupFile': 'The archive\'s inner Detection.xml must carry SetupFile=Invoke-AppDeployToolkit.exe - always the .exe, never the .ps1, for WDAC compatibility and the 64-bit bootstrap.',
+  'Size · SHA256': 'A size far above Files plus the 20-50 MB toolkit means a nested .intunewin: -o pointed inside -c. Repackage with an external output folder.',
   'Intune dossier': 'One self-contained bilingual HTML from a fixed template, generated for every package whether it is uploaded or not. Hand-assembling the HTML is forbidden.',
-  'Company Portal text': 'The Intune description field takes Markdown only — no HTML. The first paragraph has to read on its own, because it is the ~200-character preview.',
+  'Company Portal text': 'The Intune description field takes Markdown only - no HTML. The first paragraph has to read on its own, because it is the ~200-character preview.',
   'Return codes · detection': '0 and 1707 success, 3010 soft reboot, 1641 hard reboot, 1618 retry, 60001 and 60008 failed. Installer-specific codes merge over that table; they can never drop it.',
   'Technical report': 'Deployment hooks, the PSADT cmdlets actually used, pre-flight results, the Phase 6 verdict, plus logo and .intunewin verification.',
-  'Access capabilities': 'Test-PsadtIntuneAccess reports per feature: granted, missing, or genuinely unknown — Graph tokens are opaque by contract, so "could not tell" is its own answer, not a no.',
+  'Access capabilities': 'Test-PsadtIntuneAccess reports per feature: granted, missing, or genuinely unknown - Graph tokens are opaque by contract, so "could not tell" is its own answer, not a no.',
   'Dry run': 'Read-only by default: the summary is rendered and confirmed before -Execute ever runs. Gate on the capability instead of learning from a 403 mid-upload.',
-  'Gate 4 — confirm': 'Nothing reaches the tenant before you say so.',
+  'Gate 4 - confirm': 'Nothing reaches the tenant before you say so.',
   'Graph win32LobApp push': 'Raw Graph, no third-party module. App id, content version, portal URL and tenant land in results.upload; older versions stay in place by default.',
   'Entra groups': 'Created or reused by the configured naming scheme. Both group roles are asserted before anything is created, and every write is dry-run first.',
-  'Required': 'For a mandatory rollout to a device or user group — security tools, compliance, the standard set.',
+  'Required': 'For a mandatory rollout to a device or user group - security tools, compliance, the standard set.',
   'Available': 'Self-service through the Company Portal for anyone who wants it.',
   'Uninstall': 'A pseudo-assignment used to deliberately remove the app from a group again.',
   'IME delivery': 'AppWorkload.log reaching Status: Installed, and the PSADT session log ending in Close-ADTSession Exit 0. Phase 6 already proved the package works; what this proves is that it arrives.',
   'Test group': 'One VM in a dedicated Intune test group. The PSADT log must exist and end with Close-ADTSession Exit 0.',
-  'Detection re-checked': 'AppWorkload.log shows Status: Installed — it is the truth about exit codes — and the detection script returns exit 0 with output.',
-  'Pilot group': '10–50 devices for 24–48 hours, watched in Device install status. Above a 5% failure rate the rollout pauses and the cause is found.',
+  'Detection re-checked': 'AppWorkload.log shows Status: Installed - it is the truth about exit codes - and the detection script returns exit 0 with output.',
+  'Pilot group': '10-50 devices for 24-48 hours, watched in Device install status. Above a 5% failure rate the rollout pauses and the cause is found.',
   'Staged production': 'Audiences expand in waves after pilot success, with the Company Portal description and support notes reviewed.',
-  'Same artifact': 'Production receives the artifact that passed the SYSTEM test — not a rebuild that happens to carry the same version number.',
+  'Same artifact': 'Production receives the artifact that passed the SYSTEM test - not a rebuild that happens to carry the same version number.',
   'Encoding': 'PowerShell 5.1 reads a BOM-less .ps1 as Windows-1252, and a misread em-dash closes a double-quoted string. Intune then shows 0x80070001 with no local logs at all.',
-  'Parse': 'Parser::ParseFile is the cheap check — it detects UTF-8 without BOM correctly and can still report PARSE_OK where the launcher blows up, so the launcher simulation is the real gate.',
+  'Parse': 'Parser::ParseFile is the cheap check - it detects UTF-8 without BOM correctly and can still report PARSE_OK where the launcher blows up, so the launcher simulation is the real gate.',
   'v3-cmdlets': 'Execute-Process, Execute-MSI, Write-Log, Show-InstallationWelcome and the rest are gone in v4. The scan names each hit and how often it occurs.',
-  'Structure': 'All three hooks present and correctly shaped, and the param block in sync with the v4 template — not $AllowRebootPassThru, which is v3 thinking.',
+  'Structure': 'All three hooks present and correctly shaped, and the param block in sync with the v4 template - not $AllowRebootPassThru, which is v3 thinking.',
   'ProductCode': 'A GUID belongs in -ProductCode of Start-ADTMsiProcess. Passed as -FilePath it fails at runtime, after the package looks finished.',
   'TopLevel': 'Anything outside try/catch that throws exits 1 with no log. Only attributes, the param block, simple assignments, preference variables, Set-StrictMode and try/catch are allowed.',
-  'Detection': 'The detection script shipped with the package has to honour the exit-code contract, and the detection method must be unambiguous — never a script plus a file rule.',
+  'Detection': 'The detection script shipped with the package has to honour the exit-code contract, and the detection method must be unambiguous - never a script plus a file rule.',
   'Manifest': 'psadt-package.json exists and agrees with the launcher, so the artifact, the dossier and the Intune entry cannot disagree about the app they describe.',
   'LogName': 'A per-run log name, so a failed deploy is not buried under earlier runs appended into the same file.',
-  'DriverTrust': 'Driver signatures are classified before anything is built. Pre-flight emits WARN here rather than failing the package — the decision belongs to the fleet, not the packager.',
+  'DriverTrust': 'Driver signatures are classified before anything is built. Pre-flight emits WARN here rather than failing the package - the decision belongs to the fleet, not the packager.',
 }
 
 class Component extends DCLogic {
@@ -1147,7 +1147,7 @@ class Component extends DCLogic {
         transition: motion === 'off' ? 'none' : 'width 320ms ease',
       },
       engineName: eng.name, engineSilent: eng.silent, engineDetect: eng.detect,
-      engineTrap: eng.trap || 'No trap beyond the switch table — the switch and the detection key are the whole story.',
+      engineTrap: eng.trap || 'No trap beyond the switch table - the switch and the detection key are the whole story.',
       trapLabel: eng.trap ? 'the trap' : 'no trap',
     }
   }
