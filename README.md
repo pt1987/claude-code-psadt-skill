@@ -26,7 +26,7 @@ optional Graph upload.
 
 It loads progressively: the agent sees only the name and description until a task makes it relevant.
 
-<img width="1024" height="254" alt="image" src="<img width="3200" height="2000" alt="psadt-workflow-v035" src="https://github.com/user-attachments/assets/d9b1c137-3e0a-4a80-a40f-9a234903bb97" />" />
+<img width="3200" height="2000" alt="psadt-workflow-v035" src="https://github.com/user-attachments/assets/d9b1c137-3e0a-4a80-a40f-9a234903bb97" />
 
 ### What that looks like in practice
 
