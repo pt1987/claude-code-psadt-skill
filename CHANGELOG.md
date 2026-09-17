@@ -9,10 +9,13 @@ here:
 
 | | before | after |
 |---|---|---|
-| Firefox 156.0 (MSI wrapper) | ~70 min, gate never reached | - |
-| Audacity 4.0.0 (MSI) | - | **12:12**, 2 VM runs |
-| VS Code 1.138.0 (Inno) | - | **22:10**, 2 VM runs, hand-scaffolded |
-| draw.io 31.4.5 (NSIS) | - | **10:49, ONE VM run** |
+| Firefox 156.0 (MSI wrapper) | four VM runs, gate never reached | - |
+| Audacity 4.0.0 (MSI) | - | gate **3:11**, ONE VM run |
+| draw.io 31.4.5 (NSIS) | - | gate **4:19**, ONE VM run |
+| VS Code 1.138.0 (Inno) | - | gate **6:12**, ONE VM run |
+
+Gate times are the full five-action loop as `NT AUTHORITY\SYSTEM`, taken from each run's `result.json`
+rather than from a stopwatch.
 
 All three GREEN on the first gate attempt. Four things were paying for that gap, and all four are
 fixed here rather than documented:

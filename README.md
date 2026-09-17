@@ -1,7 +1,7 @@
 <h1 align="center">PSADT v4 → Intune Deployment Skill</h1>
 
 <p align="center">
-  <em>A Claude Code skill that drives the full lifecycle of a PowerShell App Deployment Toolkit (PSADT) v4.x Intune Win32 package — from first conversation to a tested, upload-ready <code>.intunewin</code>.</em>
+  <em>A Claude Code skill that drives the full lifecycle of a PowerShell App Deployment Toolkit (PSADT) v4.x Intune Win32 package - from first conversation to a tested, upload-ready <code>.intunewin</code>.</em>
 </p>
 
 <p align="center">
@@ -30,14 +30,16 @@ It loads progressively: the agent sees only the name and description until a tas
 
 ### What that looks like in practice
 
-Three applications, none of them packaged before, each taken from "I want this app" to a `.intunewin`
-with a GREEN SYSTEM test — measured end to end, first attempt:
+Three applications, none of them packaged here before, each taken to a `.intunewin` with a GREEN SYSTEM
+gate on the first attempt. The times are the gate itself, read back from each run's `result.json`: all
+five actions as `NT AUTHORITY\SYSTEM` in one throwaway sandbox, with the detection script evaluated
+after every one of them.
 
-| Application | Installer engine | Time | SYSTEM test |
-|---|---|---|---|
-| draw.io 31.4.5 | NSIS / electron-builder | **10:49** | GREEN, one VM run |
-| Audacity 4.0.0 | MSI | **12:12** | GREEN |
-| VS Code 1.138.0 | Inno Setup | **22:10** | GREEN |
+| Application | Installer engine | SYSTEM gate | VM runs | Verdict |
+|---|---|---|---|---|
+| Audacity 4.0.0 | MSI | **3:11** | 1 | GREEN |
+| draw.io 31.4.5 | NSIS / electron-builder | **4:19** | 1 | GREEN |
+| VS Code 1.138.0 | Inno Setup | **6:12** | 1 | GREEN |
 
 Those runs also produced the findings that make the packages correct: draw.io ships an MSI alongside the
 EXE that installs **per-user** and would have vanished into the SYSTEM profile; Audacity regenerates its
@@ -55,7 +57,7 @@ Installs the skill into `~/.claude/skills/psadt-deploy` and runs the setup docto
 everything it can and names the handful of values only you can supply. Then open Claude Code in any folder
 and say what you want:
 
-> *"Create the Win32 Intune package for 7-Zip 24.09"* — or *"package Notepad++ for Intune"*
+> *"Create the Win32 Intune package for 7-Zip 24.09"* - or *"package Notepad++ for Intune"*
 
 The skill asks at most **four decision gates** (scope · deployment semantics · SYSTEM-test consent ·
 upload confirmation). Everything else it researches and states as an assumption instead of asking.
@@ -69,40 +71,40 @@ Thirteen phases, each owned by a script rather than by prose, so a step either p
 | Phase | What happens | Owner |
 |---|---|---|
 | **0** Setup | 13 prerequisite checks, GREEN/YELLOW/RED, `-Fix` provisions | `Initialize-PsadtSkill.ps1` |
-| **1–2** Intake + research | blocker questions as clickable options; a local-evidence ladder (installed here? binary here? already written down?) answers what it can, and a research agent is dispatched only per question it leaves open | agent (gates 1–2) |
+| **1-2** Intake + research | blocker questions as clickable options; a local-evidence ladder (installed here? binary here? already written down?) answers what it can, and a research agent is dispatched only per question it leaves open | agent (gates 1-2) |
 | **3** Scaffold | a generator writes launcher + detection + per-run log name + manifest | `New-MsiPackage` · `New-ExePackage` · `New-BrowserExtensionPackage` · `New-WindowsFeaturePackage` · `New-DriverPackage` |
 | **4** Customize | all three hooks filled from the research, helpers in the Extensions module | agent |
 | **5** Pre-flight | 11 checks (encoding, AST parse, v3 cmdlets, structure, detection contract, manifest, log name, driver trust …) → GREEN/RED | `Invoke-PsadtPreflight.ps1` |
-| **6** SYSTEM test | the whole loop in a throwaway Windows Sandbox, every action as **SYSTEM** like the IME does — no elevation, host untouched. **Binding before any upload** | `Invoke-PsadtSandboxTest.ps1` |
+| **6** SYSTEM test | the whole loop in a throwaway Windows Sandbox, every action as **SYSTEM** like the IME does - no elevation, host untouched. **Binding before any upload** | `Invoke-PsadtSandboxTest.ps1` |
 | **7** Package | one command → verified `.intunewin`, named after the app | `Invoke-PsadtPackage.ps1` |
 | **8** Dossier | always, uploaded or not: bilingual self-contained HTML | `New-PsadtReport.ps1` |
 | **9** Upload *(opt-in)* | dry run → confirm → `win32LobApp` via raw Graph | `Invoke-IntuneWin32Upload.ps1` |
 | **10** Assignment *(opt-in)* | create/reuse Entra groups by naming scheme | `Invoke-IntuneAppAssignment.ps1` |
-| **11–12** Test + rollout | real devices via a test group, pilot → staged production | agent |
+| **11-12** Test + rollout | real devices via a test group, pilot → staged production | agent |
 
-**Everything one app knows lives in `<pkg>\psadt-package.json`** — identity, the decisions taken at the
+**Everything one app knows lives in `<pkg>\psadt-package.json`** - identity, the decisions taken at the
 gates, the research findings, every phase's result and the artifacts produced. The generators write it,
 every later phase reads and updates it, and pre-flight fails without it. That is what stops two packages of
 the same app from disagreeing about their own version.
 
 ## What makes it different
 
-- **The installer engine is read from the binary**, not guessed from a filename — byte signatures in the
-  PE overlay, resources and section table — and 19 engines' documented silent switches ship with the skill,
+- **The installer engine is read from the binary**, not guessed from a filename - byte signatures in the
+  PE overlay, resources and section table - and 19 engines' documented silent switches ship with the skill,
   offline. A candidate is still a claim until a run proves it.
 - **The SYSTEM test is real.** Every action runs as `NT AUTHORITY\SYSTEM` through a scheduled task in a
-  throwaway Windows Sandbox — the same context the Intune Management Extension uses — and the verdict is
+  throwaway Windows Sandbox - the same context the Intune Management Extension uses - and the verdict is
   keyed on the detection script, the same rule Intune evaluates. No elevation on your machine, and the
   machine is never modified.
 - **An uninstall has to prove it removed something.** Inno Setup and NSIS uninstallers return an exit code
   while a copy of themselves is still deleting; generated hooks wait for the application to disappear and
   fail loudly if it does not.
-- **Nothing is deleted that you did not ask to delete** — not an older Intune app version, not a foreign
+- **Nothing is deleted that you did not ask to delete** - not an older Intune app version, not a foreign
   `.intunewin`, not a group, not another app's assignment.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
-  return-code map, the detection rule, the hooks, the test results — and a ready-to-paste Company-Portal
+  return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **657 Pester tests**, including drift guards that fail when the documentation and the code disagree —
+- **657 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -114,7 +116,7 @@ the same app from disagreeing about their own version.
 | [`docs/features.md`](docs/features.md) | the complete feature list, package type by package type |
 | [`docs/setup-and-structure.md`](docs/setup-and-structure.md) | first-run setup, config home, full project structure |
 | [`SKILL.md`](SKILL.md) | the control plane the agent actually reads |
-| [`references/README.md`](references/README.md) | the reference map: phases 0–12 and appendices A–Q |
+| [`references/README.md`](references/README.md) | the reference map: phases 0-12 and appendices A-Q |
 | [`SECURITY.md`](SECURITY.md) | the risk surface and the control covering each part of it |
 
 ## Status
@@ -132,21 +134,21 @@ still open.
 This skill installs software as SYSTEM, researches on the open web, and writes to an Intune tenant
 through an Entra app with admin consent. [`SECURITY.md`](SECURITY.md) states that risk surface next to
 the control that already covers each part of it, and each control names the file that implements it and
-the test that enforces it — so a review can check the claims rather than take them.
+the test that enforces it - so a review can check the claims rather than take them.
 
 Two deliberate non-features: the skill does **not** declare `allowed-tools` (that field pre-approves
 tools, it does not restrict them), and content fetched during research is treated as data, never as
-instructions — see [`references/research-trust.md`](references/research-trust.md).
+instructions - see [`references/research-trust.md`](references/research-trust.md).
 
 ## Roadmap
 
-**Sync finished packages to a GitHub repo** — a setup option (`output.target` = `local` / `git` / `both`)
+**Sync finished packages to a GitHub repo** - a setup option (`output.target` = `local` / `git` / `both`)
 to push the per-app artifacts to a Git repo instead of, or in addition to, a local folder. Will need
 **Git LFS** for large `.intunewin` files. Have a request? Open an issue.
 
 ## Contributing
 
-Issues and pull requests are welcome. Keep `SKILL.md`, the references and the docs in **English** — the
+Issues and pull requests are welcome. Keep `SKILL.md`, the references and the docs in **English** - the
 only non-English content is the generated end-user output, whose language follows `language.dossier`
 (default German). Two conventions worth knowing before you send a patch: generated `.ps1` content is
 **7-bit ASCII** (pre-flight fails on non-ASCII without a BOM), and anything that lands in a package's
@@ -169,6 +171,6 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.35.0 — Most of a packaging run was the skill, not the package.** A performance release: one
+Latest: **0.35.0 - Most of a packaging run was the skill, not the package.** A performance release: one
 VM run instead of two, guest-preparation overhead cut from 139 s to 81 s, a generator for the EXE
 installer family, and a partial SYSTEM test can no longer satisfy the upload gate.
