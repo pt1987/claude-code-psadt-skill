@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/Claude%20Code-Skill-d97757?style=flat-square" alt="Claude Code Skill" />
 </p>
 
-<p align="center"><sub><a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#features">Features</a> · <a href="#first-run-setup">Setup</a> · <a href="#security">Security</a> · <a href="#roadmap">Roadmap</a> · <a href="#changelog">Changelog</a></sub></p>
+<p align="center"><sub><a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#what-makes-it-different">What makes it different</a> · <a href="#go-deeper">Go deeper</a> · <a href="#security">Security</a> · <a href="#changelog">Changelog</a></sub></p>
 
 ---
 
@@ -20,15 +20,30 @@
 
 A **Claude Code skill** (not a plugin): a reusable instruction package that teaches the agent how to build,
 package, test, troubleshoot and deploy a **PSADT v4.x Intune Win32 app**. You describe the application; the
-skill runs the workflow — intake, web research, scaffolding, all three deployment types
-(Install / Uninstall / Repair), pre-flight checks, the SYSTEM test, packaging, the dossier, and the
+skill runs the workflow — intake, research, scaffolding, all three deployment types
+(Install / Uninstall / Repair), pre-flight checks, a SYSTEM test, packaging, the dossier, and the
 optional Graph upload.
 
-A skill is a folder with a `SKILL.md` (YAML frontmatter + Markdown instructions), here bundled with
-`scripts/` and `references/`. It loads progressively: the agent sees only the name and description until a
-task makes it relevant, then the full body loads on demand.
+It loads progressively: the agent sees only the name and description until a task makes it relevant.
 
 <img width="1024" height="254" alt="image" src="https://github.com/user-attachments/assets/7c7931ba-dcae-4476-a648-11115eceb3b5" />
+
+### What that looks like in practice
+
+Three applications, none of them packaged before, each taken from "I want this app" to a `.intunewin`
+with a GREEN SYSTEM test — measured end to end, first attempt:
+
+| Application | Installer engine | Time | SYSTEM test |
+|---|---|---|---|
+| draw.io 31.4.5 | NSIS / electron-builder | **10:49** | GREEN, one VM run |
+| Audacity 4.0.0 | MSI | **12:12** | GREEN |
+| VS Code 1.138.0 | Inno Setup | **22:10** | GREEN |
+
+Those runs also produced the findings that make the packages correct: draw.io ships an MSI alongside the
+EXE that installs **per-user** and would have vanished into the SYSTEM profile; Audacity regenerates its
+MSI ProductCode on **every build**, so a ProductCode detection rule works exactly once; VS Code's
+uninstaller hands back an exit code while a copy of itself is still deleting. The skill finds that kind of
+thing before it ships, not after a helpdesk ticket.
 
 ## Quick start
 
@@ -36,344 +51,76 @@ task makes it relevant, then the full body loads on demand.
 npx psadt-deploy-skill
 ```
 
-That installs the skill into `~/.claude/skills/psadt-deploy` and runs the setup doctor, which provisions
-everything it can and names the handful of values only you can supply (see
-[First-run setup](#first-run-setup)). Then open Claude Code in any folder and say what you want:
+Installs the skill into `~/.claude/skills/psadt-deploy` and runs the setup doctor, which provisions
+everything it can and names the handful of values only you can supply. Then open Claude Code in any folder
+and say what you want:
 
 > *"Create the Win32 Intune package for 7-Zip 24.09"* — or *"package Notepad++ for Intune"*
 
 The skill asks at most **four decision gates** (scope · deployment semantics · SYSTEM-test consent ·
 upload confirmation). Everything else it researches and states as an assumption instead of asking.
 
+Details, flags, version pinning and requirements: [`docs/installation.md`](docs/installation.md).
+
 ## How it works
 
-Twelve phases, each owned by a script rather than by prose, so a step either passed or did not:
+Thirteen phases, each owned by a script rather than by prose, so a step either passed or did not:
 
 | Phase | What happens | Owner |
 |---|---|---|
 | **0** Setup | 13 prerequisite checks, GREEN/YELLOW/RED, `-Fix` provisions | `Initialize-PsadtSkill.ps1` |
 | **1–2** Intake + research | blocker questions as clickable options; a local-evidence ladder (installed here? binary here? already written down?) answers what it can, and a research agent is dispatched only per question it leaves open | agent (gates 1–2) |
-| **3** Scaffold | a generator writes launcher + detection + per-run log name + manifest; `New-ADTTemplate` only when none fits | `New-MsiPackage` · `New-BrowserExtensionPackage` · `New-WindowsFeaturePackage` · `New-DriverPackage` |
+| **3** Scaffold | a generator writes launcher + detection + per-run log name + manifest | `New-MsiPackage` · `New-ExePackage` · `New-BrowserExtensionPackage` · `New-WindowsFeaturePackage` · `New-DriverPackage` |
 | **4** Customize | all three hooks filled from the research, helpers in the Extensions module | agent |
-| **5** Pre-flight | 10 checks (encoding, AST parse, v3 cmdlets, structure, detection contract, manifest, log name, driver trust …) → GREEN/RED | `Invoke-PsadtPreflight.ps1` |
-| **6** SYSTEM test | installs/uninstalls as **SYSTEM** like the IME does; **binding before any upload** | `Invoke-PsadtSystemTest.ps1` |
+| **5** Pre-flight | 11 checks (encoding, AST parse, v3 cmdlets, structure, detection contract, manifest, log name, driver trust …) → GREEN/RED | `Invoke-PsadtPreflight.ps1` |
+| **6** SYSTEM test | the whole loop in a throwaway Windows Sandbox, every action as **SYSTEM** like the IME does — no elevation, host untouched. **Binding before any upload** | `Invoke-PsadtSandboxTest.ps1` |
 | **7** Package | one command → verified `.intunewin`, named after the app | `Invoke-PsadtPackage.ps1` |
 | **8** Dossier | always, uploaded or not: bilingual self-contained HTML | `New-PsadtReport.ps1` |
 | **9** Upload *(opt-in)* | dry run → confirm → `win32LobApp` via raw Graph | `Invoke-IntuneWin32Upload.ps1` |
 | **10** Assignment *(opt-in)* | create/reuse Entra groups by naming scheme | `Invoke-IntuneAppAssignment.ps1` |
-| **11–12** Test + rollout | DEV-VM cycles, test group, pilot → staged production | agent |
+| **11–12** Test + rollout | real devices via a test group, pilot → staged production | agent |
 
 **Everything one app knows lives in `<pkg>\psadt-package.json`** — identity, the decisions taken at the
 gates, the research findings, every phase's result and the artifacts produced. The generators write it,
 every later phase reads and updates it, and pre-flight fails without it. That is what stops two packages of
 the same app from disagreeing about their own version.
 
-Depth lives in `references/` (phases 0–12 + appendices A–Q, one file per domain — see
-`references/README.md`); `SKILL.md` stays the
-control plane.
+## What makes it different
 
-## Features
+- **The installer engine is read from the binary**, not guessed from a filename — byte signatures in the
+  PE overlay, resources and section table — and 19 engines' documented silent switches ship with the skill,
+  offline. A candidate is still a claim until a run proves it.
+- **The SYSTEM test is real.** Every action runs as `NT AUTHORITY\SYSTEM` through a scheduled task in a
+  throwaway Windows Sandbox — the same context the Intune Management Extension uses — and the verdict is
+  keyed on the detection script, the same rule Intune evaluates. No elevation on your machine, and the
+  machine is never modified.
+- **An uninstall has to prove it removed something.** Inno Setup and NSIS uninstallers return an exit code
+  while a copy of themselves is still deleting; generated hooks wait for the application to disappear and
+  fail loudly if it does not.
+- **Nothing is deleted that you did not ask to delete** — not an older Intune app version, not a foreign
+  `.intunewin`, not a group, not another app's assignment.
+- **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
+  return-code map, the detection rule, the hooks, the test results — and a ready-to-paste Company-Portal
+  description.
+- **657 Pester tests**, including drift guards that fail when the documentation and the code disagree —
+  one of them reads the published landing page and compares its figures against this repository.
 
-### Setup and prerequisites
+## Go deeper
 
-- **Setup doctor** — one idempotent script checks PowerShell 7, Windows PowerShell 5.1, elevation, git,
-  PSAppDeployToolkit, the content-prep tool, `Invoke-CommandAs`, Pester, the config, a legacy config, the
-  skill tree, a pending update and the Intune credentials. Each line carries a concrete fix; `-Fix` applies
-  the ones that need no decision.
-- **Self-healing prerequisites** — installs the PSAppDeployToolkit module from the PowerShell Gallery and
-  downloads `IntuneWinAppUtil.exe`, keeping both current against their official sources.
-- **Config outside the skill folder** — `config.json`, `secret.dpapi` and `tools/` live in
-  `%LOCALAPPDATA%\psadt-deploy\` (override: `$env:PSADT_DEPLOY_HOME`), so a `git pull`, a re-clone or a
-  re-install can no longer take your setup with it. A pre-0.19 config keeps working and is migrated on
-  request, never deleted.
-- **One-line install** — `npx psadt-deploy-skill` (Node 18+, zero dependencies) does clone-or-update plus
-  the doctor run in one step.
-
-### Build and verify
-
-- **Guided intake** — the blocker questions up front as clickable options, pre-filled with researched
-  defaults (app, latest version, installer type, package type).
-- **Switch catalog before the web** — identifies the installer engine from the *binary* (byte signatures in
-  the PE overlay, resources and section table, not a filename guess) and serves that engine's documented
-  silent / uninstall / log / no-reboot switches from a catalog that ships with the skill. Offline, and it
-  reports every stage it checked including the misses. A candidate is still a claim until a run proves it.
-- **Autonomous research** — checks the installed PSADT version against the latest release *and* whether
-  commands changed; researches silent install / uninstall / repair switches and known Intune pitfalls.
-- **All three deployment types from the start** — Install, Uninstall *and* Repair, acid-tested, so
-  Company-Portal uninstalls actually work.
-- **Pre-flight gate** — encoding/BOM, AST parse, launcher acid test, v3-cmdlet scan, hook structure,
-  detection-script contract, the package manifest, the per-run log name and driver trust. GREEN or RED,
-  with the failing file named.
-- **Automated SYSTEM test loop** *(opt-in, binding before upload)* — installs, uninstalls and reinstalls as
-  the **SYSTEM** account via `Invoke-CommandAs`, mirroring the Intune Management Extension; reads the fresh
-  session log and the detection result, and hands back a structured verdict for the fix-and-retry loop.
-  Needs an elevated session; belongs on a VM with a snapshot.
-- **Deterministic packaging** — `<outputRoot>\<Vendor>_<App>_<Version>_<Arch>\<same stem>.intunewin`,
-  verified after the fact (`Detection.xml`, `SetupFile`, size, SHA256), with the detection script and the
-  real logo beside it. It refuses an output folder inside the package, and never deletes a foreign
-  `.intunewin` it finds there.
-- **One PSADT log per run** — `<Vendor>_<App>_<Version>_<Arch>_<Install|Uninstall|Repair>_<timestamp>.log`
-  instead of every run of every version appending to one unreadable file.
-
-### Package types
-
-The app's **native installer is always the default**. Everything else is opt-in and only on request:
-
-- **MSI / EXE** — the ordinary case, via `New-MsiPackage.ps1` or a hand-filled scaffold.
-- **WinGet** — the full `PSAppDeployToolkit.WinGet` lifecycle: the extension module self-heals into the
-  package, the Package ID is discovered with `Find-ADTWinGetPackage`, hooks use `*-ADTWinGet*`
-  (`-Scope Machine`). Never selected on its own initiative.
-- **Browser extensions** — force-install via the Edge/Chrome/Firefox policy keys (including the Firefox
-  `REG_MULTI_SZ` trap), with selective removal on uninstall.
-- **Windows features** — `Enable-WindowsOptionalFeature` and `Add-WindowsCapability`, offline source or a
-  temporary WSUS bypass that is restored afterwards, `EnablePending` handled honestly.
-- **Third-party drivers** — the trust situation is classified *before* anything is built: Microsoft-signed
-  installs silently, vendor-signed needs the signer certificate owned in exactly one place, and a
-  vendor-signed **kernel** driver is refused because `TrustedPublisher` satisfies the PnP prompt but never
-  Code Integrity — it would install and then not load. Unsigned is refused outright, with three honest
-  options and no testsigning. Staging is per-INF `pnputil`; uninstall resolves `oemNN.inf` by original name
-  instead of a remembered index.
-- **Script-only / remediation packages** — ESP-safe patterns for fix packages with no installer at all.
-
-### Deliverables
-
-- **HTML dossier — always generated**, uploaded or not. One self-contained file
-  (`Intune-Dossier.html`) built from a fixed template, never hand-assembled: the **Intune dossier** (App
-  Info, return-code map, detection rule, requirements, assignments, driver trust, and a ready-to-paste
-  **Markdown** description for the Company-Portal field) plus a **technical package report** (the three
-  hooks, PSADT cmdlets used, pre-flight and SYSTEM-test results, logo and `.intunewin` verification).
-  Bilingual with a DE/EN toggle, browser-translatable, logo embedded as a data URI.
-- **Real logo only** — finds and downloads the actual application logo (vendor source or Wikimedia
-  Commons), verifies real pixel transparency *and* looks at the image. The PSADT default `AppIcon.png` is
-  blocked by hash.
-- **Start Menu only** — creates Start Menu entries and removes stray desktop icons.
-
-### Intune
-
-- **Access as state, not as a 403** — `Test-PsadtIntuneAccess.ps1` answers before Phase 9 whether the app
-  can upload, assign groups or create policies, and for how long the credential lives. Verified / refused /
-  **unknown** are three different answers, and an offline check never overwrites what was verified before.
-- **Direct upload via Microsoft Graph** *(opt-in)* — pushes the `.intunewin` as a `win32LobApp` (app +
-  logo), self-contained raw Graph, no third-party module. Identity comes from the manifest, so Intune shows
-  the same name and version as the artifact and the dossier. Read-only dry run → confirm → upload. Fills the
-  whole App-information tab, **never deletes an older version** (new versions coexist, with optional
-  supersedence wiring), never auto-assigns categories or notes.
-- **One-time Entra bootstrap** — `New-PsadtEntraApp.ps1` signs in via **WAM**, creates the app, grants and
-  admin-consents the roles and stores the credential: a **certificate** (preferred — nothing secret at rest,
-  JWT client-assertion auth) or a DPAPI-encrypted client secret. Re-running it is normal: it finds the
-  recorded app, merges requested permissions instead of replacing them, and never prompts.
-- **Opt-in group assignment** — creates/reuses Entra security groups by a configured naming scheme and
-  assigns Required / Available / Uninstall. Least-privilege (`Group.Create` + `GroupMember.Read.All`),
-  dry run → confirm, idempotent, and it never deletes a group or another app's assignment.
-- **Certificate + firewall policies** — Custom OMA-URI profiles for `TrustedPublisher` / `TrustedPeople`
-  (the built-in template cannot reach those stores) and settings-catalog firewall-rule policies. Both
-  scripts are self-contained deliverables: they can be copied to a test client that has no skill installed.
-
-### Operations
-
-- **Troubleshooting** — decodes Intune error/HRESULT codes, maps symptoms to root causes, and triages the
-  right log (`AppWorkload.log`, the PSADT session log, `setupapi.dev.log` for drivers).
-- **Self-update** — `scripts/Update-PsadtSkill.ps1` compares against GitHub, shows what changed, and
-  updates in place on your confirmation (`git pull --ff-only` for a clone, otherwise a branch-zip overwrite
-  of tracked files only). Machine-local state is never touched. Say *"psadt update"*.
-- **503 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
-  disagree.
-
-## Requirements
-
-- Windows with PowerShell 5.1+ / PowerShell 7+
-- For the `npx` installer only: **Node 18+** (the skill itself never needs Node)
-- [PSAppDeployToolkit](https://psappdeploytoolkit.com/) v4.x *(installed/updated automatically from the
-  PowerShell Gallery if missing)*
-- [Microsoft Win32 Content Prep Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool)
-  *(provisioned automatically)*
-- For the **SYSTEM test loop**: an **elevated** session; the
-  [`Invoke-CommandAs`](https://github.com/mkellerman/Invoke-CommandAs) module is installed automatically
-- For the **direct Intune upload**: an Entra app with the Graph application role
-  `DeviceManagementApps.ReadWrite.All` (admin-consented) — created in one run by
-  `scripts/New-PsadtEntraApp.ps1` (WAM sign-in as Global Admin / Privileged Role Admin, device-code
-  fallback). Check what is actually in place with `scripts/Test-PsadtIntuneAccess.ps1`. Full permission
-  matrix and the manual portal route: `references/app-registration.md`.
-- For **Pester tests**: Pester 5+ (`Install-Module Pester -MinimumVersion 5.0 -Scope CurrentUser`)
-- **Optional (recommended): the [superpowers](https://github.com/obra/superpowers) plugin** — if installed,
-  the gated research fan-out and the reviewer gate use it. Not required: without it the skill falls back to the
-  native Agent tool and `/code-review`, and nothing in the workflow depends on the plugin.
-
-## Installation
-
-```powershell
-npx psadt-deploy-skill
-```
-
-Installs the **newest release** into `~/.claude/skills/psadt-deploy` and runs the setup doctor. Flags:
-`--dir <path>` · `--project` (into `./.claude/skills`) · `--ref <tag|branch>` · `--no-setup`. Node 18+ and
-Windows; the installer itself has zero dependencies and the package carries only `bin/` — the skill is
-fetched from GitHub at install time.
-
-### Which version you get
-
-The default is the newest **release tag**, not `main`. This skill registers an Entra application with
-admin consent and writes to an Intune tenant; installing whatever last landed on `main` is not a
-defensible default for that.
-
-```powershell
-npx psadt-deploy-skill                 # newest release (default)
-npx psadt-deploy-skill --ref v0.26.7   # pin an exact release
-npx psadt-deploy-skill --ref main      # the development branch, deliberately
-```
-
-**For managed environments:** pin a tag, read the diff between it and the next one before moving, then
-lift the pin. Releases are tagged `vX.Y.Z` and match the [Changelog](#changelog); tags exist from
-**v0.24.0** onward — earlier versions predate the current history and cannot be tagged retroactively.
-
-Re-running the installer updates an existing installation, and so does saying *"psadt update"* to Claude
-Code. What counts as an update depends on what you installed: on a **pinned release** it is the next
-release tag — unreleased work on `main` is deliberately invisible, because that is what pinning means. On
-a **branch** installation it is the next commit, as before. Either way the update overwrites tracked
-repository files only; `config.json`, `secret.dpapi` and `tools/` are never touched.
-
-**Or clone it yourself** — the repo root *is* the skill folder:
-
-```powershell
-git clone https://github.com/pt1987/claude-code-psadt-skill.git "$env:USERPROFILE\.claude\skills\psadt-deploy"
-pwsh "$env:USERPROFILE\.claude\skills\psadt-deploy\scripts\Initialize-PsadtSkill.ps1" -Fix
-```
-
-`npx skills add pt1987/claude-code-psadt-skill` works too, since `SKILL.md` sits in the repository root.
-
-No git on the machine? The installer falls back to the GitHub tarball and Windows' own `tar.exe`, so the
-one-liner still works — including with `--ref <tag>`, which is the combination a locked-down machine
-actually needs.
-
-The skill activates automatically when you ask Claude Code to build an Intune package, or when you work in
-a folder containing `Invoke-AppDeployToolkit.ps1`.
-
-### What is deliberately not in the skill frontmatter
-
-`SKILL.md` declares `name`, `description` and `license`, and nothing else. The omissions are choices, not
-oversights:
-
-- **`paths`** would look like the right way to express "activates in a folder containing
-  `Invoke-AppDeployToolkit.ps1`". It is the opposite: the field *limits* activation to files matching the
-  globs. Setting it would switch the skill off for the most common request there is — packaging an app in
-  an empty folder, where `Invoke-AppDeployToolkit.ps1` does not exist yet because Phase 3 is what creates
-  it. The folder case is covered by the last sentence of the description instead.
-- **`allowed-tools`** grants tools up front; it does not restrict them. For a skill that installs software
-  as SYSTEM and writes to a tenant, being asked per call is the point. See [`SECURITY.md`](SECURITY.md).
-- **`metadata.version`** is ignored by Claude Code, and the version already lives in `CHANGELOG.md`,
-  `package.json` (kept in sync by a test) and on the website. A fourth place to forget on release day, for
-  no behaviour, is not worth it.
-- **`shell`** only matters for `!` command injection in `SKILL.md`, which this skill does not use — and a
-  failing `!` command aborts the *entire* skill invocation, so an `Initialize-PsadtSkill` call wired up that
-  way would be a single point of failure for every packaging request.
-- **`context: fork` / `agent`** would isolate the skill in a subagent. It orchestrates its own sub-agents
-  and needs the main context to hold the decision gates.
-
-## First-run setup
-
-`scripts/Initialize-PsadtSkill.ps1` (also reachable by saying *"psadt setup"* / *"psadt doctor"*) checks
-every prerequisite in one pass and reports **GREEN / YELLOW / RED**. Every line comes with a concrete fix
-hint, and `-Fix` applies the ones that need no decision (module installs, the tool download, the
-`language.*` defaults, `paths.intuneWinAppUtil`, and migrating a pre-0.19 config). It is idempotent — run it
-as often as you like.
-
-Only four values genuinely need you; the doctor lists them in `.Missing` and takes them via `-Set`:
-
-```powershell
-pwsh scripts/Initialize-PsadtSkill.ps1 -Fix -Set @{
-    'paths.packageRoot' = 'D:\Pakete'; 'paths.outputRoot' = 'D:\Intune'
-    'author.person'     = 'Pat Taubert'; 'author.company' = 'PHAT Consulting'
-}
-```
-
-| Setting | Purpose |
+| | |
 |---|---|
-| `paths.packageRoot` / `outputRoot` | Where packages are built and where artifacts are written |
-| `paths.intuneWinAppUtil` | Content-prep tool location — filled by `-Fix` |
-| `language.script` / `dossier` | Script language (EN) vs. dossier language (DE for the Company Portal) — filled by `-Fix` |
-| `author.person` / `company` | Stamped into every package's `AppScriptAuthor` |
-| `intune.*` *(optional)* | Direct upload: tenant/client, credential reference, verified roles — written by `New-PsadtEntraApp.ps1` |
-| `intune.groups.*` *(optional)* | Opt-in group assignment (`enabled` / `create` / `membershipType` / `naming`) — guide Appendix M |
-
-### Where the setup is stored
-
-`config.json`, `secret.dpapi` and `tools/` live in the **config home** — `%LOCALAPPDATA%\psadt-deploy\`,
-overridable with `$env:PSADT_DEPLOY_HOME` — **not** in the skill folder, so they survive a `git pull`, a
-re-clone and a re-install. They are machine-local and never committed. A `config.json` from a pre-0.19
-install (beside `scripts/`) keeps working read-only; the doctor flags it and `-Fix` migrates it, renaming
-the originals to `*.migrated` rather than deleting anything.
-
-> DPAPI is bound to the Windows user profile: a re-installed OS invalidates a stored client secret. The
-> doctor and `Test-PsadtIntuneAccess.ps1` both say so, and the fix is one `New-PsadtEntraApp.ps1` run.
-
-## Project structure
-
-```
-psadt-deploy/
-├─ SKILL.md · README.md · CHANGELOG.md · SECURITY.md · LICENSE
-├─ package.json · bin/install.mjs        the npx installer (Node 18+, zero dependencies)
-├─ scripts/
-│  │  setup + config
-│  ├─ Initialize-PsadtSkill.ps1          setup doctor (Phase 0, GREEN/YELLOW/RED, -Fix/-Set)
-│  ├─ Get-PsadtConfig.ps1                config read + config-home resolver
-│  ├─ Set-PsadtConfig.ps1                config write (deep merge, DPAPI secret, -Remove)
-│  ├─ Get-PsadtModule.ps1                PSADT module (self-heal)
-│  ├─ Get-IntuneWinAppUtil.ps1           content-prep tool (self-heal)
-│  ├─ Get-WinGetModule.ps1               WinGet extension (opt-in)
-│  ├─ Update-PsadtSkill.ps1              self-update from GitHub
-│  │  per-package truth
-│  ├─ Get-PsadtPackageManifest.ps1       manifest read (+ the artifact stem)
-│  ├─ Set-PsadtPackageManifest.ps1       manifest write (merge / append)
-│  │  package generators
-│  ├─ New-MsiPackage.ps1                 MSI packages
-│  ├─ New-BrowserExtensionPackage.ps1    browser-extension force-install (opt-in)
-│  ├─ New-WindowsFeaturePackage.ps1      optional features / capabilities (opt-in)
-│  ├─ New-DriverPackage.ps1              driver packages, pnputil staging (opt-in)
-│  ├─ Get-DriverSignatureInfo.ps1        driver trust classifier (signed? kernel? deployable?)
-│  │  gates + deliverables
-│  ├─ Invoke-PsadtPreflight.ps1          pre-flight GREEN/RED gate (Phase 5, 10 checks)
-│  ├─ Invoke-PsadtSystemTest.ps1         SYSTEM test (Phase 6)
-│  ├─ Invoke-PsadtPackage.ps1            build the .intunewin (Phase 7, named + verified)
-│  ├─ New-PsadtReport.ps1                HTML dossier (Phase 8, always)
-│  │  intune / graph
-│  ├─ New-PsadtEntraApp.ps1              Entra app bootstrap (WAM)
-│  ├─ Get-GraphToken.ps1                 app-only Graph token (cert / DPAPI)
-│  ├─ Test-PsadtIntuneAccess.ps1         access verdict (roles, capabilities, expiry)
-│  ├─ Invoke-IntuneWin32Upload.ps1       direct upload (Phase 9)
-│  ├─ Invoke-IntuneAppAssignment.ps1     group assignment (Phase 10, opt-in)
-│  ├─ New-IntuneTrustedCertPolicy.ps1    Custom OMA-URI cert policy (self-contained)
-│  ├─ New-IntuneFirewallPolicy.ps1       firewall-rule policy (self-contained)
-│  ├─ _GraphCommon.ps1                   shared Graph helpers (retry, errors, token roles)
-│  └─ _GraphInteractive.ps1              shared WAM sign-in
-├─ references/
-│  ├─ README.md                          the reference map (label -> file)
-│  ├─ phases-0-6.md · phases-7-12.md     the twelve phases
-│  ├─ appendix-a-errors.md … -q-drivers.md  one file per appendix
-│  ├─ switch-catalog/                    engine defaults + JSON schema (App. L.0)
-│  ├─ Report-Template.html               the fixed dossier template
-│  └─ app-registration.md                THE Graph permission matrix + manual portal route
-└─ tests/                                Pester suite, 552 tests
-```
-
-Machine-local state lives outside the skill folder:
-
-```
-%LOCALAPPDATA%\psadt-deploy\             ($env:PSADT_DEPLOY_HOME overrides)
-├─ config.json                           settings incl. the optional intune.* block
-├─ secret.dpapi                          DPAPI client secret (only without cert auth)
-└─ tools/                                IntuneWinAppUtil.exe + WinGet module
-```
-
-And per package, next to `Invoke-AppDeployToolkit.ps1`:
-
-```
-psadt-package.json                       identity · gate decisions · research · results · artifacts
-```
+| [**Website**](https://pt1987.github.io/claude-code-psadt-skill/) | the phase-by-phase walkthrough, the pre-flight checks, and the trap in each of the 19 installer engines |
+| [`docs/installation.md`](docs/installation.md) | install flags, version pinning, requirements, manual clone |
+| [`docs/features.md`](docs/features.md) | the complete feature list, package type by package type |
+| [`docs/setup-and-structure.md`](docs/setup-and-structure.md) | first-run setup, config home, full project structure |
+| [`SKILL.md`](SKILL.md) | the control plane the agent actually reads |
+| [`references/README.md`](references/README.md) | the reference map: phases 0–12 and appendices A–Q |
+| [`SECURITY.md`](SECURITY.md) | the risk surface and the control covering each part of it |
 
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 503 Pester tests.
+verified against a live tenant. The helper scripts are covered by 657 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -384,38 +131,27 @@ still open.
 
 This skill installs software as SYSTEM, researches on the open web, and writes to an Intune tenant
 through an Entra app with admin consent. [`SECURITY.md`](SECURITY.md) states that risk surface next to
-the control that already covers each part of it — the dry-run-before-execute rule, the three-valued
-access check, never-delete, role assertion before the first write, certificate before DPAPI secret,
-the config home outside the skill folder, and the self-containment rule for anything that ships to a
-test client. Each control names the file that implements it and the test that enforces it, so a review
-can check the claims rather than take them.
+the control that already covers each part of it, and each control names the file that implements it and
+the test that enforces it — so a review can check the claims rather than take them.
 
-Two deliberate non-features are explained there as well: the skill does **not** declare
-`allowed-tools` (that field pre-approves tools, it does not restrict them), and content fetched during
-research is treated as data, never as instructions — see
-[`references/research-trust.md`](references/research-trust.md).
+Two deliberate non-features: the skill does **not** declare `allowed-tools` (that field pre-approves
+tools, it does not restrict them), and content fetched during research is treated as data, never as
+instructions — see [`references/research-trust.md`](references/research-trust.md).
 
 ## Roadmap
 
-Designed and waiting to be built:
-
-- **Sync finished packages to a GitHub repo** — a setup option (`output.target` = `local` / `git` / `both`)
-  to push the per-app artifacts (`.intunewin`, dossier, detection, logo) to a Git repo instead of, or in
-  addition to, a local folder — versioned and shareable. Will need **Git LFS** for large `.intunewin` files
-  (GitHub's 100 MB per-file limit).
-
-Have a request? Open an issue.
+**Sync finished packages to a GitHub repo** — a setup option (`output.target` = `local` / `git` / `both`)
+to push the per-app artifacts to a Git repo instead of, or in addition to, a local folder. Will need
+**Git LFS** for large `.intunewin` files. Have a request? Open an issue.
 
 ## Contributing
 
-Issues and pull requests are welcome. Keep `SKILL.md`, the references and the docs in **English**. The only
-non-English content is the generated end-user output (the Intune dossier and the Company-Portal app
-description), whose language follows the `language.dossier` config value — **default German**, but
-configurable per machine.
-
-Two conventions worth knowing before you send a patch: generated `.ps1` content is **7-bit ASCII** (the
-pre-flight fails on non-ASCII without a BOM), and anything that lands in a package's output folder must be
-**self-contained** — it gets copied to test clients that have no skill installed.
+Issues and pull requests are welcome. Keep `SKILL.md`, the references and the docs in **English** — the
+only non-English content is the generated end-user output, whose language follows `language.dossier`
+(default German). Two conventions worth knowing before you send a patch: generated `.ps1` content is
+**7-bit ASCII** (pre-flight fails on non-ASCII without a BOM), and anything that lands in a package's
+output folder must be **self-contained**, because it gets copied to test clients that have no skill
+installed.
 
 ## License
 
@@ -430,50 +166,9 @@ pre-flight fails on non-ASCII without a BOM), and anything that lands in a packa
 
 ## Changelog
 
-The two most recent releases are below. **[CHANGELOG.md](CHANGELOG.md)** carries the complete history,
-every release since 0.1.0, and nothing is ever removed from it - this section is a window onto it, not a
-second copy to keep in sync.
+**[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
+ever removed from it.
 
-### 0.35.0 - 2026-09-17 — a performance release
-*draw.io 31.4.5 (NSIS) now packages in **10:49 with a single VM run**, Audacity 4.0.0 (MSI) in 12:12,
-both GREEN on the first gate attempt - against ~70 minutes and no gate at all beforehand.*
-- **Added: `scripts/New-ExePackage.ps1`** - the EXE family (Inno, NSIS, electron-builder) had no
-  generator, so every such package was hand-scaffolded. It now generates hooks that resolve the
-  uninstaller from the ARP entry at run time, WAIT for the app to actually disappear instead of
-  trusting an exit code, and detect with a version floor over the ARP entry and the binary.
-- **Added: every action snapshots the installed-application entry, successful Installs included** -
-  including `InstallLocation`, `QuietUninstallString` and the property types PSADT hands the launcher,
-  surfaced as `InstalledAppFacts`. The old dump ran only when detection contradicted an action, so the
-  strings a resolver hook has to match were never on disk and were guessed at, one VM run per guess.
-- **Added: fail-fast** - a red Install or Uninstall now skips Reinstall/Repair/FinalUninstall, which
-  could only re-prove the same failure. Each of four RED Firefox runs had spent ~3 minutes doing so.
-- **Added: pre-flight `AsyncUninstall`** warns when an uninstall trusts the exit code of a vendor EXE
-  (the NSIS family relaunches from `%TEMP%` and returns instantly: 116 ms, exit 0, nothing deleted).
-- **Changed: readable phase names** on the progress window (`SystemTaskCanary` -> "Probing: can
-  anything run as SYSTEM?"); the ids stay, because every consumer keys on them.
-- **Changed: guest preparation dropped the always-failing WMI salvage pass and polls instead of
-  sleeping** - fixed overhead per run 139 s -> 81 s.
-- **Fixed: a `GREEN_PARTIAL` run satisfied the upload gate** in `New-PsadtReport.ps1`.
-
-  Verified on three applications never packaged here: Audacity 4.0.0 (MSI) 12:12, VS Code 1.138.0
-  (Inno) 22:10, draw.io 31.4.5 (NSIS) **10:49 with a single VM run** - all GREEN on the first gate
-  attempt, against ~70 min and no gate at all for Firefox beforehand. Suite 631 -> 657.
-
-### 0.34.2 - 2026-09-16
-- **Added: `tests/SiteFigures.Tests.ps1`** - the landing page's stat tiles are now derived from the
-  repository and compared, instead of being hand-maintained and unchecked. A reader found the page
-  claiming 19 installer engines in the tile and "1 of 14" in the Phase 2 step right below it; the
-  script count had also been one behind since 0.33.0. index.html lives on gh-pages, so the suite had
-  never seen it. The guard reads it out of that ref, skips itself when the ref is absent, and the
-  workflow fetches it so CI checks it for real. Both stale figures fixed. Suite 624 -> 631.
-
-### 0.34.1 - 2026-09-16
-- **Changed: SKILL.md now names `-TrustedPublisherCert` at Phase 6**, with `-Scenarios` for iteration and
-  `STOP.txt` for cancelling. 0.34.0 documented the certificate in phase 6.1 only, because the control
-  plane had 55 bytes of headroom against its 5000-token budget - the wrong trade for a failure that is
-  expensive and silent, since an agent that never opens 6.1 repeats the 25-minute timeout blind. Room was
-  made the way the budget test prescribes: `rule:author-version-changelog` and `rule:start-menu-only`
-  moved to `references/conventions.md`, which already carried their full text and which SKILL.md routes
-  to. Both are editorial rules - their failure costs a doc edit or a stray desktop icon, not a
-  deployment. Control plane 17348 / 17500 bytes, headroom 55 -> 152. Suite 624, unchanged.
-
+Latest: **0.35.0 — Most of a packaging run was the skill, not the package.** A performance release: one
+VM run instead of two, guest-preparation overhead cut from 139 s to 81 s, a generator for the EXE
+installer family, and a partial SYSTEM test can no longer satisfy the upload gate.

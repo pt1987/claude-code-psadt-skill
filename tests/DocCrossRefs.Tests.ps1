@@ -26,12 +26,18 @@ BeforeAll {
     $script:refDirs = @(Get-ChildItem -LiteralPath $script:refDir -Directory)
 
     # Documents that must be internally consistent right now, and the scripts' comment-based help.
+    # docs/ is included deliberately. When the README was split (0.36.0) its reference-grade sections
+    # moved there, and with them every "App. X" / "Phase N" / references/<file> label they carry. Left
+    # out of this list those labels would sit in an unchecked corner and rot quietly - which is the
+    # exact condition this file exists to prevent.
+    $docsDir = Join-Path $script:root 'docs'
     $sources = @(
         Get-Item (Join-Path $script:root 'SKILL.md')
         Get-Item (Join-Path $script:root 'SECURITY.md')
         Get-ChildItem -LiteralPath $script:refDir -Filter '*.md' -File
         Get-ChildItem -LiteralPath (Join-Path $script:root 'scripts') -Filter '*.ps1' -File
         Get-ChildItem -LiteralPath (Join-Path $script:root 'evals') -Filter '*.md' -Recurse -File
+        if (Test-Path -LiteralPath $docsDir) { Get-ChildItem -LiteralPath $docsDir -Filter '*.md' -File }
     )
     # The README carries a full copy of the changelog after "## Changelog"; only the part above it
     # describes the current repo.
