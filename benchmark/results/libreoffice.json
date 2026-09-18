@@ -1,0 +1,17 @@
+{
+  "key": "libreoffice",
+  "name": "LibreOffice",
+  "packagePath": "C:\\PSADT\\Packages\\LibreOffice",
+  "outputFolder": "C:\\PSADT\\Output\\The_Document_Foundation_LibreOffice_26.2.6.3_x64",
+  "verdict": "GREEN",
+  "scenarios": [
+    "Install",
+    "Uninstall",
+    "Reinstall",
+    "Repair",
+    "FinalUninstall"
+  ],
+  "unencryptedSize": 368830986,
+  "version": "26.2.6.3",
+  "productCode": null
+}

@@ -1,0 +1,26 @@
+{
+  "run": { "startedIso": "2026-09-18", "host": "Windows 11 Enterprise 26200", "skillVersion": "0.35.0", "psadt": "4.1.8", "serial": true, "upload": false, "phase6": "full gate" },
+  "phases": [
+    { "id": "P1", "label": "Intake",             "what": "Settling identity, architecture and deployment semantics" },
+    { "id": "P2", "label": "Research",           "what": "Evidence ladder, then at most one sub-agent per question it could not close" },
+    { "id": "P2D","label": "Installer download", "what": "Fetching the setup. Network bound, so reported separately" },
+    { "id": "P3", "label": "Scaffold",           "what": "Generator writes launcher, detection script and manifest" },
+    { "id": "P4", "label": "Hooks",              "what": "Filling install, uninstall and repair, plus any extension function" },
+    { "id": "P5", "label": "Pre-flight",         "what": "Invoke-PsadtPreflight, the GREEN gate before anything runs" },
+    { "id": "P6", "label": "SYSTEM test",        "what": "Windows Sandbox, all five scenarios, every action as SYSTEM" },
+    { "id": "P7", "label": "Packaging",          "what": "Invoke-PsadtPackage produces and verifies the .intunewin" },
+    { "id": "P8", "label": "Dossier and logo",   "what": "Logo acquisition and New-PsadtReport" }
+  ],
+  "apps": [
+    { "key": "7zip",       "no": 1,  "name": "7-Zip",                    "vendor": "Igor Pavlov",             "engine": "MSI",              "tier": "simple", "sizeClass": "small"  },
+    { "key": "notepadpp",  "no": 2,  "name": "Notepad++",                "vendor": "Notepad++ Team",          "engine": "MSI (vendor)",     "tier": "simple", "sizeClass": "small"  },
+    { "key": "putty",      "no": 3,  "name": "PuTTY",                    "vendor": "Simon Tatham",            "engine": "MSI",              "tier": "simple", "sizeClass": "small"  },
+    { "key": "vlc",        "no": 4,  "name": "VLC media player",         "vendor": "VideoLAN",                "engine": "MSI (vendor)",     "tier": "medium", "sizeClass": "medium" },
+    { "key": "git",        "no": 5,  "name": "Git for Windows",          "vendor": "The Git Development Community", "engine": "Inno Setup", "tier": "medium", "sizeClass": "medium" },
+    { "key": "chrome",     "no": 6,  "name": "Google Chrome Enterprise", "vendor": "Google LLC",              "engine": "MSI",              "tier": "medium", "sizeClass": "medium" },
+    { "key": "temurin",    "no": 7,  "name": "Eclipse Temurin JDK 21",   "vendor": "Eclipse Adoptium",        "engine": "MSI (ADDLOCAL)",   "tier": "medium", "sizeClass": "large"  },
+    { "key": "gimp",       "no": 8,  "name": "GIMP",                     "vendor": "The GIMP Team",           "engine": "Inno Setup",       "tier": "hard",   "sizeClass": "large"  },
+    { "key": "libreoffice","no": 9,  "name": "LibreOffice",              "vendor": "The Document Foundation", "engine": "MSI (properties)", "tier": "hard",   "sizeClass": "large"  },
+    { "key": "citrix",     "no": 10, "name": "Citrix Workspace App",     "vendor": "Cloud Software Group",    "engine": "vendor bootstrapper", "tier": "hard", "sizeClass": "large" }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "key": "putty",
+  "name": "PuTTY",
+  "packagePath": "C:\\PSADT\\Packages\\PuTTY",
+  "outputFolder": "C:\\PSADT\\Output\\Simon_Tatham_PuTTY_0.85_x64",
+  "verdict": "GREEN",
+  "scenarios": [
+    "Install",
+    "Uninstall",
+    "Reinstall",
+    "Repair",
+    "FinalUninstall"
+  ],
+  "unencryptedSize": 13399567,
+  "version": "0.85",
+  "productCode": null
+}

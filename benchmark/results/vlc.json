@@ -1,0 +1,17 @@
+{
+  "key": "vlc",
+  "name": "VLC media player",
+  "packagePath": "C:\\PSADT\\Packages\\VLC",
+  "outputFolder": "C:\\PSADT\\Output\\VideoLAN_VLC_media_player_3.0.23_x64",
+  "verdict": "GREEN",
+  "scenarios": [
+    "Install",
+    "Uninstall",
+    "Reinstall",
+    "Repair",
+    "FinalUninstall"
+  ],
+  "unencryptedSize": 70026888,
+  "version": "3.0.23",
+  "productCode": null
+}
