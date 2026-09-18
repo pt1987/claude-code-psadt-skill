@@ -1,0 +1,17 @@
+{
+  "key": "temurin",
+  "name": "Eclipse Temurin JDK 21",
+  "packagePath": "C:\\PSADT\\Packages\\TemurinJDK21",
+  "outputFolder": "C:\\PSADT\\Output\\Eclipse_Adoptium_Eclipse_Temurin_JDK_21_21.0.12.101_x64",
+  "verdict": "GREEN",
+  "scenarios": [
+    "Install",
+    "Uninstall",
+    "Reinstall",
+    "Repair",
+    "FinalUninstall"
+  ],
+  "unencryptedSize": 188494343,
+  "version": "21.0.12.101",
+  "productCode": null
+}

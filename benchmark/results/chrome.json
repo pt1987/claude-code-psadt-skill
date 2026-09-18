@@ -1,0 +1,17 @@
+{
+  "key": "chrome",
+  "name": "Google Chrome",
+  "packagePath": "C:\\PSADT\\Packages\\GoogleChrome",
+  "outputFolder": "C:\\PSADT\\Output\\Google_LLC_Google_Chrome_153.0.8010.53_x64",
+  "verdict": "GREEN",
+  "scenarios": [
+    "Install",
+    "Uninstall",
+    "Reinstall",
+    "Repair",
+    "FinalUninstall"
+  ],
+  "unencryptedSize": 170189199,
+  "version": "153.0.8010.53",
+  "productCode": null
+}

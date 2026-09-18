@@ -1,0 +1,268 @@
+{
+  "Verdict": "GREEN",
+  "Steps": [
+    {
+      "step": "Elevation",
+      "elevated": true,
+      "identity": "BA406E9C-A5A4-4\\WDAGUtilityAccount"
+    },
+    {
+      "step": "SystemTaskCanary",
+      "exitCode": 0,
+      "ranAs": "nt-autorit„t\\system",
+      "timedOut": false
+    },
+    {
+      "step": "GuestPrepare",
+      "smartAppControlSeconds": 0,
+      "wmiSeconds": 31,
+      "wmi": "OK after winmgmt /resetrepository (was: Win32_ComputerSystem returned nothing (access denied or repository damaged))",
+      "resourcesShimmed": "Microsoft.PowerShell.Archive\\de-DE, Microsoft.PowerShell.Archive\\ArchiveResources.psd1 (root fallback)",
+      "trustedPublisher": "none supplied",
+      "uiCulture": "de-DE",
+      "smartAppControl": "registry set + policies refreshed",
+      "guestPrepareSeconds": 32
+    },
+    {
+      "step": "GuestStaging",
+      "exitCode": 1,
+      "seconds": 2,
+      "sizeMb": 202
+    },
+    {
+      "step": "PsadtModuleCanary",
+      "exitCode": 0,
+      "result": "PSADT_MODULE_OK [2026-09-18T14:03:04.0900190+02:00] [Initialization] [Open-ADTSession] [Info] :: ------------------------------------------------------------------------------- [2026-09-18T14:03:04.1572959+02:00] [Initialization] [Open-ADTSession] [Info] :: [PSADT_SandboxCanary_1.0] install started. [2026-09-18T14:03:04.1669081+02:00] [Initialization] [Open-ADTSession] [Info] :: [PSAppDeployToolkit] module version is [4.1.8]. [2026-09-18T14:03:04.1800135+02:00] [Initialization] [Open-ADTSession] [Info] :: [PSAppDeployToolkit] module imported in [14,9376034] seconds. [2026-09-18T14:03:04.189020",
+      "timedOut": false
+    },
+    {
+      "step": "Install",
+      "exitCode": 0,
+      "seconds": 101,
+      "installedApp": [
+        {
+          "DisplayName": "GIMP 3.2.6",
+          "DisplayVersion": "3.2.6.0",
+          "Publisher": "The GIMP Team",
+          "UninstallString": "\"C:\\Program Files\\GIMP 3\\uninst\\unins000.exe\"",
+          "QuietUninstallString": "\"C:\\Program Files\\GIMP 3\\uninst\\unins000.exe\" /SILENT",
+          "InstallLocation": "C:\\Program Files\\GIMP 3\\"
+        }
+      ],
+      "success": true,
+      "timedOut": false
+    },
+    {
+      "step": "DetectionAfterInstall",
+      "stdout": "GIMP 3.2.6.0 detected via ARP DisplayVersion (baseline 3.2.6)",
+      "exitCode": 0,
+      "detected": true,
+      "timedOut": false
+    },
+    {
+      "step": "Uninstall",
+      "exitCode": 0,
+      "seconds": 37,
+      "success": true,
+      "timedOut": false
+    },
+    {
+      "step": "DetectionAfterUninstall",
+      "stdout": "",
+      "exitCode": 0,
+      "detected": false,
+      "timedOut": false
+    },
+    {
+      "step": "Reinstall",
+      "exitCode": 0,
+      "seconds": 87,
+      "installedApp": [
+        {
+          "DisplayName": "GIMP 3.2.6",
+          "DisplayVersion": "3.2.6.0",
+          "Publisher": "The GIMP Team",
+          "UninstallString": "\"C:\\Program Files\\GIMP 3\\uninst\\unins000.exe\"",
+          "QuietUninstallString": "\"C:\\Program Files\\GIMP 3\\uninst\\unins000.exe\" /SILENT",
+          "InstallLocation": "C:\\Program Files\\GIMP 3\\"
+        }
+      ],
+      "success": true,
+      "timedOut": false
+    },
+    {
+      "step": "DetectionAfterReinstall",
+      "stdout": "GIMP 3.2.6.0 detected via ARP DisplayVersion (baseline 3.2.6)",
+      "exitCode": 0,
+      "detected": true,
+      "timedOut": false
+    },
+    {
+      "step": "Repair",
+      "exitCode": 0,
+      "seconds": 89,
+      "installedApp": [
+        {
+          "DisplayName": "GIMP 3.2.6",
+          "DisplayVersion": "3.2.6.0",
+          "Publisher": "The GIMP Team",
+          "UninstallString": "\"C:\\Program Files\\GIMP 3\\uninst\\unins000.exe\"",
+          "QuietUninstallString": "\"C:\\Program Files\\GIMP 3\\uninst\\unins000.exe\" /SILENT",
+          "InstallLocation": "C:\\Program Files\\GIMP 3\\"
+        }
+      ],
+      "success": true,
+      "timedOut": false
+    },
+    {
+      "step": "DetectionAfterRepair",
+      "stdout": "GIMP 3.2.6.0 detected via ARP DisplayVersion (baseline 3.2.6)",
+      "exitCode": 0,
+      "detected": true,
+      "timedOut": false
+    },
+    {
+      "step": "FinalUninstall",
+      "exitCode": 0,
+      "seconds": 31,
+      "success": true,
+      "timedOut": false
+    },
+    {
+      "step": "DetectionAfterFinalUninstall",
+      "stdout": "",
+      "exitCode": 0,
+      "detected": false,
+      "timedOut": false
+    }
+  ],
+  "FailedAssertions": [],
+  "Assertions": [
+    {
+      "name": "Install exit code",
+      "ok": true,
+      "detail": "exit=0 timedOut=False"
+    },
+    {
+      "name": "present after install : C:\\Program Files\\GIMP 3\\bin\\gimp-3.2.exe",
+      "ok": true,
+      "detail": "exists=True expected=True"
+    },
+    {
+      "name": "DetectionAfterInstall not timed out",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DetectionAfterInstall exit code 0",
+      "ok": true,
+      "detail": "exit=0 - Intune reads any non-zero exit as a detection ERROR, not as absent"
+    },
+    {
+      "name": "DetectionAfterInstall detected=True",
+      "ok": true,
+      "detail": "stdout='GIMP 3.2.6.0 detected via ARP DisplayVersion (baseline 3.2.6)'"
+    },
+    {
+      "name": "Uninstall exit code",
+      "ok": true,
+      "detail": "exit=0 timedOut=False"
+    },
+    {
+      "name": "absent after uninstall : C:\\Program Files\\GIMP 3\\bin\\gimp-3.2.exe",
+      "ok": true,
+      "detail": "exists=False expected=False"
+    },
+    {
+      "name": "DetectionAfterUninstall not timed out",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DetectionAfterUninstall exit code 0",
+      "ok": true,
+      "detail": "exit=0 - Intune reads any non-zero exit as a detection ERROR, not as absent"
+    },
+    {
+      "name": "DetectionAfterUninstall detected=False",
+      "ok": true,
+      "detail": "stdout=''"
+    },
+    {
+      "name": "Reinstall exit code",
+      "ok": true,
+      "detail": "exit=0 timedOut=False"
+    },
+    {
+      "name": "DetectionAfterReinstall not timed out",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DetectionAfterReinstall exit code 0",
+      "ok": true,
+      "detail": "exit=0 - Intune reads any non-zero exit as a detection ERROR, not as absent"
+    },
+    {
+      "name": "DetectionAfterReinstall detected=True",
+      "ok": true,
+      "detail": "stdout='GIMP 3.2.6.0 detected via ARP DisplayVersion (baseline 3.2.6)'"
+    },
+    {
+      "name": "Repair exit code",
+      "ok": true,
+      "detail": "exit=0 timedOut=False"
+    },
+    {
+      "name": "DetectionAfterRepair not timed out",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DetectionAfterRepair exit code 0",
+      "ok": true,
+      "detail": "exit=0 - Intune reads any non-zero exit as a detection ERROR, not as absent"
+    },
+    {
+      "name": "DetectionAfterRepair detected=True",
+      "ok": true,
+      "detail": "stdout='GIMP 3.2.6.0 detected via ARP DisplayVersion (baseline 3.2.6)'"
+    },
+    {
+      "name": "FinalUninstall exit code",
+      "ok": true,
+      "detail": "exit=0 timedOut=False"
+    },
+    {
+      "name": "DetectionAfterFinalUninstall not timed out",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DetectionAfterFinalUninstall exit code 0",
+      "ok": true,
+      "detail": "exit=0 - Intune reads any non-zero exit as a detection ERROR, not as absent"
+    },
+    {
+      "name": "DetectionAfterFinalUninstall detected=False",
+      "ok": true,
+      "detail": "stdout=''"
+    }
+  ],
+  "InstalledAppFacts": [
+    {
+      "DisplayName": "GIMP 3.2.6",
+      "DisplayVersion": "3.2.6.0",
+      "Publisher": "The GIMP Team",
+      "UninstallString": "\"C:\\Program Files\\GIMP 3\\uninst\\unins000.exe\"",
+      "QuietUninstallString": "\"C:\\Program Files\\GIMP 3\\uninst\\unins000.exe\" /SILENT",
+      "InstallLocation": "C:\\Program Files\\GIMP 3\\"
+    }
+  ],
+  "Error": null,
+  "ResultPath": "C:\\PSADT\\Output\\The_GIMP_Team_GIMP_3.2.6_x64\\SandboxTest\\result.json",
+  "LogFolder": "C:\\PSADT\\Output\\The_GIMP_Team_GIMP_3.2.6_x64\\SandboxTest\\psadt-logs",
+  "EvidenceFolder": "C:\\PSADT\\Output\\The_GIMP_Team_GIMP_3.2.6_x64\\SandboxTest",
+  "SandboxWorkFolder": null,
+  "DurationMinutes": 9.3
+}

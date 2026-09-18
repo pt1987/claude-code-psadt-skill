@@ -1,0 +1,17 @@
+{
+  "key": "notepadpp",
+  "name": "Notepad++",
+  "packagePath": "C:\\PSADT\\Packages\\NotepadPlusPlus",
+  "outputFolder": "C:\\PSADT\\Output\\Notepad_Team_Notepad_8.9.8_x64",
+  "verdict": "GREEN",
+  "scenarios": [
+    "Install",
+    "Uninstall",
+    "Reinstall",
+    "Repair",
+    "FinalUninstall"
+  ],
+  "unencryptedSize": 17469914,
+  "version": "8.9.8",
+  "productCode": null
+}

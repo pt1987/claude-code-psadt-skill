@@ -1,0 +1,17 @@
+{
+  "key": "7zip",
+  "name": "7-Zip",
+  "packagePath": "C:\\PSADT\\Packages\\7-Zip",
+  "outputFolder": "C:\\PSADT\\Output\\Igor_Pavlov_7-Zip_26.03_x64",
+  "verdict": "GREEN",
+  "scenarios": [
+    "Install",
+    "Uninstall",
+    "Reinstall",
+    "Repair",
+    "FinalUninstall"
+  ],
+  "unencryptedSize": 11961343,
+  "version": "26.03",
+  "productCode": null
+}

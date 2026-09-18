@@ -1,0 +1,17 @@
+{
+  "key": "citrix",
+  "name": "Citrix Workspace App",
+  "packagePath": "C:\\PSADT\\Packages\\CitrixWorkspaceApp",
+  "outputFolder": "C:\\PSADT\\Output\\Cloud_Software_Group_Citrix_Workspace_App_26.7.0.269_x64",
+  "verdict": "GREEN",
+  "scenarios": [
+    "Install",
+    "Uninstall",
+    "Reinstall",
+    "Repair",
+    "FinalUninstall"
+  ],
+  "unencryptedSize": 472739414,
+  "version": "26.7.0.269",
+  "productCode": ""
+}
