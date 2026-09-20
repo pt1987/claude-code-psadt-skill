@@ -110,12 +110,15 @@ Describe 'Get-PsadtSwitchCandidates' {
     }
 
     Context 'the verified-switch cache (stage 0)' {
-        It 'reports a miss with a reason when the store does not exist yet' {
+        It 'reports a miss naming both layers when neither exists yet' {
             $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
-            $r = & $script:src -Path $p
+            # Since 0.40.0 a shipped layer travels with the skill, so this case has to point the
+            # shipped path somewhere empty - otherwise the test reads the real file and stops being
+            # about an empty store at all.
+            $r = & $script:src -Path $p -ShippedStorePath (Join-Path $script:tempHome 'absent.json')
             $miss = @($r.Misses | Where-Object { $_.Stage -eq 0 })
             $miss.Count | Should -Be 1
-            $miss[0].Reason | Should -Match 'no verified-switch store'
+            $miss[0].Reason | Should -Match 'no verified-switch entries anywhere'
         }
 
         It 'resolves the store through the config home, never through LOCALAPPDATA directly' {
@@ -234,7 +237,9 @@ Describe 'Get-PsadtSwitchCandidates' {
         It 'degrades a malformed store to a miss instead of throwing' {
             $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
             Set-Content -LiteralPath (Join-Path $script:tempHome 'verified-switches.json') -Value '{ not json' -Encoding UTF8
-            { $script:rr = & $script:src -Path $p } | Should -Not -Throw
+            # The shipped layer is pointed at an empty path so the only miss reported is the malformed
+            # LOCAL one - which is what this case is about.
+            { $script:rr = & $script:src -Path $p -ShippedStorePath (Join-Path $script:tempHome 'absent.json') } | Should -Not -Throw
             $miss = @($script:rr.Misses | Where-Object { $_.Stage -eq 0 })
             $miss.Count | Should -Be 1
             $miss[0].Reason | Should -Match 'not readable JSON'
@@ -267,6 +272,110 @@ Describe 'Get-PsadtSwitchCandidates' {
                 $top.Uninstall | Should -Be '/VERYSILENT'
             }
             finally { Remove-Item $pkg -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
+    Context 'the shipped layer, and how it merges with the local one (0.40.0)' {
+        BeforeAll {
+            # Writes a SHIPPED store to a temp path and hands it back, so no test ever reads or writes
+            # the file the skill really ships.
+            function Write-Shipped {
+                param([object[]]$Entries)
+                $p = Join-Path $script:tempHome ('shipped-' + [guid]::NewGuid().ToString('N') + '.json')
+                ([pscustomobject]@{ schemaVersion = 1; entries = $Entries } | ConvertTo-Json -Depth 12) |
+                    Set-Content -LiteralPath $p -Encoding UTF8
+                return $p
+            }
+        }
+
+        It 'serves a hash that only the shipped layer knows, and says where the proof came from' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
+            $shipped = Write-Shipped @(@{
+                    sha256 = $sha; install = '/FROM-SHIPPED'; scenarios = @('Install','Uninstall','Reinstall','Repair','FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'psadt-deploy reference run'
+                })
+            $r = & $script:src -Path $p -ShippedStorePath $shipped
+            $hit = @($r.Candidates | Where-Object { $_.Stage -eq 0 })[0]
+            $hit.Confidence | Should -Be 'verified'
+            $hit.HashMatch  | Should -BeTrue
+            $hit.Origin     | Should -Be 'shipped'
+            $hit.Install    | Should -Be '/FROM-SHIPPED'
+            $hit.SourceRef  | Should -BeLike '*shipped with the skill*'
+            ($hit.Notes -join ' ') | Should -BeLike '*not on this one*'
+        }
+
+        It 'lets the LOCAL entry win for a hash both layers hold' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
+            Write-Store @(@{
+                    sha256 = $sha; install = '/FROM-LOCAL'; scenarios = @('Install','Uninstall','Reinstall','Repair','FinalUninstall')
+                    verifiedAt = '2026-09-21'; verifiedBy = 'this machine'
+                })
+            $shipped = Write-Shipped @(@{
+                    sha256 = $sha; install = '/FROM-SHIPPED'; scenarios = @('Install')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'psadt-deploy reference run'
+                })
+            $hit = @((& $script:src -Path $p -ShippedStorePath $shipped).Candidates | Where-Object { $_.Stage -eq 0 })[0]
+            $hit.Origin  | Should -Be 'local'
+            $hit.Install | Should -Be '/FROM-LOCAL'
+        }
+
+        It 'merges idempotently - a hash in both layers yields ONE candidate, never two' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
+            $e = @{ sha256 = $sha; install = '/SAME'; scenarios = @('Install','Uninstall','Reinstall','Repair','FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'x' }
+            Write-Store @($e)
+            $shipped = Write-Shipped @($e)
+            $hits = @((& $script:src -Path $p -ShippedStorePath $shipped).Candidates | Where-Object { $_.Stage -eq 0 })
+            $hits.Count | Should -Be 1
+            # and running it again reaches exactly the same answer
+            $again = @((& $script:src -Path $p -ShippedStorePath $shipped).Candidates | Where-Object { $_.Stage -eq 0 })
+            $again.Count | Should -Be 1
+            $again[0].Install | Should -Be $hits[0].Install
+        }
+
+        It 'does not let a damaged shipped layer take the local one down' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
+            Write-Store @(@{
+                    sha256 = $sha; install = '/FROM-LOCAL'; scenarios = @('Install','Uninstall','Reinstall','Repair','FinalUninstall')
+                    verifiedAt = '2026-09-21'; verifiedBy = 'this machine'
+                })
+            $broken = Join-Path $script:tempHome 'broken-shipped.json'
+            Set-Content -LiteralPath $broken -Value '{ not json' -Encoding UTF8
+            $r = & $script:src -Path $p -ShippedStorePath $broken
+            $hit = @($r.Candidates | Where-Object { $_.Stage -eq 0 })[0]
+            $hit.Install | Should -Be '/FROM-LOCAL'
+        }
+
+        It 'reports a miss naming BOTH layers when neither holds anything' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $empty = Join-Path $script:tempHome 'no-such-shipped.json'
+            $r = & $script:src -Path $p -ShippedStorePath $empty
+            $miss = @($r.Misses | Where-Object { $_.Stage -eq 0 })[0]
+            $miss.Reason | Should -BeLike '*shipped*'
+            $miss.Reason | Should -BeLike '*this machine*'
+        }
+    }
+
+    Context 'the store that actually ships' {
+        It 'is valid JSON with entries, and carries no internal hostname' {
+            $p = Join-Path $PSScriptRoot '..\references\switch-catalog\verified-switches.json'
+            Test-Path -LiteralPath $p | Should -BeTrue
+            $raw = Get-Content -LiteralPath $p -Raw
+            $doc = $raw | ConvertFrom-Json
+            @($doc.entries).Count | Should -BeGreaterThan 0
+            foreach ($e in $doc.entries) {
+                $e.sha256 | Should -Match '^[0-9a-f]{64}$'
+                # every shipped entry must be backed by a FULL gate, or it has no business claiming
+                # 'verified' on somebody else's machine
+                @($e.scenarios) | Should -Contain 'Install'
+                @($e.scenarios) | Should -Contain 'FinalUninstall'
+            }
+            # the repository is public: a machine name must never travel with it
+            $raw | Should -Not -Match 'SN-[A-Z0-9]{6,}'
         }
     }
 

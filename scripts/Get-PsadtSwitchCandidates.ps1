@@ -59,7 +59,12 @@ param(
     [string]$JsonPath,
 
     # Unused downstream; accepted so callers can pass it through.
-    [string]$SkillRoot
+    [string]$SkillRoot,
+
+    # The SHIPPED switch store, normally references\switch-catalog\verified-switches.json inside the
+    # skill. Overriding it lets a team point at one shared file instead - a network path, say - and is
+    # what makes the two-layer merge testable without touching the file the skill really ships.
+    [string]$ShippedStorePath
 )
 $ErrorActionPreference = 'Stop'
 
@@ -88,66 +93,109 @@ if ($stagesRequested -contains 0) {
     # rule:config-home - Get-PsadtConfig.ps1 is the only resolver. Building the path from
     # $env:LOCALAPPDATA would ignore $env:PSADT_DEPLOY_HOME and write into the real profile.
     $cfg = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')
-    $storePath = Join-Path $cfg.Home 'verified-switches.json'
+    $localPath   = Join-Path $cfg.Home 'verified-switches.json'
+    $shippedPath = if ($ShippedStorePath) { $ShippedStorePath }
+                   else { Join-Path (Split-Path $PSScriptRoot -Parent) 'references\switch-catalog\verified-switches.json' }
 
-    if (-not (Test-Path -LiteralPath $storePath)) {
-        Add-Miss 0 'cache' "no verified-switch store yet at $storePath - nothing has been proven on this machine"
+    # TWO LAYERS, merged by SHA256 (0.40.0).
+    #   shipped - references\switch-catalog\verified-switches.json, travels with the skill, so a fresh
+    #             installation starts with everything previous gate runs proved instead of a blank slate.
+    #   local   - <config home>\verified-switches.json, written by THIS machine's gate runs. It is the
+    #             only write target: references\ is in Update-PsadtSkill.ps1's TrackedItems and is
+    #             replaced wholesale on update, so anything written there would not survive.
+    # The LOCAL layer is read FIRST, so for a hash present in both, this machine's own proof wins and the
+    # shipped one can never override it. Keying on the hash is what makes the merge idempotent: reading
+    # twice, or shipping an entry this machine already holds, reaches exactly the same set.
+    $entries    = New-Object System.Collections.ArrayList
+    $seen       = New-Object 'System.Collections.Generic.HashSet[string]'
+    # A layer that failed to parse has already said so. Reporting "nothing anywhere" on top of that
+    # would be a second miss for one stage, and the louder of the two is the one naming the damage.
+    $layerFailed = $false
+    foreach ($layer in @(
+            [pscustomobject]@{ Path = $localPath;   Origin = 'local' },
+            [pscustomobject]@{ Path = $shippedPath; Origin = 'shipped' })) {
+        if (-not (Test-Path -LiteralPath $layer.Path)) { continue }
+        $parsed = $null
+        try { $parsed = Get-Content -LiteralPath $layer.Path -Raw | ConvertFrom-Json }
+        catch {
+            # A damaged layer degrades to a miss and is REPORTED - it must never take the other one down.
+            Add-Miss 0 'cache' "the $($layer.Origin) switch store is not readable JSON ($($layer.Path)): $($_.Exception.Message)"
+            $layerFailed = $true
+            continue
+        }
+        foreach ($e in @($parsed.entries)) {
+            if (-not $e.sha256) { continue }
+            if (-not $seen.Add(([string]$e.sha256).ToLowerInvariant())) { continue }
+            Add-Member -InputObject $e -NotePropertyName 'storeOrigin' -NotePropertyValue $layer.Origin -Force
+            [void]$entries.Add($e)
+        }
     }
-    else {
-        $store = $null
-        try { $store = Get-Content -LiteralPath $storePath -Raw | ConvertFrom-Json }
-        catch { Add-Miss 0 'cache' "verified-switch store is not readable JSON: $($_.Exception.Message)" }
 
-        if ($store) {
-            $hit = @($store.entries | Where-Object { $_.sha256 -eq $engineInfo.Sha256 })[0]
-            if ($hit) {
+    if ($entries.Count -eq 0 -and -not $layerFailed) {
+        Add-Miss 0 'cache' "no verified-switch entries anywhere - none shipped with the skill at $shippedPath, and nothing proven on this machine at $localPath"
+    }
+    elseif ($entries.Count -gt 0) {
+        $wantSha = ([string]$engineInfo.Sha256).ToLowerInvariant()
+        $hit = @($entries | Where-Object { ([string]$_.sha256).ToLowerInvariant() -eq $wantSha })[0]
+        if ($hit) {
+            # An exact SHA256 match is the same BYTES, so the switch is proved for this file whichever
+            # machine ran the gate. What differs is where the proof comes from, and that is said out
+            # loud rather than left for the reader to assume.
+            $fromLocal = $hit.storeOrigin -eq 'local'
+            $hitNotes  = @($hit.notes)
+            if (-not $fromLocal) {
+                $hitNotes += "Proved on another machine and shipped with the skill, not on this one - the SHA256 is identical, so it is the same installer."
+            }
+            $candidates.Add([pscustomobject]@{
+                    Stage      = 0
+                    Source     = 'cache'
+                    SourceRef  = $(if ($fromLocal) { "verified $($hit.verifiedAt) by $($hit.verifiedBy)" }
+                                   else { "verified $($hit.verifiedAt), shipped with the skill" })
+                    Confidence = 'verified'
+                    HashMatch  = $true
+                    Origin     = $hit.storeOrigin
+                    Install    = $hit.install
+                    Uninstall  = $hit.uninstall
+                    InstallLog = $hit.installLog
+                    NoReboot   = $hit.noReboot
+                    DetectHint = $hit.detectHint
+                    ReturnCodes = @($hit.returnCodes)
+                    Notes      = $hitNotes
+                    Evidence   = $(if ($fromLocal) { "SHA256 matches an entry proven on this machine ($($hit.scenarios -join ', '))" }
+                                   else { "SHA256 matches an entry shipped with the skill ($($hit.scenarios -join ', '))" })
+                })
+        }
+        else {
+            $sameProduct = @($entries | Where-Object {
+                    $_.productName -and $engineInfo.ProductName -and $_.productName -eq $engineInfo.ProductName
+                })[0]
+            if ($sameProduct) {
+                # productVersion comes from the PE header, which for a WRAPPED installer is the
+                # wrapper's version, not the application's: every Mozilla full installer reports
+                # 18.05, the version of the 7-Zip SFX module around it. appVersion is the version
+                # the package declared, so it is the one a reader can act on. This string is not
+                # cosmetic - Get-PsadtLocalEvidence.ps1 puts it into the KnownContext handed to a
+                # research sub-agent, and "previous version 18.05" for Firefox is a false claim.
+                $prevVersion = if ($sameProduct.appVersion) { $sameProduct.appVersion } else { $sameProduct.productVersion }
                 $candidates.Add([pscustomobject]@{
                         Stage      = 0
                         Source     = 'cache'
-                        SourceRef  = "verified $($hit.verifiedAt) by $($hit.verifiedBy)"
-                        Confidence = 'verified'
-                        HashMatch  = $true
-                        Install    = $hit.install
-                        Uninstall  = $hit.uninstall
-                        InstallLog = $hit.installLog
-                        NoReboot   = $hit.noReboot
-                        DetectHint = $hit.detectHint
-                        ReturnCodes = @($hit.returnCodes)
-                        Notes      = @($hit.notes)
-                        Evidence   = "SHA256 matches an entry proven on this machine ($($hit.scenarios -join ', '))"
+                        SourceRef  = "previous version $prevVersion, verified $($sameProduct.verifiedAt)"
+                        Confidence = 'medium'
+                        HashMatch  = $false
+                        Origin     = $sameProduct.storeOrigin
+                        Install    = $sameProduct.install
+                        Uninstall  = $sameProduct.uninstall
+                        InstallLog = $sameProduct.installLog
+                        NoReboot   = $sameProduct.noReboot
+                        DetectHint = $sameProduct.detectHint
+                        ReturnCodes = @($sameProduct.returnCodes)
+                        Notes      = @("Proven on a DIFFERENT build of this product - vendors change switches between versions.")
+                        Evidence   = "same productName, different hash"
                     })
             }
             else {
-                $sameProduct = @($store.entries | Where-Object {
-                        $_.productName -and $engineInfo.ProductName -and $_.productName -eq $engineInfo.ProductName
-                    })[0]
-                if ($sameProduct) {
-                    # productVersion comes from the PE header, which for a WRAPPED installer is the
-                    # wrapper's version, not the application's: every Mozilla full installer reports
-                    # 18.05, the version of the 7-Zip SFX module around it. appVersion is the version
-                    # the package declared, so it is the one a reader can act on. This string is not
-                    # cosmetic - Get-PsadtLocalEvidence.ps1 puts it into the KnownContext handed to a
-                    # research sub-agent, and "previous version 18.05" for Firefox is a false claim.
-                    $prevVersion = if ($sameProduct.appVersion) { $sameProduct.appVersion } else { $sameProduct.productVersion }
-                    $candidates.Add([pscustomobject]@{
-                            Stage      = 0
-                            Source     = 'cache'
-                            SourceRef  = "previous version $prevVersion, verified $($sameProduct.verifiedAt)"
-                            Confidence = 'medium'
-                            HashMatch  = $false
-                            Install    = $sameProduct.install
-                            Uninstall  = $sameProduct.uninstall
-                            InstallLog = $sameProduct.installLog
-                            NoReboot   = $sameProduct.noReboot
-                            DetectHint = $sameProduct.detectHint
-                            ReturnCodes = @($sameProduct.returnCodes)
-                            Notes      = @("Proven on a DIFFERENT build of this product - vendors change switches between versions.")
-                            Evidence   = "same productName, different hash"
-                        })
-                }
-                else {
-                    Add-Miss 0 'cache' 'no entry for this hash and no earlier version of this product'
-                }
+                Add-Miss 0 'cache' 'no entry for this hash and no earlier version of this product'
             }
         }
     }

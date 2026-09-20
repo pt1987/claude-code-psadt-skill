@@ -30,9 +30,18 @@ pwsh scripts/Initialize-PsadtSkill.ps1 -Fix -Set @{
 
 ### Where the setup is stored
 
-`config.json`, `secret.dpapi` and `tools/` live in the **config home** - `%LOCALAPPDATA%\psadt-deploy\`,
-overridable with `$env:PSADT_DEPLOY_HOME` - **not** in the skill folder, so they survive a `git pull`, a
-re-clone and a re-install. They are machine-local and never committed. A `config.json` from a pre-0.19
+`config.json`, `secret.dpapi`, `tools/` and `verified-switches.json` live in the **config home** -
+`%LOCALAPPDATA%\psadt-deploy\`, overridable with `$env:PSADT_DEPLOY_HOME` - **not** in the skill folder,
+so they survive a `git pull`, a re-clone and a re-install. They are machine-local and never committed.
+
+> **`verified-switches.json` is the one with a second half.** Since 0.40.0 a SHIPPED layer travels with
+> the skill at `references/switch-catalog/verified-switches.json`, so a fresh installation starts with
+> what earlier gate runs proved instead of a blank slate. The reader merges both by installer SHA256 and
+> **the local entry wins**, which is what makes the merge idempotent: the same hash in both layers is one
+> candidate, not two, however often it is read. Writing stays local-only, deliberately - `references/`
+> is in `Update-PsadtSkill.ps1`'s `TrackedItems` and is replaced wholesale on update, so anything written
+> there would be lost. A team that would rather share one file than ship it can point
+> `Get-PsadtSwitchCandidates.ps1 -ShippedStorePath` at a network path instead. A `config.json` from a pre-0.19
 install (beside `scripts/`) keeps working read-only; the doctor flags it and `-Fix` migrates it, renaming
 the originals to `*.migrated` rather than deleting anything.
 

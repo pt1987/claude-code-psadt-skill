@@ -171,8 +171,8 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.39.0 - A manifest that lies is worse than one that is missing.** The verified-switch store
-records `research.switches.installArgs`, which a generator writes at scaffold time - so a hand-patched
-launcher makes the store publish a switch nobody tested. Found twice in one eleven-package run: the
-Thunderbird entry would have served `/S` alone, installing without the configuration file and leaving
-the self-updater on. The new `SwitchSync` pre-flight check compares the two and FAILs on a mismatch.
+Latest: **0.40.0 - The store now ships, and a user's own file extends it.** The verified-switch store
+was machine-local, so every proof stayed on the machine that produced it and a fresh installation began
+from nothing. There are two layers now, merged by installer SHA256: one shipped with the skill, one
+machine-local, with the local entry winning. Merging on the hash is what makes it idempotent. The shipped
+layer seeds with 21 entries, each from a GREEN full gate.
