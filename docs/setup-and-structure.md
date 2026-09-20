@@ -107,7 +107,8 @@ Machine-local state lives outside the skill folder:
 %LOCALAPPDATA%\psadt-deploy\             ($env:PSADT_DEPLOY_HOME overrides)
 ├─ config.json                           settings incl. the optional intune.* block
 ├─ secret.dpapi                          DPAPI client secret (only without cert auth)
-└─ tools/                                IntuneWinAppUtil.exe + WinGet module
+├─ tools/                                IntuneWinAppUtil.exe + WinGet module
+└─ verified-switches.json                what a GREEN full gate proved here, keyed by file hash
 ```
 
 And per package, next to `Invoke-AppDeployToolkit.ps1`:

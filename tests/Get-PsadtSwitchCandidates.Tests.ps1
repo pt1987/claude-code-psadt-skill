@@ -17,6 +17,14 @@ BeforeAll {
     $script:src = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\Get-PsadtSwitchCandidates.ps1')).ProviderPath
     $script:made = New-Object System.Collections.Generic.List[string]
     function Track([string]$p) { $script:made.Add($p); return $p }
+    # Writes a store into the redirected config home. Until Set-PsadtVerifiedSwitch.ps1 existed there was
+    # no way to produce one, which is why the hit branches below had never been exercised.
+    function Write-Store {
+        param([object[]]$Entries)
+        ([pscustomobject]@{ schemaVersion = 1; entries = $Entries } | ConvertTo-Json -Depth 12) |
+            Set-Content -LiteralPath (Join-Path $script:tempHome 'verified-switches.json') -Encoding UTF8
+    }
+
 
     # Source guards match against the CODE with comments blanked out. Matching raw source would flag the
     # comment in which the script explains the very trap it avoids - the guard would fail on a correct
@@ -115,6 +123,115 @@ Describe 'Get-PsadtSwitchCandidates' {
             # into the user's real profile during a test run.
             $script:code | Should -Not -Match '\$env:LOCALAPPDATA'
             $script:code | Should -Match 'Get-PsadtConfig\.ps1'
+        }
+
+        # Everything below was unreachable until Set-PsadtVerifiedSwitch.ps1 existed: the store had no
+        # producer, so the hit branches had never run against anything but a hand-written JSON file.
+
+        It 'serves a hash match as verified' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash $p -Algorithm SHA256).Hash.ToLower()
+            Write-Store @(@{
+                    sha256     = $sha; productName = 'Fixture App'; productVersion = '1.0'
+                    install    = '/VERYSILENT /PROVEN'; uninstall = '/VERYSILENT'
+                    scenarios  = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $r = & $script:src -Path $p
+            $top = @($r.Candidates | Where-Object { $_.Stage -eq 0 })[0]
+            $top | Should -Not -BeNullOrEmpty
+            $top.Confidence | Should -Be 'verified'
+            $top.HashMatch | Should -BeTrue
+            $top.Install | Should -Be '/VERYSILENT /PROVEN'
+            $top.Evidence | Should -Match 'FinalUninstall'
+            $top.SourceRef | Should -Match '2026-09-20'
+        }
+
+        It 'ranks a verified entry above the engine default' {
+            # The rank table (verified/high/medium/low) had no test at all. The fixture is an Inno PE, so
+            # stage 1 also produces a candidate and the two have to be ordered.
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash $p -Algorithm SHA256).Hash.ToLower()
+            Write-Store @(@{
+                    sha256    = $sha; productName = 'Fixture App'; productVersion = '1.0'
+                    install   = '/PROVEN'; scenarios = @('Install')
+                    verifiedAt = '2026-09-20'; verifiedBy = 't'
+                })
+            $r = & $script:src -Path $p
+            @($r.Candidates).Count | Should -BeGreaterThan 1
+            $r.Candidates[0].Stage | Should -Be 0
+            $r.Candidates[0].Confidence | Should -Be 'verified'
+        }
+
+        It 'falls back to an earlier build of the same product at medium confidence' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $engine = & (Join-Path $PSScriptRoot '..\scripts\Get-PsadtInstallerEngine.ps1') -Path $p
+            Write-Store @(@{
+                    sha256    = ('a' * 64); productName = $engine.ProductName; productVersion = '0.9'
+                    install   = '/OLDBUILD'; scenarios = @('Install')
+                    verifiedAt = '2026-01-01'; verifiedBy = 't'
+                })
+            $r = & $script:src -Path $p
+            $hit = @($r.Candidates | Where-Object { $_.Stage -eq 0 })[0]
+            if ($engine.ProductName) {
+                $hit.Confidence | Should -Be 'medium'
+                $hit.HashMatch | Should -BeFalse
+                ($hit.Notes -join ' ') | Should -Match 'DIFFERENT build'
+            }
+            else {
+                # A synthetic PE carries no version resource, so there is no product name to match on.
+                # That is the reader's productName guard doing its job, not a failure.
+                $hit | Should -BeNullOrEmpty
+            }
+        }
+
+        It 'does not invent a same-product hit when neither side has a product name' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            Write-Store @(@{
+                    sha256    = ('b' * 64); productName = $null; productVersion = $null
+                    install   = '/NOPE'; scenarios = @('Install')
+                    verifiedAt = '2026-01-01'; verifiedBy = 't'
+                })
+            $r = & $script:src -Path $p
+            @($r.Candidates | Where-Object { $_.Stage -eq 0 }).Count | Should -Be 0
+        }
+
+        It 'degrades a malformed store to a miss instead of throwing' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            Set-Content -LiteralPath (Join-Path $script:tempHome 'verified-switches.json') -Value '{ not json' -Encoding UTF8
+            { $script:rr = & $script:src -Path $p } | Should -Not -Throw
+            $miss = @($script:rr.Misses | Where-Object { $_.Stage -eq 0 })
+            $miss.Count | Should -Be 1
+            $miss[0].Reason | Should -Match 'not readable JSON'
+        }
+
+        It 'round-trips with the writer' {
+            # The one case that catches the writer and the reader disagreeing on field names. A source
+            # grep cannot: both files would still contain the strings they are supposed to.
+            $pkg = Join-Path ([System.IO.Path]::GetTempPath()) ('rt_' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path (Join-Path $pkg 'Files') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $pkg 'Invoke-AppDeployToolkit.ps1') -Value '# fixture' -Encoding UTF8
+            $pe = New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data')
+            Move-Item -LiteralPath $pe -Destination (Join-Path $pkg 'Files\setup.exe') -Force
+
+            ([ordered]@{
+                    schema   = 1
+                    app      = [ordered]@{ vendor = 'Contoso'; name = 'Widget'; version = '3.1.4'; arch = 'x64' }
+                    package  = [ordered]@{ name = 'Contoso_Widget'; type = 'installer'; installerTech = 'exe'; installerFile = 'setup.exe' }
+                    research = [ordered]@{ switches = @{ installArgs = '/VERYSILENT /ROUNDTRIP'; uninstallArgs = '/VERYSILENT' } }
+                } | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath (Join-Path $pkg 'psadt-package.json') -Encoding UTF8
+
+            try {
+                & (Join-Path $PSScriptRoot '..\scripts\Set-PsadtVerifiedSwitch.ps1') -PackagePath $pkg -Verdict 'GREEN' `
+                    -Scenarios @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall') | Out-Null
+
+                $r = & $script:src -Path (Join-Path $pkg 'Files\setup.exe')
+                $top = @($r.Candidates | Where-Object { $_.Stage -eq 0 })[0]
+                $top.Confidence | Should -Be 'verified'
+                $top.Install | Should -Be '/VERYSILENT /ROUNDTRIP'
+                $top.Uninstall | Should -Be '/VERYSILENT'
+            }
+            finally { Remove-Item $pkg -Recurse -Force -ErrorAction SilentlyContinue }
         }
     }
 

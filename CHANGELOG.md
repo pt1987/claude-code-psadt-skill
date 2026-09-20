@@ -2,6 +2,51 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.36.0 - 2026-09-20 - The store that had a reader, a rank and no writer
+
+`%LOCALAPPDATA%\psadt-deploy\verified-switches.json` has been read since 0.30.0. Stage 0 of
+`Get-PsadtSwitchCandidates.ps1` looks an installer up by SHA256 and serves the result as `verified`,
+which outranks every other stage in the rank table, and `Get-PsadtLocalEvidence.ps1` has a branch that
+closes the silent-install question outright when that happens.
+
+Nothing ever wrote the file. `git log -S "verified-switches.json"` returns one commit: the one that
+added the reader. Ten applications were packaged in a single measured run in September and the store
+was still absent afterwards, so every run printed `nothing has been proven on this machine` and the
+verified branch of the ladder was unreachable code.
+
+**New: `scripts/Set-PsadtVerifiedSwitch.ps1`,** called by `Invoke-PsadtSandboxTest.ps1` after a GREEN
+full gate. It is deliberately hard to talk into writing:
+
+- **Only a full gate.** The verdict must be `GREEN` and the scenario list must cover all five scenarios.
+  `-Quick` reports `GREEN_PARTIAL` and records nothing. Both halves are checked inside the writer, not
+  at the call site, so a second caller cannot skip them, and there is no `-Force`.
+- **MSI packages are skipped, with a stated reason.** msiexec's switches already close at `high` from
+  the file header, and the part that varies is `TRANSFORMS` and licence properties - site configuration,
+  not a property of the file. A hash-keyed store would otherwise replay one tenant's licence key as a
+  verified switch for the next package of that product.
+- **Identity comes from the binary,** not from `app.name`. The reader compares against the probed file's
+  PE metadata, so a friendly name from the manifest would leave the same-product fallback permanently
+  dead.
+- **A new version gets a new hash and therefore its own entry,** which is how per-version history
+  accumulates. The newest proof is kept first, because the reader's same-product fallback takes the
+  first match and appending would have handed a later package the oldest known version's switches.
+- `-Remove <sha256>` invalidates an entry. There is no expiry, because a hash-keyed entry describes
+  bytes that cannot change.
+
+**Also in this release**
+
+- `New-ExePackage.ps1` records `package.installerFile` and `research.switches.installArgs` /
+  `uninstallArgs`. The existing `install`/`uninstall` fields are prose written for the dossier - one of
+  them reads `<resolved from ARP at run time> ..., then WAIT until ... is gone` - and the store must
+  never be handed a sentence to execute.
+- `references/switch-catalog/schema.verified-switches.json` describes the store. `schema.catalog.json`
+  claimed to cover it and did not: its root is `required: [schemaVersion, engines]` with
+  `additionalProperties: false`, so a real store file failed the schema that named it.
+- The stage-0 reader branches now have tests. Only the "store does not exist" miss was covered before,
+  so the hash match, the same-product fallback, the malformed-JSON degradation and the rank table had
+  never run. A writer-then-reader round trip covers the one bug class a source grep cannot: the two
+  sides disagreeing on a field name.
+- `New-ExePackage.ps1` gets its first test file.
 ## 0.35.0 - 2026-09-17 - Most of a packaging run was the skill, not the package
 
 **A performance release.** Same work, measured end to end on applications that had never been packaged

@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/pt1987/claude-code-psadt-skill/references/switch-catalog/schema.verified-switches.json",
+  "title": "psadt-deploy verified-switch store",
+  "description": "Shape of the MACHINE-LOCAL verified-switch store at %LOCALAPPDATA%\\psadt-deploy\\verified-switches.json. Separate from schema.catalog.json, which describes the shipped ENGINE catalog: that one is a claim about an installer engine, this one is a record of what a run on this machine actually proved. Written by scripts/Set-PsadtVerifiedSwitch.ps1 after a GREEN full sandbox gate, read by stage 0 of scripts/Get-PsadtSwitchCandidates.ps1. Never committed - an entry asserts proof on THIS machine, and that claim does not travel.",
+  "type": "object",
+  "required": ["schemaVersion", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/storeEntry" }
+    }
+  },
+  "definitions": {
+    "storeEntry": {
+      "type": "object",
+      "required": ["sha256", "install", "scenarios", "verifiedAt", "verifiedBy"],
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Lowercase SHA256 of the installer file, and the primary key. A hash is the file; a product name is only a label, which is why an entry keyed this way cannot go stale - the bytes it describes are immutable."
+        },
+        "productName": {
+          "type": ["string", "null"],
+          "description": "ProductName as the BINARY reports it, taken verbatim from Get-PsadtInstallerEngine.ps1. Never the manifest's app.name: the reader compares this against the probed file's PE metadata, so a friendly name here leaves the same-product fallback permanently dead."
+        },
+        "appVersion": {
+          "type": ["string", "null"],
+          "description": "Version the PACKAGE declared, from the manifest app.version. Kept next to productVersion because they are not always the same and because the usual reason to look an entry up months later is whether the switches changed between versions."
+        },
+        "productVersion": {
+          "type": ["string", "null"],
+          "description": "ProductVersion as the binary reports it. Shown to the operator when an earlier build of the same product is served at reduced confidence."
+        },
+        "install": {
+          "type": "string",
+          "description": "Argument string handed to the installer executable, without the executable itself. Same contract as the engine catalog's install field."
+        },
+        "uninstall": {
+          "type": ["string", "null"],
+          "description": "Argument string for the uninstaller. Null when the package resolves its uninstaller from the Uninstall registry at run time rather than from a fixed command."
+        },
+        "installLog": {
+          "type": ["string", "null"],
+          "description": "Argument fragment that makes the installer write a log, when one is known."
+        },
+        "noReboot": {
+          "type": ["string", "null"],
+          "description": "Argument fragment that suppresses a reboot, when one is known."
+        },
+        "detectHint": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "description": "What the run observed about detection, most usefully the real Add/Remove Programs DisplayName. A hint for the next package of this product, never a detection rule."
+        },
+        "returnCodes": {
+          "type": "array",
+          "description": "Installer-specific return codes carried over from the package manifest. Same shape as research.returnCodes: code, type, de, en.",
+          "items": { "type": "object" }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Free text for the operator. Which package proved it, where the evidence sits."
+        },
+        "scenarios": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The sandbox scenarios that ran. The reader prints these back as its evidence line, so a partial run must never reach this file - an entry claims the word 'verified', and only the full gate earns it."
+        },
+        "verifiedAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Date of the run that proved it, yyyy-MM-dd."
+        },
+        "verifiedBy": {
+          "type": "string",
+          "description": "Who and where, so an operator reading the file knows whose machine made the claim."
+        }
+      }
+    }
+  }
+}
