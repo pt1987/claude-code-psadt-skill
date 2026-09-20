@@ -280,6 +280,64 @@ if (-not $mf.Exists) {
     Add-Check 'Manifest' 'PASS' "identity complete, artifact stem '$($mf.Stem)'" 'psadt-package.json'
 }
 
+# --- 8b: the manifest's switches must match what the launcher actually runs -----------------------
+# rule:manifest-is-truth says the manifest IS the truth for a package, and the verified-switch store
+# takes it at its word: Set-PsadtVerifiedSwitch.ps1 records research.switches.installArgs as the switch
+# a GREEN gate proved. A generator writes that field at SCAFFOLD time, so any hand-patched launcher
+# silently makes both the manifest and the store describe a package that was never tested.
+# Measured 2026-09-20, twice in one run of eleven packages:
+#   Thunderbird ESR  manifest '/S'   launcher '/S /INI=<SupportFiles>\thunderbird-install.ini'
+#   WinSCP           manifest without /MERGETASKS, launcher with it
+# The Thunderbird entry is the instructive one: '/S' installs WITHOUT the configuration file, so the
+# store would have served a switch that leaves the self-updater on. A manifest that LIES is worse than
+# one that is missing, and pre-flight already FAILs on a missing one - so this fails too.
+if ($mf.Exists -and -not $mf.Error -and $mf.Manifest.research -and $mf.Manifest.research.switches) {
+    $declared = [string]$mf.Manifest.research.switches.installArgs
+    if (-not [string]::IsNullOrWhiteSpace($declared)) {
+        # Only the Install hook: Uninstall and Repair legitimately differ.
+        # $launcherText is not assigned until section 9, so read it here.
+        $launcherSrc = Get-Content $launcher -Raw
+        $installBody = ''
+        if ($launcherSrc -match '(?s)function\s+Install-ADTDeployment(.*?)function\s+Uninstall-ADTDeployment') {
+            $installBody = $Matches[1]
+        }
+        $actual = $null
+        $isMsi  = $installBody -match 'Start-ADTMsiProcess'
+        if ($isMsi) {
+            # An MSI records "/qn /norestart <additional>"; only the additional half is the launcher's.
+            if ($installBody -match "-AdditionalArgumentList\s+(?:'([^']*)'|`"([^`"]*)`")") {
+                $actual = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
+            }
+            else { $actual = '' }
+            $declared = ($declared -replace '^\s*/qn\s+/norestart\s*', '')
+        }
+        elseif ($installBody -match "-ArgumentList\s+(?:'([^']*)'|`"([^`"]*)`")") {
+            $actual = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
+        }
+
+        if ($null -eq $actual) {
+            Add-Check 'SwitchSync' 'WARN' 'could not read the install arguments out of the launcher, so the manifest could not be checked against it - verify by hand that research.switches.installArgs matches' 'psadt-package.json'
+        }
+        else {
+            # The launcher builds run-time paths the manifest records as placeholders.
+            $norm = {
+                param([string]$s)
+                $s = $s -replace '\$\(\$adtSession\.DirSupportFiles\)', '<SupportFiles>'
+                $s = $s -replace '\$\(\$adtSession\.DirFiles\)', '<Files>'
+                ($s -replace '\s+', ' ').Trim()
+            }
+            $nd = & $norm $declared
+            $na = & $norm $actual
+            if ($nd -eq $na) {
+                Add-Check 'SwitchSync' 'PASS' 'manifest install switches match the launcher' 'psadt-package.json'
+            }
+            else {
+                Add-Check 'SwitchSync' 'FAIL' "manifest and launcher disagree on the install switches, and the verified-switch store records the MANIFEST. manifest='$nd' launcher='$na'. Fix with Set-PsadtPackageManifest.ps1 -Updates @{ 'research.switches.installArgs' = '<what the launcher runs>' }" 'psadt-package.json'
+            }
+        }
+    }
+}
+
 # --- 9: per-run log name (WARN only) --------------------------------------------------------------
 # Without LogName the launcher inherits PSADT's fixed default name AND LogAppend, so every run of every
 # version piles into one file. Packages scaffolded before 0.21.0 are in that state; they still work.
