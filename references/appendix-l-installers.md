@@ -78,6 +78,16 @@ note at the end of L.1. Confidence orders the candidates for the probe run; it n
   Read the identity with `Get-AppxPackageManifest`. **Not a classic installer at all** - see **L.8**
   before writing any hook, and check first whether Intune's native LOB app type is the better route.
 
+> **A WRAPPED installer reports the WRAPPER's version, not the application's (BINDING).** `VersionInfo`
+> on the outer EXE is the first thing every identification step reads, and for a container it describes the
+> container. Measured 2026-09-20: every Mozilla full installer (Firefox ESR 153.3.0, Thunderbird ESR
+> 153.3.1) reports `ProductName=Firefox`/`Thunderbird` with **`ProductVersion=18.05`** - the version of the
+> 7-Zip SFX module, `7zS.sfx.exe`, dated 2018-08-31 and visible by name when the archive is listed. Python
+> 3.13.15's Burn bundle reports `3.13.15150.0` against an application version of `3.13.15`.
+> Take the application version from the vendor's release, the filename or the MSI `ProductVersion` - never
+> from the PE header of a container. Anything that stores or displays a version has to say WHICH of the two
+> it holds, or it will later present `18.05` as the proven version of a browser.
+
 > **A single string match is a HINT, not proof (BINDING).** A coincidental substring (e.g. `nsis` inside an
 > unrelated blob) can misidentify the framework - a real case: an install4j Aperio installer was mistaken for
 > NSIS, so `/S` was used, which hung on the language dialog forever. Confirm the framework by its *definitive*
@@ -109,6 +119,26 @@ note at the end of L.1. Confidence orders the candidates for the probe run; it n
 | **WinRAR SFX** `sfx-winrar` | `archive.exe /S` | none (payload decides) | n/a | n/a | payload | a CONTAINER, not an installer - extract it and identify the real installer inside |
 | **InstallAware** `installaware` | `/s` or `/silent` | vendor-specific | varies | varies | registry / file | confirm per build; often MSI underneath |
 | **Wise** `wise` | `/s` or `/silent` | vendor-specific | varies | varies | registry / file | legacy; confirm per build; often MSI underneath |
+
+> **An MSI that registers no Windows Installer product breaks BOTH generators (BINDING).** Mozilla's
+> MSI wrappers are the named case, and the vendor admits it: Thunderbird's enterprise documentation lists
+> `/x` and `/uninstall` under "Unsupported MSIEXEC options" with the reason that "our MSI packages,
+> because they wrap an installer.exe and do not really use the MSI framework, do not support many of the
+> command line options available to msiexec". Measured on Firefox ESR: the feature table holds a single
+> `EmptyFeature`, ProductCode detection never matches (Intune reports `0x87D1041C`) and `msiexec /x
+> {GUID}` returns **1605**, "only valid for products that are currently installed".
+> **Use the vendor's FULL installer instead.** For Mozilla that is `/S` plus `/INI=<absolute path>`, and
+> two details matter: the path must be ABSOLUTE, so the argument cannot be a constant in the launcher, and
+> `/S` must be passed INDEPENDENTLY, because the installer executes `SetSilent silent` only INSIDE its
+> check that the INI file exists - a wrong path therefore falls back to the GUI without complaining.
+
+> **A WiX property condition can INVERT a `=0` (BINDING).** Measured on KeePassXC 2.7.12:
+> `INSTALLDESKTOPSHORTCUT=0` **creates** the desktop shortcut, because the component carries a bare
+> `<Condition>INSTALLDESKTOPSHORTCUT</Condition>` presence test and the string `"0"` is non-empty,
+> therefore true. The maintainer's own words on the report: "Nope, welcome to WIX!", closed with no code
+> change. In the SAME installer, `AUTOSTARTPROGRAM` and `ADDTOPATH` DO honour `=0` - but only the exact
+> string `"0"`, through a `SetProperty` that blanks them; `FALSE`, `no` or `2` leave the feature ON.
+> **Read the condition before choosing a value, and prefer OMISSION to `=0` when the intent is "off".**
 
 ### L.3 Detection-rule choice
 - MSI / MSI-wrapped -> **MSI ProductCode** rule (upload `-MsiProductCode`).
@@ -164,6 +194,34 @@ Display: `/full` (default) `/passive` `/quiet` (`/silent`, `/s`) `/none`. Plus `
   (measured 2026-09-08: ADK 1473 MB, WinPE add-on 1894 MB). Budget package size accordingly.
 - **A bundle's own switches are additive to the BA's.** `/features`, `/installpath`, `/ceip off` on the ADK
   are BA parameters - read the vendor's documentation, do not assume them from Burn.
+
+> **The ARP uninstall path a Burn bundle writes under SYSTEM is UNUSABLE from a 64-bit process
+> (BINDING).** Measured on Python 3.13.15 in the Phase 6 gate, 2026-09-20. Installed as SYSTEM, the
+> bundle cached itself in the SYSTEM account's own profile and recorded:
+> `UninstallString = "C:\Windows\system32\config\systemprofile\AppData\Local\Package Cache\{GUID}\python-3.13.15-amd64.exe" /uninstall /quiet`
+> The Burn engine is **32-bit**, so what it actually wrote sits under `SysWOW64\config\systemprofile`,
+> while the string it recorded says `system32`. PSADT runs 64-bit, resolves `system32` literally, finds
+> nothing, and the uninstall hook fails with **60001 having removed not one file** - while Install in the
+> same run was GREEN. The signature is "registered as installed but no uninstaller could be resolved"
+> against a path that visibly contains `systemprofile`.
+> **Uninstall through the bundle shipped in `Files\` instead.** Burn accepts the same `/uninstall /quiet`
+> on the original EXE, which needs no ARP entry and no guess about which of the two system directories
+> the recorded path really meant. A PSADT package has `Files\` for every deployment type, so it is there.
+
+> **Re-running a Burn bundle over an existing SAME-VERSION install is not a repair (BINDING).** Same
+> package, same run: `/quiet <properties>` over an existing install returned **1603**, and the failed
+> attempt left the installation in a state where the FOLLOWING uninstall also returned 1603 - one broken
+> repair poisons the removal path too. This is the L.7 fourth trap in Burn clothing.
+> **Repair is an explicit uninstall followed by an install**, and wait for the registration to go between
+> the halves, or the install half runs against a half-removed bundle and lands straight back on 1603.
+
+> **A Burn bundle registers MANY rows, and most are hidden.** Python 3.13.15 leaves nine MSI sub-package
+> rows (`Core Interpreter`, `Standard Library`, `Executables`, `Add to Path`, `Test Suite`, `Tcl/Tk`,
+> `Documentation`, `Development Libraries`, `pip Bootstrap`) carrying `SystemComponent=1`, plus a separate
+> VISIBLE `Python Launcher` row, plus the bundle itself. A DisplayName PREFIX match catches all of them.
+> That is harmless for detection, because they all report the same version - but it must never be used to
+> resolve an uninstaller, because those rows' `UninstallString` is `MsiExec.exe /I{GUID}`, which is a
+> MODIFY, not a removal.
 
 ### L.6 Advanced Installer projects (`.aip`)
 

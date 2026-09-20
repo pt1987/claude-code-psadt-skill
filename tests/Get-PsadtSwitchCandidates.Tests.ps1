@@ -185,6 +185,41 @@ Describe 'Get-PsadtSwitchCandidates' {
             }
         }
 
+        It 'names the application version of the earlier build, not the wrapper version' {
+            # The PE header of a WRAPPED installer carries the wrapper's version: every Mozilla full
+            # installer reports 18.05, the version of the 7-Zip SFX module around the real installer.
+            # The store keeps both, and this reference string is not decoration - line 688 of
+            # Get-PsadtLocalEvidence.ps1 feeds it into the KnownContext of a research sub-agent, so
+            # "previous version 18.05" for Firefox hands an agent a version that never existed.
+            # The synthetic PE used elsewhere in this file has no version resource at all, which is
+            # why this one test needs a real binary: without a ProductName the branch cannot be hit.
+            $p = (Get-Process -Id $PID).Path
+            $engine = & (Join-Path $PSScriptRoot '..\scripts\Get-PsadtInstallerEngine.ps1') -Path $p
+            $engine.ProductName | Should -Not -BeNullOrEmpty -Because 'this case needs a PE that carries version info'
+            Write-Store @(@{
+                    sha256     = ('b' * 64); productName = $engine.ProductName
+                    productVersion = '18.05'; appVersion = '153.3.0'
+                    install    = '/S'; scenarios = @('Install')
+                    verifiedAt = '2026-01-01'; verifiedBy = 't'
+                })
+            $hit = @((& $script:src -Path $p).Candidates | Where-Object { $_.Stage -eq 0 })[0]
+            $hit.SourceRef | Should -Match ([regex]::Escape('153.3.0'))
+            $hit.SourceRef | Should -Not -Match ([regex]::Escape('18.05'))
+        }
+
+        It 'still names a version for an entry written before appVersion existed' {
+            $p = (Get-Process -Id $PID).Path
+            $engine = & (Join-Path $PSScriptRoot '..\scripts\Get-PsadtInstallerEngine.ps1') -Path $p
+            Write-Store @(@{
+                    sha256     = ('c' * 64); productName = $engine.ProductName
+                    productVersion = '6.5.6'
+                    install    = '/S'; scenarios = @('Install')
+                    verifiedAt = '2026-01-01'; verifiedBy = 't'
+                })
+            $hit = @((& $script:src -Path $p).Candidates | Where-Object { $_.Stage -eq 0 })[0]
+            $hit.SourceRef | Should -Match ([regex]::Escape('6.5.6'))
+        }
+
         It 'does not invent a same-product hit when neither side has a product name' {
             $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
             Write-Store @(@{
