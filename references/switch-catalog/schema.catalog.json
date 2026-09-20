@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/pt1987/claude-code-psadt-skill/references/switch-catalog/schema.catalog.json",
   "title": "psadt-deploy switch catalog",
-  "description": "Shape of engine-defaults.json and of the per-user verified-switch store. Enforced by tests/SwitchCatalog.Tests.ps1, so a hand-edit that drops a required field fails the suite instead of failing a package months later.",
+  "description": "Shape of engine-defaults.json, the shipped ENGINE catalog. The machine-local verified-switch store has its own schema in schema.verified-switches.json - it is a different file with a different root, and this schema would reject it. Enforced by tests/SwitchCatalog.Tests.ps1, so a hand-edit that drops a required field fails the suite instead of failing a package months later.",
   "type": "object",
   "required": ["schemaVersion", "engines"],
   "additionalProperties": false,

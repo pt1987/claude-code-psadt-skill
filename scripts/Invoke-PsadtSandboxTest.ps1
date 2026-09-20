@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS  Runs the COMPLETE Install/Detect/Uninstall/Reinstall/Repair loop inside a throwaway Windows Sandbox, every action as SYSTEM.
 .DESCRIPTION
   The complement to Invoke-PsadtSystemTest.ps1, which performs ONE action on the machine it runs on and
@@ -1784,6 +1784,26 @@ foreach ($s in @($result.steps)) {
         $installedAppFacts = $s.installedApp
         break
     }
+}
+
+# --- 9. Record the proven switch -------------------------------------------------------------------
+# Only a GREEN full gate reaches an entry, and Set-PsadtVerifiedSwitch.ps1 re-checks that itself rather
+# than trusting this call site. Best-effort on purpose: a store that cannot be written is untidy, never
+# a reason to fail a run that passed. -GenerateOnly returns long before this point, so a no-VM run
+# never touches the store.
+try {
+    $vs = & (Join-Path $PSScriptRoot 'Set-PsadtVerifiedSwitch.ps1') `
+        -PackagePath $PackagePath -Verdict $result.verdict -Scenarios @($result.scenarios) `
+        -InstalledApp $installedAppFacts -EvidenceRef $resultPath
+    if ($vs.Written) {
+        Write-Host ("  verified-switch store: {0} {1}" -f $vs.Action, $vs.Sha256) -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host ("  verified-switch store: not recorded - {0}" -f $vs.Reason) -ForegroundColor DarkGray
+    }
+}
+catch {
+    Write-Warning "Could not record the verified switch: $($_.Exception.Message)"
 }
 
 return [pscustomobject]@{

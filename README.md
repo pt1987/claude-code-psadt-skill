@@ -171,6 +171,7 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.35.0 - Most of a packaging run was the skill, not the package.** A performance release: one
-VM run instead of two, guest-preparation overhead cut from 139 s to 81 s, a generator for the EXE
-installer family, and a partial SYSTEM test can no longer satisfy the upload gate.
+Latest: **0.36.0 - The store that had a reader, a rank and no writer.** The verified-switch store has
+been read since 0.30.0 and was never written by anything, so every run started from a blank slate. A
+GREEN full sandbox gate now records the proven switch, keyed by the installer hash, and the next
+package of that file gets it at `verified` confidence instead of paying for the research again.

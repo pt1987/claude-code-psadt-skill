@@ -117,4 +117,13 @@ Describe 'New-MsiPackage array parameters (0.26.2)' {
         $expandAt  | Should -BeGreaterThan 0
         $literalAt | Should -BeGreaterThan $expandAt
     }
+
+    It 'records no research.switches, because MSI switches are not worth storing' {
+        # Deliberate, and checked rather than left as a comment. msiexec closes at high confidence from
+        # the file header without a store, and the part that varies (TRANSFORMS, licence properties) is
+        # site configuration rather than a property of the file. Set-PsadtVerifiedSwitch.ps1 skips MSI
+        # packages for the same reason.
+        $raw = Get-Content $script:src -Raw
+        $raw | Should -Not -Match 'research\.switches'
+    }
 }

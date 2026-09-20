@@ -279,6 +279,17 @@ than the fan-out being replaced. The rider stays visible in `Deferred[]` as `fol
 prompt is told to answer it too. So the worst case is three agents, the common case two, and a
 re-package the store already knows can be zero.
 
+**That store is written here, and only here.** After a GREEN full gate this phase calls
+`scripts/Set-PsadtVerifiedSwitch.ps1`, which records the proven switch keyed by the installer's SHA256
+in `%LOCALAPPDATA%\psadt-deploy\verified-switches.json`. The gate is re-checked inside that script, not
+trusted from the call site: `-Quick` reports `GREEN_PARTIAL` and records nothing, and there is no force
+switch, because `verified` outranks every other stage and a wrong entry is adopted silently by the next
+package. MSI packages are skipped on purpose - msiexec's switches already close at `high` from the file
+header, and the part that varies is `TRANSFORMS`/licence properties, which are site configuration rather
+than a property of the file. A new version gets a new hash and therefore its own entry, so the store
+accumulates a per-version history; the newest proof is kept first, because the reader's same-product
+fallback takes the first match.
+
 Two questions can **never** be closed locally, and the ladder says so with `CanCloseLocally = $false`:
 the **external runtime prerequisite** (1.4) and **known Intune pitfalls**. A statement about other
 people's fleets does not follow from this machine. Those are the agents worth spending.

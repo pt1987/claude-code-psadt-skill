@@ -1,4 +1,4 @@
-#Requires -Modules PSAppDeployToolkit
+﻿#Requires -Modules PSAppDeployToolkit
 <#
     New-ExePackage.ps1 - reusable PSADT v4.1.8 package generator for EXE installers
     (Inno Setup, NSIS, InstallShield, electron-builder and the rest of the non-MSI family).
@@ -706,10 +706,20 @@ Assert-NoUnreplacedToken $detect "Detect-$Name.ps1"
     'package.type'           = 'installer'
     'package.installerTech'  = 'exe'
     'package.sourceStrategy' = 'bundle'
+    # The installer file name is recorded because nothing else names it. Files\ may legitimately hold
+    # several files, and a consumer that recovers the installer by parsing it off the front of
+    # research.switches.install breaks on the first vendor who ships "Setup 1.2.exe".
+    'package.installerFile'  = $InstallerFile
     'research.switches'      = @{
-        install   = "$InstallerFile $InstallArgs"
-        uninstall = "<resolved from ARP at run time> $UninstallArgs, then WAIT until $VerifyRelativePath is gone"
-        repair    = "Re-run the installer with the install switches"
+        # install/uninstall stay prose, because the dossier prints them for a human. installArgs and
+        # uninstallArgs are the machine-readable pair: arguments only, no executable, nothing to parse.
+        # The verified-switch store consumes those two; handing it the prose would put an English
+        # sentence into a field a later package reads as a command line.
+        install       = "$InstallerFile $InstallArgs"
+        installArgs   = $InstallArgs
+        uninstall     = "<resolved from ARP at run time> $UninstallArgs, then WAIT until $VerifyRelativePath is gone"
+        uninstallArgs = $UninstallArgs
+        repair        = "Re-run the installer with the install switches"
     }
 } | Out-Null
 

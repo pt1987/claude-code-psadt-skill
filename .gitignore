@@ -34,3 +34,7 @@ docs/superpowers/
 
 # Eval run output - HTML reports and per-run JSON, regenerated on every `claude plugin eval` run
 evals/results/
+
+# Machine-local record of what a run on THIS machine proved. Never shared: an entry asserts proof,
+# and that claim does not travel to another machine.
+verified-switches.json
