@@ -7,7 +7,7 @@ BeforeAll {
     function New-Pkg {
         # Since 0.21.0 a package without a manifest is RED (check 8), so the helper writes a complete
         # identity by default; -NoManifest / -PartialManifest exercise the gate itself.
-        param([string]$Launcher, [string]$Ext, [string]$Bundled, [switch]$NoManifest, [switch]$PartialManifest)
+        param([string]$Launcher, [string]$Ext, [string]$Bundled, [switch]$NoManifest, [switch]$PartialManifest, [string]$InstallArgs)
         $dir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
         [System.IO.File]::WriteAllText((Join-Path $dir 'Invoke-AppDeployToolkit.ps1'), $Launcher, $script:utf8NoBom)
@@ -15,9 +15,11 @@ BeforeAll {
             $mf = if ($PartialManifest) {
                 @{ schema = 1; app = @{ name = 'OnlyAName' } }
             } else {
-                @{ schema = 1
+                $base = @{ schema = 1
                    app     = @{ vendor = 'Contoso'; name = 'App'; version = '1.0'; arch = 'x64' }
                    package = @{ type = 'installer' } }
+                if ($InstallArgs) { $base['research'] = @{ switches = @{ installArgs = $InstallArgs } } }
+                $base
             }
             [System.IO.File]::WriteAllText((Join-Path $dir 'psadt-package.json'), ($mf | ConvertTo-Json -Depth 8), $script:utf8NoBom)
         }
@@ -234,6 +236,91 @@ try { Set-StrictMode -Version 3 } catch { }
         $r = & $script:pf -PackagePath (New-Pkg -Launcher $old)
         ($r.Checks | Where-Object { $_.Name -eq 'LogName' }).Status | Should -Be 'WARN'
         $r.Overall | Should -Be 'GREEN'      # a WARN never flips the verdict
+    }
+}
+
+Describe 'Pre-flight check 8b: SwitchSync - the manifest must match the launcher (0.39.0)' {
+    BeforeAll {
+        # The store records research.switches.installArgs as the switch a GREEN gate proved. A generator
+        # writes that field at scaffold time, so a hand-patched launcher makes the manifest, and then the
+        # store, describe a package nobody ever tested. Found twice in one eleven-package run.
+        $script:exeLauncher = @'
+[CmdletBinding()]
+param([string]$DeploymentType)
+$adtSession = @{ AppName = 'App'; LogName = 'x.log' }
+function Install-ADTDeployment {
+    Start-ADTProcess -FilePath "$($adtSession.DirFiles)\setup.exe" -ArgumentList '/S /CONFIG=on'
+}
+function Uninstall-ADTDeployment { }
+function Repair-ADTDeployment { }
+'@
+    }
+
+    It 'PASSes when the manifest says what the launcher runs' {
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $script:exeLauncher -InstallArgs '/S /CONFIG=on')
+        ($r.Checks | Where-Object { $_.Name -eq 'SwitchSync' }).Status | Should -Be 'PASS'
+        $r.Overall | Should -Be 'GREEN'
+    }
+
+    It 'is RED when the manifest omits a switch the launcher passes, and shows both' {
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $script:exeLauncher -InstallArgs '/S')
+        $c = $r.Checks | Where-Object { $_.Name -eq 'SwitchSync' }
+        $c.Status | Should -Be 'FAIL'
+        $c.Detail | Should -BeLike "*manifest='/S'*"
+        $c.Detail | Should -BeLike '*/CONFIG=on*'
+        $r.Overall | Should -Be 'RED'
+    }
+
+    It 'normalises the run-time SupportFiles path the launcher builds' {
+        $l = @'
+[CmdletBinding()]
+param([string]$DeploymentType)
+$adtSession = @{ AppName = 'App'; LogName = 'x.log' }
+function Install-ADTDeployment {
+    Start-ADTProcess -FilePath "$($adtSession.DirFiles)\setup.exe" -ArgumentList "/S /INI=$($adtSession.DirSupportFiles)\app.ini"
+}
+function Uninstall-ADTDeployment { }
+function Repair-ADTDeployment { }
+'@
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $l -InstallArgs '/S /INI=<SupportFiles>\app.ini')
+        ($r.Checks | Where-Object { $_.Name -eq 'SwitchSync' }).Status | Should -Be 'PASS'
+    }
+
+    It 'compares only the additional arguments for an MSI package' {
+        $l = @'
+[CmdletBinding()]
+param([string]$DeploymentType)
+$adtSession = @{ AppName = 'App'; LogName = 'x.log' }
+function Install-ADTDeployment {
+    Start-ADTMsiProcess -Action Install -FilePath "$($adtSession.DirFiles)\app.msi" -AdditionalArgumentList 'FOO=1'
+}
+function Uninstall-ADTDeployment { }
+function Repair-ADTDeployment { }
+'@
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $l -InstallArgs '/qn /norestart FOO=1')
+        ($r.Checks | Where-Object { $_.Name -eq 'SwitchSync' }).Status | Should -Be 'PASS'
+    }
+
+    It 'catches an MSI whose manifest claims a property the launcher never passes' {
+        $l = @'
+[CmdletBinding()]
+param([string]$DeploymentType)
+$adtSession = @{ AppName = 'App'; LogName = 'x.log' }
+function Install-ADTDeployment {
+    Start-ADTMsiProcess -Action Install -FilePath "$($adtSession.DirFiles)\app.msi"
+}
+function Uninstall-ADTDeployment { }
+function Repair-ADTDeployment { }
+'@
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $l -InstallArgs '/qn /norestart FOO=1')
+        ($r.Checks | Where-Object { $_.Name -eq 'SwitchSync' }).Status | Should -Be 'FAIL'
+        $r.Overall | Should -Be 'RED'
+    }
+
+    It 'says nothing at all when the manifest records no switches, so older packages stay green' {
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $script:exeLauncher)
+        @($r.Checks | Where-Object { $_.Name -eq 'SwitchSync' }).Count | Should -Be 0
+        $r.Overall | Should -Be 'GREEN'
     }
 }
 

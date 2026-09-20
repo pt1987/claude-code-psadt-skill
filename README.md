@@ -171,8 +171,8 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.38.0 - The store named a version that never existed.** A wrapped installer reports the
-WRAPPER's version in its PE header, so every Mozilla full installer called itself `18.05` - the version
-of the 7-Zip SFX module around it. That string was not decoration: it was handed to research sub-agents
-as the provenance of the store's proof. The reader now names the application version instead, and the
-same-product branch it lives in has its first real test.
+Latest: **0.39.0 - A manifest that lies is worse than one that is missing.** The verified-switch store
+records `research.switches.installArgs`, which a generator writes at scaffold time - so a hand-patched
+launcher makes the store publish a switch nobody tested. Found twice in one eleven-package run: the
+Thunderbird entry would have served `/S` alone, installing without the configuration file and leaving
+the self-updater on. The new `SwitchSync` pre-flight check compares the two and FAILs on a mismatch.

@@ -2,6 +2,36 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.39.0 - 2026-09-20 - A manifest that lies is worse than one that is missing
+
+The verified-switch store takes the manifest at its word: `Set-PsadtVerifiedSwitch.ps1` records
+`research.switches.installArgs` as the switch a GREEN gate proved. A generator writes that field at
+SCAFFOLD time. So the moment a launcher is patched by hand, the manifest keeps describing the package
+that was scaffolded, and the store then publishes a switch nobody ever tested.
+
+Found twice in a single eleven-package run, and only because someone asked whether the entries were
+right:
+
+| package | manifest said | launcher actually ran |
+|---|---|---|
+| Thunderbird ESR | `/S` | `/S /INI=<SupportFiles>\thunderbird-install.ini` |
+| WinSCP | no `/MERGETASKS` | `/MERGETASKS=!searchpath,!enableupdates` |
+
+The Thunderbird entry is the instructive one. `/S` alone installs **without the configuration file**, so
+the store would have served a switch that leaves Mozilla's self-updater running. Both gates were re-run
+after correcting the manifests, so the store now records what was proven rather than what was claimed.
+
+**New pre-flight check `SwitchSync`.** It reads the install arguments out of `Install-ADTDeployment` -
+`-ArgumentList` for an EXE, `-AdditionalArgumentList` for an MSI - normalises the run-time paths the
+launcher builds (`$($adtSession.DirSupportFiles)` against the manifest's `<SupportFiles>`), and compares.
+A mismatch is **FAIL**, not WARN: `rule:manifest-is-truth` makes the manifest the single source of truth
+per app, pre-flight already FAILs when it is missing, and a WARN is exactly what got walked past in the
+run that produced this bug. A package whose manifest records no switches at all is not checked, so
+nothing older turns red.
+
+All 21 entries in the development machine's store were re-audited end to end afterwards: launcher equals
+manifest equals store, every entry carrying all five scenarios.
+
 ## 0.38.0 - 2026-09-20 - The store named a version that never existed
 
 `Get-PsadtInstallerEngine.ps1` reads `productVersion` out of the PE header. For a WRAPPED installer that
