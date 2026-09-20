@@ -2,6 +2,38 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.37.0 - 2026-09-20 - The MSI skip was the wrong half of a correct sentence
+
+0.36.0 gave the verified-switch store its writer and had it skip MSI packages, on the grounds that
+msiexec's switches are deterministic. That reasoning confused two different things. An MSI's silent
+SWITCH is indeed deterministic and readable from the file header. Its PROPERTIES are not, and they are
+the expensive half of an MSI package:
+
+| package | what the skip was throwing away |
+|---|---|
+| VLC | the feature hierarchy, which had to be read out of the MSI database because the facts script does not return `Feature_Parent` |
+| Temurin | `ADDLOCAL` replaces the default set, so omitting `FeatureEnvironment` drops the PATH entry silently |
+| LibreOffice | the property set a failed gate run established, after `REMOVE=` without `ADDLOCAL` installed nothing and returned 0 |
+| PuTTY | features named explicitly, because `MigrateFeatures` defeats the level-2 default |
+| 7-Zip | `MSIRESTARTMANAGERCONTROL=Disable`, from the Explorer-lock research |
+
+**MSI packages are recorded now.** What is refused instead is a property that looks like it carries a
+secret - `LICENSE`, `SERIAL`, `PIDKEY`, `TOKEN`, `PASSWORD` and friends - because the store is a plain
+file in the profile and replaying one tenant's key as a verified switch for the next package would be
+worse than no entry. That is a guard on secrets, not on a file format.
+
+**`Get-PsadtInstallerEngine.ps1` now reports identity for MSI files.** It read ProductName, version and
+publisher through `FileVersionInfo`, which returns nothing for a compound file, so every MSI came back
+with a null product name. That is not cosmetic: the store's "earlier build of the same product" fallback
+keys on ProductName, so the path was unreachable for the entire MSI class. The three properties are read
+from the database the file already is, best effort, and a damaged or protected database still leaves the
+engine verdict intact.
+
+**`New-MsiPackage.ps1`** records `package.installerFile`, `package.productCode` and the machine-readable
+switch fields, the same way the EXE generator does since 0.36.0.
+
+The store on the development machine now holds all ten applications from the 2026-09-18 benchmark run,
+with per-version entries, ProductCodes and the arguments each gate actually proved.
 ## 0.36.0 - 2026-09-20 - The store that had a reader, a rank and no writer
 
 `%LOCALAPPDATA%\psadt-deploy\verified-switches.json` has been read since 0.30.0. Stage 0 of

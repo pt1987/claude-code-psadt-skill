@@ -36,6 +36,14 @@
           "type": ["string", "null"],
           "description": "ProductVersion as the binary reports it. Shown to the operator when an earlier build of the same product is served at reduced confidence."
         },
+        "installerTech": {
+          "type": ["string", "null"],
+          "description": "How to read the install field: 'msi' means msiexec arguments plus the researched properties, 'exe' means the installer's own switches."
+        },
+        "productCode": {
+          "type": ["string", "null"],
+          "description": "MSI ProductCode of the build this entry describes. Version-specific by design, which is why it belongs on the entry rather than being looked up."
+        },
         "install": {
           "type": "string",
           "description": "Argument string handed to the installer executable, without the executable itself. Same contract as the engine catalog's install field."

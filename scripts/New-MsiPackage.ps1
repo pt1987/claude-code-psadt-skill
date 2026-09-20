@@ -359,7 +359,19 @@ $detect = $detect.Replace('__NAME__', $Name).Replace('__APPNAME__', $AppName).Re
     'package.name'           = $logStem
     'package.type'           = 'installer'
     'package.installerTech'  = 'msi'
+    # Recorded for the verified-switch store. An MSI's silent switch is deterministic, but its PROPERTIES
+    # are not: ADDLOCAL feature selections, update-check and shortcut properties are researched per
+    # application and are the expensive half of an MSI package.
+    'package.installerFile'  = $InstallerFile
+    'package.productCode'    = $ProductCode
     'package.sourceStrategy' = 'bundle'
+    'research.switches'      = @{
+        install       = "msiexec /i `"$InstallerFile`" /qn /norestart$(if ($AdditionalArgs) { " $AdditionalArgs" })"
+        installArgs   = "/qn /norestart$(if ($AdditionalArgs) { " $AdditionalArgs" })"
+        uninstall     = "msiexec /x $ProductCode /qn /norestart"
+        uninstallArgs = '/qn /norestart'
+        repair        = "msiexec /fomus $ProductCode /qn /norestart"
+    }
 } | Out-Null
 
 Write-Output "PACKAGE_OK: $pkg"
