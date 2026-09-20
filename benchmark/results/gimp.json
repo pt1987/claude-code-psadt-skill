@@ -1,0 +1,17 @@
+{
+  "key": "gimp",
+  "name": "GIMP",
+  "packagePath": "C:\\PSADT\\Packages\\GIMP",
+  "outputFolder": "C:\\PSADT\\Output\\The_GIMP_Team_GIMP_3.2.6_x64",
+  "verdict": "GREEN",
+  "scenarios": [
+    "Install",
+    "Uninstall",
+    "Reinstall",
+    "Repair",
+    "FinalUninstall"
+  ],
+  "unencryptedSize": 199792032,
+  "version": "3.2.6",
+  "productCode": ""
+}

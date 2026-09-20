@@ -1,0 +1,268 @@
+{
+  "Verdict": "GREEN",
+  "Steps": [
+    {
+      "step": "Elevation",
+      "elevated": true,
+      "identity": "BA406E9C-A5A4-4\\WDAGUtilityAccount"
+    },
+    {
+      "step": "SystemTaskCanary",
+      "exitCode": 0,
+      "ranAs": "nt-autorit„t\\system",
+      "timedOut": false
+    },
+    {
+      "step": "GuestPrepare",
+      "smartAppControlSeconds": 0,
+      "wmiSeconds": 20,
+      "wmi": "OK after winmgmt /resetrepository (was: Win32_ComputerSystem returned nothing (access denied or repository damaged))",
+      "resourcesShimmed": "Microsoft.PowerShell.Archive\\de-DE, Microsoft.PowerShell.Archive\\ArchiveResources.psd1 (root fallback)",
+      "trustedPublisher": "none supplied",
+      "uiCulture": "de-DE",
+      "smartAppControl": "registry set + policies refreshed",
+      "guestPrepareSeconds": 20
+    },
+    {
+      "step": "GuestStaging",
+      "exitCode": 1,
+      "seconds": 0,
+      "sizeMb": 22
+    },
+    {
+      "step": "PsadtModuleCanary",
+      "exitCode": 0,
+      "result": "PSADT_MODULE_OK [2026-09-18T12:28:07.3590846+02:00] [Initialization] [Open-ADTSession] [Info] :: ------------------------------------------------------------------------------- [2026-09-18T12:28:07.3927566+02:00] [Initialization] [Open-ADTSession] [Info] :: [PSADT_SandboxCanary_1.0] install started. [2026-09-18T12:28:07.3968438+02:00] [Initialization] [Open-ADTSession] [Info] :: [PSAppDeployToolkit] module version is [4.1.8]. [2026-09-18T12:28:07.4017655+02:00] [Initialization] [Open-ADTSession] [Info] :: [PSAppDeployToolkit] module imported in [6,454327] seconds. [2026-09-18T12:28:07.4047284+",
+      "timedOut": false
+    },
+    {
+      "step": "Install",
+      "exitCode": 0,
+      "seconds": 20,
+      "installedApp": [
+        {
+          "DisplayName": "7-Zip 26.03 (x64 edition)",
+          "DisplayVersion": "26.03.00.0",
+          "Publisher": "Igor Pavlov",
+          "UninstallString": "MsiExec.exe /I{23170F69-40C1-2702-2603-000001000000}",
+          "QuietUninstallString": null,
+          "InstallLocation": ""
+        }
+      ],
+      "success": true,
+      "timedOut": false
+    },
+    {
+      "step": "DetectionAfterInstall",
+      "stdout": "Detected: 7-Zip 26.03 (x64 edition) 26.03.00.0",
+      "exitCode": 0,
+      "detected": true,
+      "timedOut": false
+    },
+    {
+      "step": "Uninstall",
+      "exitCode": 0,
+      "seconds": 21,
+      "success": true,
+      "timedOut": false
+    },
+    {
+      "step": "DetectionAfterUninstall",
+      "stdout": "",
+      "exitCode": 0,
+      "detected": false,
+      "timedOut": false
+    },
+    {
+      "step": "Reinstall",
+      "exitCode": 0,
+      "seconds": 21,
+      "installedApp": [
+        {
+          "DisplayName": "7-Zip 26.03 (x64 edition)",
+          "DisplayVersion": "26.03.00.0",
+          "Publisher": "Igor Pavlov",
+          "UninstallString": "MsiExec.exe /I{23170F69-40C1-2702-2603-000001000000}",
+          "QuietUninstallString": null,
+          "InstallLocation": ""
+        }
+      ],
+      "success": true,
+      "timedOut": false
+    },
+    {
+      "step": "DetectionAfterReinstall",
+      "stdout": "Detected: 7-Zip 26.03 (x64 edition) 26.03.00.0",
+      "exitCode": 0,
+      "detected": true,
+      "timedOut": false
+    },
+    {
+      "step": "Repair",
+      "exitCode": 0,
+      "seconds": 20,
+      "installedApp": [
+        {
+          "DisplayName": "7-Zip 26.03 (x64 edition)",
+          "DisplayVersion": "26.03.00.0",
+          "Publisher": "Igor Pavlov",
+          "UninstallString": "MsiExec.exe /I{23170F69-40C1-2702-2603-000001000000}",
+          "QuietUninstallString": null,
+          "InstallLocation": ""
+        }
+      ],
+      "success": true,
+      "timedOut": false
+    },
+    {
+      "step": "DetectionAfterRepair",
+      "stdout": "Detected: 7-Zip 26.03 (x64 edition) 26.03.00.0",
+      "exitCode": 0,
+      "detected": true,
+      "timedOut": false
+    },
+    {
+      "step": "FinalUninstall",
+      "exitCode": 0,
+      "seconds": 20,
+      "success": true,
+      "timedOut": false
+    },
+    {
+      "step": "DetectionAfterFinalUninstall",
+      "stdout": "",
+      "exitCode": 0,
+      "detected": false,
+      "timedOut": false
+    }
+  ],
+  "FailedAssertions": [],
+  "Assertions": [
+    {
+      "name": "Install exit code",
+      "ok": true,
+      "detail": "exit=0 timedOut=False"
+    },
+    {
+      "name": "present after install : C:\\Program Files\\7-Zip\\7zFM.exe",
+      "ok": true,
+      "detail": "exists=True expected=True"
+    },
+    {
+      "name": "DetectionAfterInstall not timed out",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DetectionAfterInstall exit code 0",
+      "ok": true,
+      "detail": "exit=0 - Intune reads any non-zero exit as a detection ERROR, not as absent"
+    },
+    {
+      "name": "DetectionAfterInstall detected=True",
+      "ok": true,
+      "detail": "stdout='Detected: 7-Zip 26.03 (x64 edition) 26.03.00.0'"
+    },
+    {
+      "name": "Uninstall exit code",
+      "ok": true,
+      "detail": "exit=0 timedOut=False"
+    },
+    {
+      "name": "absent after uninstall : C:\\Program Files\\7-Zip\\7zFM.exe",
+      "ok": true,
+      "detail": "exists=False expected=False"
+    },
+    {
+      "name": "DetectionAfterUninstall not timed out",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DetectionAfterUninstall exit code 0",
+      "ok": true,
+      "detail": "exit=0 - Intune reads any non-zero exit as a detection ERROR, not as absent"
+    },
+    {
+      "name": "DetectionAfterUninstall detected=False",
+      "ok": true,
+      "detail": "stdout=''"
+    },
+    {
+      "name": "Reinstall exit code",
+      "ok": true,
+      "detail": "exit=0 timedOut=False"
+    },
+    {
+      "name": "DetectionAfterReinstall not timed out",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DetectionAfterReinstall exit code 0",
+      "ok": true,
+      "detail": "exit=0 - Intune reads any non-zero exit as a detection ERROR, not as absent"
+    },
+    {
+      "name": "DetectionAfterReinstall detected=True",
+      "ok": true,
+      "detail": "stdout='Detected: 7-Zip 26.03 (x64 edition) 26.03.00.0'"
+    },
+    {
+      "name": "Repair exit code",
+      "ok": true,
+      "detail": "exit=0 timedOut=False"
+    },
+    {
+      "name": "DetectionAfterRepair not timed out",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DetectionAfterRepair exit code 0",
+      "ok": true,
+      "detail": "exit=0 - Intune reads any non-zero exit as a detection ERROR, not as absent"
+    },
+    {
+      "name": "DetectionAfterRepair detected=True",
+      "ok": true,
+      "detail": "stdout='Detected: 7-Zip 26.03 (x64 edition) 26.03.00.0'"
+    },
+    {
+      "name": "FinalUninstall exit code",
+      "ok": true,
+      "detail": "exit=0 timedOut=False"
+    },
+    {
+      "name": "DetectionAfterFinalUninstall not timed out",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DetectionAfterFinalUninstall exit code 0",
+      "ok": true,
+      "detail": "exit=0 - Intune reads any non-zero exit as a detection ERROR, not as absent"
+    },
+    {
+      "name": "DetectionAfterFinalUninstall detected=False",
+      "ok": true,
+      "detail": "stdout=''"
+    }
+  ],
+  "InstalledAppFacts": [
+    {
+      "DisplayName": "7-Zip 26.03 (x64 edition)",
+      "DisplayVersion": "26.03.00.0",
+      "Publisher": "Igor Pavlov",
+      "UninstallString": "MsiExec.exe /I{23170F69-40C1-2702-2603-000001000000}",
+      "QuietUninstallString": null,
+      "InstallLocation": ""
+    }
+  ],
+  "Error": null,
+  "ResultPath": "C:\\PSADT\\Output\\Igor_Pavlov_7-Zip_26.03_x64\\SandboxTest\\result.json",
+  "LogFolder": "C:\\PSADT\\Output\\Igor_Pavlov_7-Zip_26.03_x64\\SandboxTest\\psadt-logs",
+  "EvidenceFolder": "C:\\PSADT\\Output\\Igor_Pavlov_7-Zip_26.03_x64\\SandboxTest",
+  "SandboxWorkFolder": null,
+  "DurationMinutes": 3.6
+}

@@ -1,0 +1,17 @@
+{
+  "key": "git",
+  "name": "Git for Windows",
+  "packagePath": "C:\\PSADT\\Packages\\GitForWindows",
+  "outputFolder": "C:\\PSADT\\Output\\The_Git_Development_Community_Git_for_Windows_2.55.0.5_x64",
+  "verdict": "GREEN",
+  "scenarios": [
+    "Install",
+    "Uninstall",
+    "Reinstall",
+    "Repair",
+    "FinalUninstall"
+  ],
+  "unencryptedSize": 74881251,
+  "version": "2.55.0.5",
+  "productCode": ""
+}
