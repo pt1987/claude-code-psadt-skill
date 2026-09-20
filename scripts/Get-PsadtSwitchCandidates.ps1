@@ -122,10 +122,17 @@ if ($stagesRequested -contains 0) {
                         $_.productName -and $engineInfo.ProductName -and $_.productName -eq $engineInfo.ProductName
                     })[0]
                 if ($sameProduct) {
+                    # productVersion comes from the PE header, which for a WRAPPED installer is the
+                    # wrapper's version, not the application's: every Mozilla full installer reports
+                    # 18.05, the version of the 7-Zip SFX module around it. appVersion is the version
+                    # the package declared, so it is the one a reader can act on. This string is not
+                    # cosmetic - Get-PsadtLocalEvidence.ps1 puts it into the KnownContext handed to a
+                    # research sub-agent, and "previous version 18.05" for Firefox is a false claim.
+                    $prevVersion = if ($sameProduct.appVersion) { $sameProduct.appVersion } else { $sameProduct.productVersion }
                     $candidates.Add([pscustomobject]@{
                             Stage      = 0
                             Source     = 'cache'
-                            SourceRef  = "previous version $($sameProduct.productVersion), verified $($sameProduct.verifiedAt)"
+                            SourceRef  = "previous version $prevVersion, verified $($sameProduct.verifiedAt)"
                             Confidence = 'medium'
                             HashMatch  = $false
                             Install    = $sameProduct.install

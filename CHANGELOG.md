@@ -2,6 +2,71 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.38.0 - 2026-09-20 - The store named a version that never existed
+
+`Get-PsadtInstallerEngine.ps1` reads `productVersion` out of the PE header. For a WRAPPED installer that
+is the wrapper's version, not the application's, and the store recorded it as such:
+
+| product | productVersion in the store | appVersion |
+|---|---|---|
+| Firefox ESR | `18.05` | `153.3.0` |
+| Greenshot | `1.3.315+420b08b` | `1.3.315` |
+
+`18.05` is the version of the 7-Zip SFX module Mozilla wraps its NSIS installer in. Extracting the
+Thunderbird installer shows it by name: `7zS.sfx.exe`, dated **2018-08-31**, sitting inside a 2026 build.
+
+**This was not cosmetic.** `Get-PsadtSwitchCandidates.ps1` built the same-product `SourceRef` from
+`productVersion`, and `Get-PsadtLocalEvidence.ps1:688` feeds that string into the **KnownContext handed
+to a research sub-agent**. The next Firefox build would have told an agent that the store's proof came
+from "previous version 18.05" - a Firefox version that has never existed. The rule that researched
+content is data, not instructions, cuts both ways: what this skill hands an agent has to be true.
+
+The reader now prefers `appVersion` and falls back to `productVersion` for entries written before that
+field existed.
+
+Proven rather than argued: a byte-appended copy of the Firefox installer keeps its PE version info but
+gets a new SHA256, which is exactly the shape of "a newer build of a product the store knows".
+
+- before: `previous version 18.05, verified 2026-09-20`
+- after: `previous version 153.3.0, verified 2026-09-20`
+
+**The branch that needed fixing had never been tested.** `falls back to an earlier build of the same
+product` builds a synthetic PE, which carries no version resource, so `ProductName` is null and the test
+always took its own else-branch. The same-product path had never once been exercised. The two new tests
+use a real PE for that reason, and the first of them fails without the fix.
+
+### Appendix L grew by what eleven packages proved
+
+A second ten-application run (plus one dependency package) produced five findings that a switch table
+cannot hold. Each one is a measured gate result, not a reading:
+
+**WiX Burn, and the one that cost two red runs.** Installed as SYSTEM, a Burn bundle caches itself in the
+SYSTEM account's own profile and records an `UninstallString` under
+`C:\Windows\system32\config\systemprofile\...`. The Burn engine is 32-bit, so the file it actually
+wrote sits under `SysWOW64\config\systemprofile`. PSADT runs 64-bit, resolves `system32` literally, and
+the uninstall fails with 60001 having removed nothing - while Install in the same run was GREEN. Uninstall
+through the bundle in `Files\` instead.
+
+**Burn, second:** re-running a bundle over an existing same-version install returns 1603, and the failed
+attempt poisons the FOLLOWING uninstall, which then also returns 1603. Repair is uninstall plus install,
+with a wait between the halves.
+
+**Burn, third:** a bundle registers many rows and most carry `SystemComponent=1`. Python 3.13.15 leaves
+nine of them plus a separate visible launcher row. A DisplayName prefix match catches them all, which is
+harmless for detection and fatal for uninstaller resolution, because their `UninstallString` is
+`MsiExec.exe /I{GUID}` - a MODIFY, not a removal.
+
+**An MSI that registers no Windows Installer product breaks both generators,** and the vendor admits it:
+Mozilla documents `/x` and `/uninstall` as unsupported because its MSI packages "wrap an installer.exe and
+do not really use the MSI framework". ProductCode detection returns `0x87D1041C`, `msiexec /x` returns
+1605. The full installer with `/S /INI=<absolute path>` is the route, and `/S` must be passed
+independently, because `SetSilent silent` runs only inside the check that the INI file exists.
+
+**A WiX property condition can invert a `=0`.** On KeePassXC 2.7.12, `INSTALLDESKTOPSHORTCUT=0` CREATES
+the shortcut, because the condition is a bare presence test and `"0"` is non-empty. In the same installer
+two other properties honour `=0`, but only the exact string. Prefer omission to `=0` when the intent is
+"off".
+
 ## 0.37.0 - 2026-09-20 - The MSI skip was the wrong half of a correct sentence
 
 0.36.0 gave the verified-switch store its writer and had it skip MSI packages, on the grounds that

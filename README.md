@@ -171,8 +171,8 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.37.0 - The MSI skip was the wrong half of a correct sentence.** The verified-switch store
-introduced in 0.36.0 skipped MSI packages because msiexec's switches are deterministic. Their
-PROPERTIES are not, and the researched `ADDLOCAL` selections are the expensive half. MSI packages are
-recorded now; what is refused is a property that looks like a secret. The engine probe also reports
-ProductName for MSI files, which it never could, so the same-product fallback works for them at all.
+Latest: **0.38.0 - The store named a version that never existed.** A wrapped installer reports the
+WRAPPER's version in its PE header, so every Mozilla full installer called itself `18.05` - the version
+of the 7-Zip SFX module around it. That string was not decoration: it was handed to research sub-agents
+as the provenance of the store's proof. The reader now names the application version instead, and the
+same-product branch it lives in has its first real test.
