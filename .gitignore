@@ -35,6 +35,10 @@ docs/superpowers/
 # Eval run output - HTML reports and per-run JSON, regenerated on every `claude plugin eval` run
 evals/results/
 
-# Machine-local record of what a run on THIS machine proved. Never shared: an entry asserts proof,
-# and that claim does not travel to another machine.
+# A config home can be placed INSIDE the skill folder (Get-PsadtConfig.ps1 -SkillRoot), and the
+# machine-local store that lands there must never be committed: it is this machine's own record.
 verified-switches.json
+# The SHIPPED layer is the exception, and it is deliberate. It travels with the skill so a fresh
+# installation starts with what earlier gate runs proved, keyed by installer SHA256 - the same bytes,
+# whoever ran them. A user's machine-local file extends it; the reader merges both and local wins.
+!references/switch-catalog/verified-switches.json

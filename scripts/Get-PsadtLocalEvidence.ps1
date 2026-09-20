@@ -477,7 +477,7 @@ $qDrift     = New-Question 'psadt-command-drift'  'tooling'      'PSADT command 
 # --- silent install --------------------------------------------------------------------------------
 if ($topCand -and [string](Get-Prop $topCand 'Confidence') -eq 'verified') {
     Set-Answer $qInstall ([string](Get-Prop $topCand 'Install')) 'verified' 2 'verified-switch-store' `
-        ([string](Get-Prop $topCand 'SourceRef')) 'a run on THIS machine already proved this switch for this file hash'
+        ([string](Get-Prop $topCand 'SourceRef')) 'a GREEN full gate already proved this switch for this exact file hash'
 } elseif ($isMsi) {
     Set-Answer $qInstall 'msiexec /i "{file}" /qn /norestart /l*v "{log}"' 'high' 2 'engine-catalog' `
         'engine-defaults.json engine msi' 'the compound-file header proves it is an MSI, and the msiexec command line is Microsoft''s'

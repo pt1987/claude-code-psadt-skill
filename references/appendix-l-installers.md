@@ -33,7 +33,7 @@ It reports every stage, hit or miss, so the dossier can show what was CHECKED an
 
 | Stage | Source | Confidence | What it means |
 |---|---|---|---|
-| 0 | verified-switch store (written by `scripts/Set-PsadtVerifiedSwitch.ps1` after a GREEN full gate) | `verified` (hash match) / `medium` (earlier version of the same product) | a run on THIS machine already proved it |
+| 0 | verified-switch store, TWO layers merged by hash: the one shipped in `references/switch-catalog/verified-switches.json` and the machine-local one that `scripts/Set-PsadtVerifiedSwitch.ps1` writes after a GREEN full gate | `verified` (hash match, either layer) / `medium` (earlier version of the same product) | a GREEN full gate already proved it for these exact bytes. The candidate's `Origin` says which layer, and a shipped hit says so in its notes |
 | 1 | engine default | `low` | the documented default for the engine identified in the binary |
 | 2 | winget-pkgs | `high` (hash match) / `medium` | **opt-in only** (`-WithWinget`) - WinGet is never auto-selected in this skill (App. I) |
 | 3 | Researcher | - | the Phase 2 web fan-out, when the stages above found nothing. **Gated:** `scripts/Get-PsadtLocalEvidence.ps1` has to report the question as open before an agent is dispatched, and it dispatches at most one per open question (phase 1.3, `rule:research-gate`) |

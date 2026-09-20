@@ -2,6 +2,44 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.40.0 - 2026-09-20 - The store now ships, and a user's own file extends it
+
+Until now the verified-switch store was machine-local and nothing else. Every finding a gate produced
+stayed on the machine that produced it, so a fresh installation, a second device or a colleague started
+from a blank slate and paid for the same research again. The knowledge travelled through the corpus; the
+proofs did not travel at all.
+
+**There are two layers now, merged by installer SHA256.**
+
+| layer | path | written by |
+|---|---|---|
+| shipped | `references/switch-catalog/verified-switches.json` | committed, travels with the skill |
+| local | `<config home>/verified-switches.json` | this machine's GREEN full gates |
+
+The local layer is read FIRST, so for a hash present in both, this machine's own proof wins and a shipped
+entry can never override it. Keying on the hash is what makes the merge **idempotent**: reading twice, or
+shipping an entry a machine already holds, reaches exactly the same set - one candidate, never two.
+
+**An exact SHA256 match is the same bytes,** so a shipped hit is served at `verified` like a local one.
+What differs is provenance, and that is said out loud rather than left to be assumed: the candidate
+carries `Origin`, its `SourceRef` reads "shipped with the skill", and its notes say the proof came from
+another machine. The evidence ladder's message stopped claiming "a run on THIS machine" for something
+that may not have been.
+
+**Writing stays local-only, deliberately.** `references/` is in `Update-PsadtSkill.ps1`'s `TrackedItems`
+and is replaced wholesale on update, so a writer aiming there would lose everything at the next update.
+
+**The shipped layer seeds with 21 entries** - twenty applications and one dependency package, each
+recorded by a GREEN full gate covering all five scenarios. `verifiedBy` is neutralised in the shipped
+copy: the repository is public and the local field carries an internal hostname, which has no business
+travelling with it. A test asserts that no hostname can slip back in.
+
+`Get-PsadtSwitchCandidates.ps1` gains `-ShippedStorePath`. It makes the merge testable without touching
+the file the skill really ships, and it lets a team point at one shared network file instead.
+
+A damaged layer degrades to a miss and is named, and it can no longer take the other layer down with it.
+Stage 0 also reports one miss again rather than two when a layer fails to parse.
+
 ## 0.39.0 - 2026-09-20 - A manifest that lies is worse than one that is missing
 
 The verified-switch store takes the manifest at its word: `Set-PsadtVerifiedSwitch.ps1` records
