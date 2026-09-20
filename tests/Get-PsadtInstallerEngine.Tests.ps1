@@ -169,4 +169,16 @@ Describe 'Get-PsadtInstallerEngine' {
             (Get-Content -LiteralPath $script:src -Raw) | Should -Not -Match '(?m)^\s*exit\s'
         }
     }
+
+    It 'reports ProductName for an MSI, which FileVersionInfo cannot give' {
+        # A compound file is not a PE, so FileVersionInfo returns nothing and every MSI used to come
+        # back with a null product name. The verified-switch store keys its same-product fallback on
+        # that field, so the whole MSI class could never reach it.
+        $msi = 'C:\PSADT\Packages\VLC\Files\vlc-3.0.23-win64.msi'
+        if (-not (Test-Path $msi)) { Set-ItResult -Skipped -Because 'the fixture MSI is not on this machine'; return }
+        $r = & $script:src -Path $msi
+        $r.IsMsi | Should -BeTrue
+        $r.ProductName | Should -Not -BeNullOrEmpty
+        $r.ProductVersion | Should -Not -BeNullOrEmpty
+    }
 }

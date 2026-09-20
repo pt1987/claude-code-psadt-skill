@@ -284,11 +284,12 @@ re-package the store already knows can be zero.
 in `%LOCALAPPDATA%\psadt-deploy\verified-switches.json`. The gate is re-checked inside that script, not
 trusted from the call site: `-Quick` reports `GREEN_PARTIAL` and records nothing, and there is no force
 switch, because `verified` outranks every other stage and a wrong entry is adopted silently by the next
-package. MSI packages are skipped on purpose - msiexec's switches already close at `high` from the file
-header, and the part that varies is `TRANSFORMS`/licence properties, which are site configuration rather
-than a property of the file. A new version gets a new hash and therefore its own entry, so the store
-accumulates a per-version history; the newest proof is kept first, because the reader's same-product
-fallback takes the first match.
+package. MSI packages are recorded too: an MSI's silent SWITCH is deterministic, but its PROPERTIES are
+not, and the researched `ADDLOCAL` selections are the expensive half of an MSI package. What is refused
+is a property that looks like it carries a secret, because the store is a plain file in the profile and
+replaying one tenant's licence key as a verified switch would be worse than no entry. A new version gets
+a new hash and therefore its own entry, so the store accumulates a per-version history; the newest proof
+is kept first, because the reader's same-product fallback takes the first match.
 
 Two questions can **never** be closed locally, and the ladder says so with `CanCloseLocally = $false`:
 the **external runtime prerequisite** (1.4) and **known Intune pitfalls**. A statement about other

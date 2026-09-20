@@ -118,12 +118,18 @@ Describe 'New-MsiPackage array parameters (0.26.2)' {
         $literalAt | Should -BeGreaterThan $expandAt
     }
 
-    It 'records no research.switches, because MSI switches are not worth storing' {
-        # Deliberate, and checked rather than left as a comment. msiexec closes at high confidence from
-        # the file header without a store, and the part that varies (TRANSFORMS, licence properties) is
-        # site configuration rather than a property of the file. Set-PsadtVerifiedSwitch.ps1 skips MSI
-        # packages for the same reason.
+    It 'records the installer file and the ProductCode for the verified-switch store' {
         $raw = Get-Content $script:src -Raw
-        $raw | Should -Not -Match 'research\.switches'
+        $raw | Should -Match "'package\.installerFile'\s*=\s*\`$InstallerFile"
+        $raw | Should -Match "'package\.productCode'\s*=\s*\`$ProductCode"
+    }
+
+    It 'records machine-readable switches including the researched properties' {
+        # An MSI's silent switch is deterministic; its PROPERTIES are not. ADDLOCAL selections and the
+        # update-check properties are researched per application and are the expensive half of the
+        # package, so they belong in the store.
+        $raw = Get-Content $script:src -Raw
+        $raw | Should -Match 'installArgs\s*=\s*"/qn /norestart'
+        $raw | Should -Match 'uninstallArgs\s*=\s*''/qn /norestart'''
     }
 }

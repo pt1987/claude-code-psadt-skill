@@ -313,6 +313,42 @@ else {
 # ---------------------------------------------------------------------------------------------------
 $vi = $null
 try { $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($Path) } catch { $vi = $null }
+
+# An MSI is a compound file, not a PE, so FileVersionInfo returns nothing for it and the identity fields
+# above would all be null for a file that plainly carries a name and a version. That is not cosmetic:
+# the verified-switch store keys its "earlier build of the same product" fallback on ProductName, so a
+# null here makes that path unreachable for every MSI ever probed. Three properties, read from the
+# database the file already is. Best effort, like the block around it.
+$msiProps = @{}
+if ($isMsi) {
+    try {
+        $inst = New-Object -ComObject WindowsInstaller.Installer
+        $db = $inst.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $inst, @($Path, 0))
+        $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db,
+            @("SELECT ``Property``,``Value`` FROM ``Property`` WHERE ``Property`` = 'ProductName' OR ``Property`` = 'ProductVersion' OR ``Property`` = 'Manufacturer'"))
+        $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null) | Out-Null
+        while ($true) {
+            $rec = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+            if (-not $rec) { break }
+            $k = $rec.GetType().InvokeMember('StringData', 'GetProperty', $null, $rec, @(1))
+            $v = $rec.GetType().InvokeMember('StringData', 'GetProperty', $null, $rec, @(2))
+            if ($k) { $msiProps[[string]$k] = [string]$v }
+        }
+        $view.GetType().InvokeMember('Close', 'InvokeMethod', $null, $view, $null) | Out-Null
+    }
+    catch {
+        # A damaged or password-protected database is not a probe failure. The engine is already known
+        # from the header; only the friendly name is missing.
+        $msiProps = @{}
+    }
+}
+
+function Get-Identity {
+    param([string]$MsiKey, $FromVersionInfo)
+    if ($msiProps.ContainsKey($MsiKey) -and $msiProps[$MsiKey]) { return $msiProps[$MsiKey] }
+    if ($FromVersionInfo) { return $FromVersionInfo }
+    return $null
+}
 $sigStatus = $null
 $signer = $null
 try {
@@ -335,9 +371,9 @@ $result = [pscustomobject]@{
     Confidence      = $confidence
     Evidence        = $evidence.ToArray()
     IsMsi           = $isMsi
-    ProductName     = if ($vi) { $vi.ProductName } else { $null }
-    ProductVersion  = if ($vi) { $vi.ProductVersion } else { $null }
-    Publisher       = if ($vi) { $vi.CompanyName } else { $null }
+    ProductName     = Get-Identity 'ProductName'    $(if ($vi) { $vi.ProductName })
+    ProductVersion  = Get-Identity 'ProductVersion' $(if ($vi) { $vi.ProductVersion })
+    Publisher       = Get-Identity 'Manufacturer'   $(if ($vi) { $vi.CompanyName })
     FileDescription = if ($vi) { $vi.FileDescription } else { $null }
     SectionNames    = @($sectionNames)
     OverlayOffset   = $overlayOffset

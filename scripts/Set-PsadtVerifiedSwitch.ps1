@@ -21,11 +21,17 @@
     Both halves are checked HERE rather than at the call site, so a second caller - a DEV-VM harness, a
     manual re-record - cannot skip them. There is no -Force.
 
-    MSI packages are skipped on purpose. Their silent switches close at high confidence from the
-    compound-file header without a store and without a run, so an entry would decorate a string that was
-    never in doubt. What varies in an MSI package is -AdditionalArgs, and that is site configuration
-    (TRANSFORMS=, licence properties), not a fact about the file: replaying one tenant's licence key as a
-    "verified switch" for the next package of that product would be worse than having no entry.
+    MSI packages ARE recorded, and the first version of this script was wrong to skip them. That skip
+    confused two different things: an MSI's silent SWITCH is deterministic (/qn, readable from the file
+    header), but its PROPERTIES are not. ADDLOCAL feature selections, update-check and shortcut
+    properties are researched per application and are the expensive half of an MSI package. VLC needed
+    its feature hierarchy read out of the MSI database, Temurin's ADDLOCAL silently drops the PATH entry
+    unless the default set is repeated, and LibreOffice took a failed gate run to establish.
+
+    What genuinely must not be stored is a SECRET. A property carrying a licence key or a token is site
+    configuration, and replaying one tenant's key as a "verified switch" for the next package would be
+    worse than no entry at all. Those are refused by name, with a reason, instead of throwing away the
+    whole class.
 
     IDENTITY COMES FROM THE BINARY
 
@@ -198,16 +204,20 @@ if ($pkgType -and $pkgType -ne 'installer') {
 }
 
 $tech = [string]$m.package.installerTech
-if ($tech -eq 'msi') {
-    return New-Result -Written $false -Action 'skipped' `
-        -Reason 'MSI: msiexec switches already close at high confidence from the file header, and the part that varies (TRANSFORMS, licence properties) is site configuration, not a property of the file' `
-        -Sha256 '' -StorePath $storePath -EntryCount $entries.Count
-}
-
 $installArgs = [string]$m.research.switches.installArgs
 if (-not $installArgs) {
     return New-Result -Written $false -Action 'skipped' `
         -Reason 'no research.switches.installArgs in the manifest - the prose install field is not parsed on purpose' `
+        -Sha256 '' -StorePath $storePath -EntryCount $entries.Count
+}
+
+# A property carrying a secret is site configuration, not a fact about the installer, and the store is a
+# plain file in the profile. Refused by name rather than redacted: a half-recorded argument string is a
+# command line that does not work.
+$secretish = 'LICEN[SC]E|SERIAL|PIDKEY|PRODUCTKEY|\bKEY\b|TOKEN|PASSWORD|\bPWD\b|SECRET|CREDENTIAL'
+if ($installArgs -match $secretish) {
+    return New-Result -Written $false -Action 'skipped' `
+        -Reason "the install arguments look like they carry a secret (matched '$($Matches[0])') - that is site configuration, not a property of the file" `
         -Sha256 '' -StorePath $storePath -EntryCount $entries.Count
 }
 
@@ -267,6 +277,10 @@ $entry = [ordered]@{
     # in the file and a build number in the package. Both are kept, because the reason to look an entry
     # up months later is usually "did the switches change between versions".
     appVersion     = [string]$m.app.version
+    # How to read the install field: for an MSI it is msiexec arguments plus the researched properties,
+    # for an EXE it is the installer's own switches.
+    installerTech  = $(if ($tech) { $tech } else { $null })
+    productCode    = $(if ($m.package.productCode) { [string]$m.package.productCode } else { $null })
     install        = $installArgs
     uninstall      = [string]$m.research.switches.uninstallArgs
     installLog     = $null

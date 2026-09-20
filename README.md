@@ -171,7 +171,8 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.36.0 - The store that had a reader, a rank and no writer.** The verified-switch store has
-been read since 0.30.0 and was never written by anything, so every run started from a blank slate. A
-GREEN full sandbox gate now records the proven switch, keyed by the installer hash, and the next
-package of that file gets it at `verified` confidence instead of paying for the research again.
+Latest: **0.37.0 - The MSI skip was the wrong half of a correct sentence.** The verified-switch store
+introduced in 0.36.0 skipped MSI packages because msiexec's switches are deterministic. Their
+PROPERTIES are not, and the researched `ADDLOCAL` selections are the expensive half. MSI packages are
+recorded now; what is refused is a property that looks like a secret. The engine probe also reports
+ProductName for MSI files, which it never could, so the same-product fallback works for them at all.

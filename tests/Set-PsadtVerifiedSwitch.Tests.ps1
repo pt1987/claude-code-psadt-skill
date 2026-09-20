@@ -36,7 +36,8 @@ BeforeAll {
             [switch]$NoInstallArgs,
             [int]$ExtraFiles = 0,
             [byte[]]$Overlay = @(),
-            [string]$AppVersion = '1.2.3'
+            [string]$AppVersion = '1.2.3',
+            [string]$InstallArgsOverride
         )
         $pkg = Join-Path ([System.IO.Path]::GetTempPath()) ('vsw_' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path (Join-Path $pkg 'Files') -Force | Out-Null
@@ -53,7 +54,7 @@ BeforeAll {
 
         $switches = @{ install = "$installerName /S"; repair = 'Re-run' }
         if (-not $NoInstallArgs) {
-            $switches['installArgs'] = '/S /NORESTART'
+            $switches['installArgs'] = if ($InstallArgsOverride) { $InstallArgsOverride } else { '/S /NORESTART' }
             $switches['uninstallArgs'] = '/S'
         }
 
@@ -158,12 +159,29 @@ Describe 'Set-PsadtVerifiedSwitch' {
     }
 
     Context 'what it declines to record' {
-        It 'skips an MSI package and says why' {
-            $pkg = New-FixturePackage -InstallerTech 'msi'
+        It 'refuses install arguments that look like they carry a secret' -ForEach @(
+            @{ Args = '/qn /norestart LICENSEKEY=ABC-123' }
+            @{ Args = '/qn /norestart SERIAL=99999' }
+            @{ Args = '/qn /norestart APITOKEN=zzz' }
+            @{ Args = '/qn /norestart PASSWORD=hunter2' }
+        ) {
+            # The store is a plain file in the profile, and replaying one tenant's key as a verified
+            # switch for the next package would be worse than having no entry.
+            $pkg = New-FixturePackage -InstallArgsOverride $Args
             $r = & $script:src -PackagePath $pkg -Verdict 'GREEN' -Scenarios $script:AllFive
             $r.Written | Should -BeFalse
-            $r.Reason | Should -Match 'msiexec'
-            $r.Reason | Should -Match 'site configuration'
+            $r.Reason | Should -Match 'secret'
+        }
+
+        It 'records an MSI package, because its properties are researched and its switch is not' {
+            # The first version of the writer skipped MSI outright. That confused the deterministic
+            # silent switch with the researched ADDLOCAL properties, which are the expensive half.
+            $pkg = New-FixturePackage -InstallerTech 'msi' -InstallArgsOverride '/qn /norestart ADDLOCAL=MainApplication'
+            $r = & $script:src -PackagePath $pkg -Verdict 'GREEN' -Scenarios $script:AllFive
+            $r.Written | Should -BeTrue
+            $entry = (Get-Content $script:store -Raw | ConvertFrom-Json).entries[0]
+            $entry.installerTech | Should -Be 'msi'
+            $entry.install | Should -Match 'ADDLOCAL=MainApplication'
         }
 
         It 'skips a package type that has no single installer binary' -ForEach @(
@@ -222,7 +240,8 @@ Describe 'Set-PsadtVerifiedSwitch' {
             $pkg = New-FixturePackage
             & $script:src -PackagePath $pkg -Verdict 'GREEN' -Scenarios $script:AllFive -EvidenceRef 'C:\evidence\result.json' | Out-Null
             $entry = (Get-Content $script:store -Raw | ConvertFrom-Json).entries[0]
-            foreach ($f in 'sha256', 'productName', 'productVersion', 'appVersion', 'install', 'uninstall', 'installLog',
+            foreach ($f in 'sha256', 'productName', 'productVersion', 'appVersion', 'installerTech', 'productCode',
+                'install', 'uninstall', 'installLog',
                 'noReboot', 'detectHint', 'returnCodes', 'notes', 'scenarios', 'verifiedAt', 'verifiedBy') {
                 $entry.PSObject.Properties.Name | Should -Contain $f
             }
