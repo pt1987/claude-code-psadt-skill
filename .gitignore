@@ -31,3 +31,6 @@ docs/superpowers/
 
 # Migrated legacy config/secret left behind by Initialize-PsadtSkill.ps1 -Fix (kept, never deleted)
 *.migrated
+
+# Eval run output - HTML reports and per-run JSON, regenerated on every `claude plugin eval` run
+evals/results/

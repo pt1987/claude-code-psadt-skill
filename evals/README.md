@@ -42,6 +42,53 @@ not prove the gate holds under execution - only a real run does that.
 
 ## Status
 
-Authored by hand against the case-folder format. `claude plugin eval` is currently in early access
-and was not enabled on the machine these were written on, so **the suite has not been executed and
-there is no recorded baseline yet**. Run it before relying on any number from it.
+First executed 2026-09-19 against `claude plugin eval` schema 1.1. Only the trigger group has a recorded
+baseline; the near-miss and behaviour groups have still not been run.
+
+| Case | Passed | Note |
+|---|---|---|
+| `trigger-de-7zip-version` | 3 of 3 | |
+| `trigger-de-browser-extension` | **0 of 3** | see below |
+| `trigger-de-hresult` | 3 of 3 | |
+| `trigger-de-putty` | 3 of 3 | |
+| `trigger-de-windows-feature` | **0 of 3** | see below |
+| `trigger-en-driver` | 3 of 3 | |
+| `trigger-en-exe-no-productcode` | 3 of 3 | |
+| `trigger-en-notepadpp` | 1 of 1 | run cut short by a cost ceiling |
+| `trigger-existing-package-folder` | 3 of 3 | needs `--scaffold` |
+
+Nine cases, 25 runs, about 6.70 USD.
+
+`trigger-existing-package-folder` did not load at all until this run. Its `context.scaffold_script` sat
+in `prompt.md`, where the loader rejects it with `unknown frontmatter key "context"`; `context.*` is
+`case.yaml` only. The case had therefore never executed since it was written.
+
+### The two failures
+
+Both are German, and both ask for a package type the skill supports while its `description` says nothing
+about it:
+
+- `wir wollen eine edge erweiterung auf allen firmengeraeten erzwingen. wie?`
+- `kannst du .NET Framework 3.5 auf unseren clients ueber intune aktivieren`
+
+The skill ships `New-BrowserExtensionPackage.ps1` and `New-WindowsFeaturePackage.ps1`, documents both in
+Appendix O and Appendix P, and lists both package types under Gate 1 in `SKILL.md`. The description
+mentions neither, so neither request ever reaches the skill.
+
+Widening the description is not free. The eight near-miss cases guard the opposite property, that the
+skill stays out of Autopilot, Entra-role and Intune-compliance questions, and they would have to be
+re-run to show that a wider description did not break them. Left open on purpose rather than changed
+blind.
+
+### Running it
+
+Not wired into CI, and deliberately so: at roughly 0.25 USD per run, 21 cases at `runs: 3` is not a
+per-push cost. Run it by hand before a release.
+
+```powershell
+claude plugin eval . --case "trigger-*" --scaffold --ablation none --no-publish
+```
+
+`--scaffold` is required, or `trigger-existing-package-folder` runs against an empty workspace and scores
+zero: the fixture that gives it its only signal is author-supplied bash and is off by default. Results
+land in `evals/results/`, which is git-ignored.
