@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "_comment": [
+    "Where a product's REAL logo comes from, keyed by productName - the same key Get-PsadtSwitchCandidates.ps1",
+    "already falls back on, and the one Get-PsadtInstallerEngine.ps1 reads out of the binary.",
+    "",
+    "Why this exists: acquiring one logo cost about as long as the whole Phase 6 SYSTEM test (Thunderbird,",
+    "2026-09-21: ~4 minutes against 3.8 for the gate), and it is the same search, the same two traps and the",
+    "same visual check every time. None of that changes between versions, so none of it belongs in a run.",
+    "",
+    "No source is reliably right, which is the point of recording them one at a time:",
+    "  logo.wine    stable URL, no hotlink protection, SVG (so transparent by construction), unambiguous",
+    "               slugs - but it can be YEARS out of date (its Thunderbird is the pre-2023 mark).",
+    "  wikimedia    server-rendered PNG at a width you choose - but the File: names are ambiguous (the",
+    "               Firefox BRAND mark and the Firefox BROWSER logo are different files with similar names)",
+    "               and a current mark may only exist as webp on an opaque ground.",
+    "",
+    "Every entry here was fetched, rendered and LOOKED AT once. An entry nobody has looked at is worse than",
+    "no entry, because it removes the step that would have caught it. Add one only after seeing the image.",
+    "",
+    "fetch:      'svg-rasterize' (render via headless Edge), 'png-direct', 'webp-decode' (WIC -> PNG)",
+    "postProcess: 'border-key' floods transparency in from the edges, for a mark published on an opaque",
+    "             ground. It is NOT a global white key: that would eat white INSIDE the artwork."
+  ],
+  "entries": [
+    {
+      "productName": "Firefox",
+      "publisher": "Mozilla",
+      "source": "logo.wine",
+      "url": "https://www.logo.wine/a/logo/Firefox/Firefox-Logo.wine.svg",
+      "fetch": "svg-rasterize",
+      "postProcess": null,
+      "renderedSize": 1024,
+      "transparent": true,
+      "note": "The BROWSER logo. On Wikimedia the neighbouring 'File:Firefox brand logo, 2019.svg' is the product-family flame ring with no fox, and it is the first search hit - taken by mistake on 2026-09-21. The logo.wine slug 'Firefox' is unambiguous, so it is preferred here.",
+      "verifiedAt": "2026-09-21"
+    },
+    {
+      "productName": "Thunderbird",
+      "publisher": "Mozilla",
+      "source": "wikimedia",
+      "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Thunderbird-logo-supernova.webp/1280px-Thunderbird-logo-supernova.webp",
+      "fetch": "webp-decode",
+      "postProcess": "border-key",
+      "renderedSize": 1280,
+      "transparent": false,
+      "note": "The current 'Supernova' mark, and Wikimedia publishes it ONLY as webp on an opaque white ground. logo.wine has a clean transparent SVG for Thunderbird but it is the pre-2023 bird, so it is wrong for any recent build. Keying white globally would erase the white envelope inside the mark; border-key floods in from the edges and stops at the artwork.",
+      "verifiedAt": "2026-09-21"
+    }
+  ]
+}

@@ -2,6 +2,50 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.42.0 - 2026-09-21 - Finding the logo cost as long as testing the package
+
+Acquiring one app logo took about as long as the entire Phase 6 gate. Measured on Thunderbird 156.0: a
+Commons search over twelve hits, three metadata calls, a webp decode, a background removal and two visual
+checks - roughly four minutes, against 3.8 for the five-scenario SYSTEM test. It is the same search and
+the same two traps every time, and none of it changes between versions, so none of it belongs in a run.
+
+`references/switch-catalog/logo-sources.json` records the source per `productName` - the key the
+verified-switch store already falls back on - together with **why that file and not the one next to it**,
+which is the part a later reader cannot see. `scripts/Get-PsadtAppLogo.ps1` reads it and produces a
+verified PNG.
+
+**No source is reliably right,** which is what makes a per-product record worth keeping rather than a
+preferred-source rule:
+
+| | strength | how it bites |
+|---|---|---|
+| logo.wine | stable URLs, no hotlink protection, SVG so transparent by construction, unambiguous slugs | can be years out of date - its Thunderbird is the pre-2023 bird |
+| Wikimedia | server-rendered PNG at a width you choose | ambiguous `File:` names, and a current mark may exist only as webp on an opaque ground |
+
+Both traps were caught only by looking at the picture. `File:Firefox brand logo, 2019.svg` is the
+product-family flame ring with no fox and it is the FIRST search hit - taken by mistake before the tile
+was inspected. Thunderbird's current mark is published by Commons only as webp on white.
+
+**SVG is rasterised by headless Edge,** which ships with Windows, and
+`--default-background-color=00000000` is the whole trick: with it, a transparent 1024px PNG in under three
+seconds; without it, an opaque one that has to be keyed out afterwards. Firefox now takes 2.8s where it
+took minutes.
+
+**`border-key` is not a white key.** It floods in from the border and stops at the artwork, because the
+background is only the white connected to the edge - keying every white pixel erases the white envelope
+inside the Thunderbird mark. Two tests hold that: white enclosed by artwork survives, and a concave notch
+is still reached, which four edge scans would leave filled.
+
+**An unknown product returns a miss, never a guess.** A slug guessed from a product name that 404s costs a
+minute; one that resolves hands over a confident wrong logo to a tile nobody inspects. The miss names both
+routes and says to look at the image first. A source guard asserts the script cannot build a URL out of a
+product name.
+
+The catalog ships with the two entries actually verified by eye. An entry nobody has looked at is worse
+than no entry, because it removes the step that would have caught it.
+
+Suite 738 -> 757.
+
 ## 0.41.0 - 2026-09-21 - The catalog proved it, and the ladder went looking anyway
 
 0.40.0 shipped the verified-switch store and taught rung 0 to serve the INSTALL switch out of it. The
