@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS  Returns prioritised silent-switch candidates for an installer, from local sources first, so Phase 2 stops guessing before it starts searching.
 .DESCRIPTION
   Phase 2 used to reach for the web as soon as an installer was not an MSI. That is slow, it is
@@ -161,6 +161,10 @@ if ($stagesRequested -contains 0) {
                     DetectHint = $hit.detectHint
                     ReturnCodes = @($hit.returnCodes)
                     Notes      = $hitNotes
+                    # The scenarios the gate actually covered, as data. They were rendered into the
+                    # Evidence sentence below and nowhere else, which left a caller wanting to act on
+                    # them - "was Install among them?" - matching English prose to make a decision.
+                    Scenarios  = @($hit.scenarios)
                     Evidence   = $(if ($fromLocal) { "SHA256 matches an entry proven on this machine ($($hit.scenarios -join ', '))" }
                                    else { "SHA256 matches an entry shipped with the skill ($($hit.scenarios -join ', '))" })
                 })
@@ -190,6 +194,7 @@ if ($stagesRequested -contains 0) {
                         NoReboot   = $sameProduct.noReboot
                         DetectHint = $sameProduct.detectHint
                         ReturnCodes = @($sameProduct.returnCodes)
+                        Scenarios  = @($sameProduct.scenarios)
                         Notes      = @("Proven on a DIFFERENT build of this product - vendors change switches between versions.")
                         Evidence   = "same productName, different hash"
                     })

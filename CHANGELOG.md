@@ -1,6 +1,55 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
+
+## 0.41.0 - 2026-09-21 - The catalog proved it, and the ladder went looking anyway
+
+0.40.0 shipped the verified-switch store and taught rung 0 to serve the INSTALL switch out of it. The
+UNINSTALL switch sat in the same entry, proven by the same GREEN gate, and was read into
+`TopCandidateUninstall` for display and then dropped. So a machine holding a five-scenario proof for a
+binary still reported `silent-uninstall` Open with `dispatch-agent`, and the fan-out went to the web for
+a command the skill had already proven.
+
+Measured on Firefox 156.0 against the shipped entry for 153.3.0:
+
+| | before | after |
+|---|---|---|
+| `AgentBudget` | 3 | 2 |
+| dispatched | silent-uninstall, runtime-prerequisite, intune-pitfalls | runtime-prerequisite, intune-pitfalls |
+| `silent-uninstall` | Open, `dispatch-agent`, no answer | Provisional, `medium`, `/S`, settled by the probe run |
+
+And for an EXACT hash hit, `AgentBudget` is **1**: only the Intune pitfalls, which no local run can settle.
+Before this release an exact hit changed the number by nothing at all, which made the store's own promise
+hard to believe.
+
+**A version bump changes the hash; it does not change the installation.** That is the whole objection this
+release answers. Demoting a neighbouring build's proof from `verified` to `medium` is right. Throwing the
+knowledge away and paying an agent to rediscover `/S` is not - Phase 6 runs either way, and the probe run
+is what settles it. Uninstall and Repair now both come from the store on a same-product hit, at `medium`,
+routed to `probe-run` rather than to a search.
+
+**Closing one question used to promote another.** `repair-strategy` and `post-install-config` are riders,
+folded into a carrier because one vendor page answers several questions at once. The fold picks its
+carrier from whoever is still open, so closing `silent-uninstall` promoted a rider to carrier and the
+agent came back under a new name - the budget never moved. A rider whose carrier is answered locally, or
+handed to the probe run, is now deferred: nobody is fetching that page any more, and its own branch had
+already judged it not worth a search of its own.
+
+**The runtime question closes on an exact hit**, because the gate that writes an entry runs in a THROWAWAY
+Windows Sandbox. No redistributable, no runtime anybody staged first. An Install that went GREEN in one is
+a stronger statement about a missing prerequisite than any vendor page, and unlike the Intune question it
+is a statement about this binary rather than about other people's fleets. A different build gets nothing
+here: a later version can pick up a dependency the proven one never had.
+
+A stage-0 candidate now carries `Scenarios` as data. The scenarios a gate covered were rendered into the
+`Evidence` sentence and nowhere else, so a caller wanting to act on them had to match English prose.
+
+One self-inflicted bug worth recording, caught by its own test: the first cut read the store values off
+`$topCand`, which is the highest-ranked candidate of ANY source. On a binary the store has never seen that
+is the engine-catalog default, and its uninstall string was served labelled `verified-switch-store`. A
+wrong provenance is worse than no answer, so the branches read a candidate with `Source = 'cache'`.
+
+Suite 724 -> 731.
 
 ## 0.40.0 - 2026-09-20 - The store now ships, and a user's own file extends it
 

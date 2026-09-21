@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS  Runs the local-evidence ladder before Phase 2 opens a browser, and reports the questions that are STILL OPEN.
 .DESCRIPTION
   Phase 2 used to dispatch three Researcher sub-agents unconditionally, on every job. On an app that was
@@ -501,6 +501,15 @@ $parented = ($best -and (Get-Prop $best 'ParentKeyName'))
 # Windows Installer - plenty of non-MSI installers use a GUID-shaped key, and a weak row's key belongs
 # to a DIFFERENT BUILD whose ProductCode is different by definition. Getting this wrong ships a
 # confident `msiexec /x` line for a product msiexec has never heard of.
+# The store proved an uninstall command for this binary, and until 0.41.0 that value was read
+# into TopCandidateUninstall for display and then dropped on the floor - so a machine holding a
+# five-scenario proof still sent an agent to the web to rediscover it. Measured on Firefox 156.0
+# (2026-09-21): an exact-hash hit moved AgentBudget by nothing at all.
+$storeCand      = @(@(Get-Prop $sc 'Candidates') | Where-Object { [string](Get-Prop $_ 'Source') -eq 'cache' })[0]
+$storeUninstall = [string](Get-Prop $storeCand 'Uninstall')
+$storeVerified  = ($storeCand -and [string](Get-Prop $storeCand 'Confidence') -eq 'verified')
+$storeScenarios = @(Get-Prop $storeCand 'Scenarios')
+
 $trustedCode = Resolve-Field @($ProductCode, (Get-Prop $msi 'ProductCode'))
 if (-not $trustedCode -and $strongRow -and (Get-Prop $best 'ProductCodeGuid') -and (Get-Prop $best 'WindowsInstaller')) {
     $trustedCode = [string](Get-Prop $best 'ProductCodeGuid')
@@ -509,6 +518,13 @@ if (-not $trustedCode -and $strongRow -and (Get-Prop $best 'ProductCodeGuid') -a
 if ($quiet -and $strongRow -and -not $parented) {
     Set-Answer $qUninstall $quiet 'verified' 1 'arp-registry' $best.KeyPath `
         'the vendor registered this as the silent uninstall - it is not a claim, it is a registration'
+} elseif ($storeVerified -and $storeUninstall) {
+    # Below the ARP row on purpose: that row describes the install that is actually on this machine.
+    # Above everything else, because an exact SHA256 match is the same bytes, and a GREEN full gate
+    # ran this command against those bytes through to FinalUninstall.
+    Set-Answer $qUninstall $storeUninstall 'verified' 2 'verified-switch-store' `
+        ([string](Get-Prop $storeCand 'SourceRef')) `
+        'a GREEN full gate already proved this uninstall command for this exact file hash'
 } elseif ($trustedCode) {
     Set-Answer $qUninstall ("msiexec /x {0} /qn /norestart" -f $trustedCode) 'high' `
         $(if ($msi) { 2 } else { 1 }) 'engine-catalog' 'engine-defaults.json engine msi' `
@@ -522,6 +538,14 @@ if ($quiet -and $strongRow -and -not $parented) {
     Set-Answer $qUninstall ([string](Get-Prop $best 'UninstallString')) 'medium' 1 'arp-registry' $best.KeyPath `
         'an UninstallString with no Quiet twin - the engine''s silent argument still has to be appended, and run'
     Set-Open $qUninstall 'the registered UninstallString is not the silent one; the probe run settles what to append' 'probe-run'
+} elseif ($storeUninstall) {
+    # A new version changes the hash while the switch stays what it always was. Demoting the
+    # confidence is right; throwing the knowledge away and paying an agent to rediscover it is not.
+    # Phase 6 runs either way, and it is what settles this.
+    Set-Answer $qUninstall $storeUninstall 'medium' 2 'verified-switch-store' `
+        ([string](Get-Prop $storeCand 'SourceRef')) `
+        'proved on a different build of this product - vendors change switches between versions'
+    Set-Open $qUninstall 'the store proved this on a different build; the probe run settles it for this one' 'probe-run'
 } elseif (-not $installerPresent -and $installed.Count -eq 0) {
     Set-Open $qUninstall 'nothing installed here and no binary supplied' 'recheck-after-binary'
 } else {
@@ -550,6 +574,17 @@ if ($isMsi -or $trustedCode) {
     Set-Answer $qRepair ([string](Get-Prop $best 'ModifyPath')) 'medium' 1 'arp-registry' $best.KeyPath `
         'the product registered a ModifyPath, which is a maintenance entry point - whether it repairs SILENTLY is a claim'
     Set-Open $qRepair 'a registered ModifyPath is not proof of a silent repair' 'probe-run'
+} elseif ($storeCand -and ($storeScenarios -contains 'Repair') -and -not $storeVerified) {
+    Set-Answer $qRepair ('re-run the installer: ' + [string](Get-Prop $storeCand 'Install')) 'medium' 2 'verified-switch-store' `
+        ([string](Get-Prop $storeCand 'SourceRef')) `
+        'a gate proved Repair on a different build of this product - vendors change switches between versions'
+    Set-Open $qRepair 'the store proved Repair on a different build; the probe run settles it for this one' 'probe-run'
+} elseif ($storeVerified -and ($storeScenarios -contains 'Repair')) {
+    # Without this, closing silent-uninstall UNFOLDS repair-strategy - it is folded into that
+    # question - and the agent nobody needed comes back under a different name.
+    Set-Answer $qRepair ('re-run the installer: ' + [string](Get-Prop $storeCand 'Install')) 'verified' 2 'verified-switch-store' `
+        ([string](Get-Prop $storeCand 'SourceRef')) `
+        'the gate that proved this entry ran Repair as one of its five scenarios against this exact binary'
 } elseif (-not $installerPresent) {
     Set-Open $qRepair 'no binary to inspect yet' 'recheck-after-binary'
 } else {
@@ -586,8 +621,20 @@ if ($engine -eq 'wix-burn') {
     Set-Open $qDep 'a missing dependency makes the install fail in a clean Phase 6 sandbox, which is a better test than any forum post' 'probe-run'
 }
 
-# --- runtime prerequisite / intune pitfalls: never closable here --------------------------------------
-Set-Open $qRuntime 'no local source can answer whether the vendor expects a separate runtime, and phase 1.4 says no later phase asks it either' 'dispatch-agent'
+# --- runtime prerequisite / intune pitfalls -----------------------------------------------------------
+# A verified store entry is written only by a GREEN full gate, and that gate runs in a THROWAWAY
+# Windows Sandbox: no redistributable, no runtime anybody installed first. An Install that went
+# GREEN in one is a stronger statement about a missing prerequisite than any vendor page, and it is
+# a statement about THIS binary rather than about other people's fleets. A different build gets
+# nothing here - a later version can pick up a dependency the proven one never had.
+if ($storeVerified -and ($storeScenarios -contains 'Install')) {
+    $qRuntime.CanCloseLocally = $true
+    Set-Answer $qRuntime 'none beyond what the installer carries' 'verified' 2 'verified-switch-store' `
+        ([string](Get-Prop $storeCand 'SourceRef')) `
+        'a GREEN full gate installed this exact binary in a clean sandbox, which had no runtime staged for it'
+} else {
+    Set-Open $qRuntime 'no local source can answer whether the vendor expects a separate runtime, and phase 1.4 says no later phase asks it either' 'dispatch-agent'
+}
 Set-Open $qPitfalls 'a statement about other people''s fleets does not follow from this machine' 'dispatch-agent'
 if ($corpusHit.Count -gt 0) {
     $qPitfalls.Evidence = @([pscustomobject]@{
@@ -659,6 +706,12 @@ foreach ($q in $questions) {
 # families that can ever dispatch (vendor-doc, runtime, intune), so AgentBudget cannot exceed three no
 # matter how the question set grows. A chain could also leave a rider attached to a carrier that was
 # itself folded, and then reach no prompt at all.
+# A branch that declares FoldInto has said something about ECONOMICS: this question is worth
+# answering while we are already paying for that page, and not worth a search of its own. The family
+# fold below overwrites FoldInto on every rider it assigns, so the declared hint is captured first.
+$declaredFold = @{}
+foreach ($q in $questions) { if ($q.FoldInto) { $declaredFold[$q.Id] = [string]$q.FoldInto } }
+
 $riders = @{}
 foreach ($family in @($questions | Where-Object { $_.Status -eq 'Open' -and $_.Resolution -eq 'dispatch-agent' } |
                       ForEach-Object { $_.Family } | Sort-Object -Unique)) {
@@ -674,6 +727,22 @@ foreach ($family in @($questions | Where-Object { $_.Status -eq 'Open' -and $_.R
         $q.FoldInto = $carrier.Id
         Set-Open $q ("{0} (folded into '{1}': one vendor page answers both)" -f $q.WhyOpen, $carrier.Id) 'folded'
         $riders[$carrier.Id].Add($q.Question)
+    }
+}
+
+# A rider whose declared carrier got answered LOCALLY must not inherit the agent the carrier no longer
+# needs. The family fold caps a family at one agent, but it picks that one from whoever is still open -
+# so when the store closed the install and uninstall questions, 'post-install config' was promoted from
+# rider to sole carrier and the fan-out came back under a new name. The question is unchanged and so is
+# the judgement its own branch made about it: not worth a search of its own.
+foreach ($q in @($questions | Where-Object { $_.Status -eq 'Open' -and $_.Resolution -eq 'dispatch-agent' })) {
+    $hint = [string]$declaredFold[$q.Id]
+    if (-not $hint) { continue }
+    $carrier = @($questions | Where-Object { $_.Id -eq $hint })[0]
+    $carrierDispatches = ($carrier -and $carrier.Status -eq 'Open' -and $carrier.Resolution -eq 'dispatch-agent')
+    if ($carrier -and -not $carrierDispatches) {
+        $q.FoldInto = $hint
+        Set-Open $q ("{0} (its carrier '{1}' is answered locally or by the probe run, so no one is fetching that page, and this question was never worth an agent of its own)" -f $q.WhyOpen, $hint) 'accept-unanswered'
     }
 }
 
