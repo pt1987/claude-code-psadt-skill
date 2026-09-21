@@ -158,3 +158,20 @@ Describe 'New-DriverPackage: the template Replace chain is unbroken' {
         $chainAt | Should -BeGreaterThan $stemAt
     }
 }
+
+Describe 'New-DriverPackage.ps1 refuses the comment terminator in Author and Changelog (0.43.0)' {
+    # 2026-09-21 audit (B03): __CHANGELOG__ and __AUTHOR__ land inside the launcher's <# #> block; a value
+    # containing #> ends the block and what follows becomes top-level code in a script that runs as SYSTEM.
+    BeforeAll { . "$PSScriptRoot/_helpers.ps1"; $script:genSrc = Join-Path $PSScriptRoot '..\scripts\New-DriverPackage.ps1'; $script:genText = Get-Content -LiteralPath $script:genSrc -Raw }
+
+    It 'rejects a value carrying the comment terminator' {
+        . ([scriptblock]::Create((Get-ScriptFunctionText -Path $script:genSrc -Name 'Assert-NoCommentTerminator')))
+        { Assert-NoCommentTerminator '- 0.1: initial' 'Changelog' } | Should -Not -Throw
+        { Assert-NoCommentTerminator 'x #> Write-Host injected' 'Author' } | Should -Throw -ExpectedMessage '*Author*'
+    }
+
+    It 'runs the guard over Author and Changelog' {
+        $script:genText | Should -Match 'Assert-NoCommentTerminator[^\r\n]*\$Author'
+        $script:genText | Should -Match 'Assert-NoCommentTerminator[^\r\n]*\$Changelog'
+    }
+}

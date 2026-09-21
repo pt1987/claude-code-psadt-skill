@@ -2,17 +2,31 @@
 .SYNOPSIS  Ensures <config home>\tools\PSAppDeployToolkit.WinGet is present and current vs the GitHub release.
 .PARAMETER SkillRoot    Config home override; default = the home resolved by Get-PsadtConfig.ps1.
 .PARAMETER PackagePath  Optional. Copies the module into <PackagePath>\PSAppDeployToolkit.WinGet\ after download.
+.PARAMETER ExpectedSha256  SHA256 the downloaded asset must have. Overrides the built-in pin for that run.
+.PARAMETER AllowUnpinned   Accept a release this skill has no recorded SHA256 for. Deliberate, per call.
+.NOTES
+    SUPPLY CHAIN: this third-party module is packed into the .intunewin and EXECUTES AS SYSTEM on every
+    assigned device. Upstream ships it UNSIGNED (verified 2026-09-21: .psm1, .psd1 and both bundled DLLs
+    are NotSigned), so an Authenticode check can never be the gate here - a recorded SHA256 per release
+    is. A release with no recorded hash is refused unless -AllowUnpinned says otherwise, and a hash
+    mismatch is always fatal: nothing is extracted, nothing is copied, nothing is recorded.
 .OUTPUTS   PSCustomObject: Action(Downloaded|Updated|AlreadyCurrent|UpdateFailed), Version, Path
 #>
 [CmdletBinding()]
 param(
     [string]$SkillRoot,
-    [string]$PackagePath
+    [string]$PackagePath,
+    [string]$ExpectedSha256,
+    [switch]$AllowUnpinned
 )
 $ErrorActionPreference = 'Stop'
 $repo         = 'mjr4077au/PSAppDeployToolkit.WinGet'
 $assetName    = 'PSAppDeployToolkit.WinGet.zip'
-$fallbackTag  = 'v1.0.5'
+$fallbackTag  = '1.0.5'   # upstream tags are unprefixed; 'v1.0.5' answered 404
+# SHA256 of the release asset, verified by hand before it was recorded here. Add a line per release.
+$pinnedSha256 = @{
+    '1.0.5' = 'bddc4b875a92c3522e4016b2466773d6ee70e95c5931355e176bb1ee74b9b0f3'
+}
 $fallbackUrl  = "https://github.com/$repo/releases/download/$fallbackTag/$assetName"
 $cfg          = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot
 $moduleDest   = Join-Path $cfg.Home 'tools/PSAppDeployToolkit.WinGet'
@@ -63,6 +77,22 @@ try {
     try { $nRead = $zfs.Read($hdr, 0, 2) } finally { $zfs.Dispose() }
     if ($nRead -lt 2 -or $hdr[0] -ne 0x50 -or $hdr[1] -ne 0x4B) { throw "Downloaded file is not a valid ZIP (missing PK header)." }
 
+    # INTEGRITY GATE. A shape check proves the bytes are a zip, not that they are THE zip. What follows
+    # runs as SYSTEM on managed devices, so the hash decides - see .NOTES on why the signature cannot.
+    $expected = if ($ExpectedSha256) { $ExpectedSha256 } elseif ($pinnedSha256.ContainsKey($tag)) { $pinnedSha256[$tag] } else { $null }
+    if (-not $expected) {
+        if (-not $AllowUnpinned) {
+            throw ("Release $tag is not pinned: this skill has no recorded SHA256 for it. Verify the asset, " +
+                   "then add it to `$pinnedSha256 - or pass -ExpectedSha256 <hash>, or -AllowUnpinned to accept it once.")
+        }
+        Write-Warning "Release $tag is not pinned and -AllowUnpinned was passed: the module is accepted unverified."
+    }
+    else {
+        $actual = (Get-FileHash -LiteralPath $tmpZip -Algorithm SHA256).Hash
+        if ($actual -ne $expected.ToUpperInvariant()) {
+            throw "SHA256 mismatch for $assetName ($tag): expected $($expected.ToUpperInvariant()), got $actual. Nothing was installed."
+        }
+    }
     Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
     Expand-Archive $tmpZip -DestinationPath $tmpDir -Force
 

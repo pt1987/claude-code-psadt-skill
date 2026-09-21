@@ -139,3 +139,21 @@ Describe 'Get-PsadtConfig' {
         }
     }
 }
+
+Describe 'Get-PsadtConfig keeps intune.secretRef inside the config home (0.43.0)' {
+    # 2026-09-21 audit (B05): secretRef was joined to the home unchecked, so '..\..\x' resolved outside it.
+    BeforeEach { $script:root = New-TempSkillRoot }
+    AfterEach  { Remove-TempSkillRoot $script:root }
+
+    It 'flags a secretRef that is a path rather than a file name, instead of resolving it' {
+        @{
+            version=1
+            paths=@{ packageRoot='c:\p'; outputRoot='c:\o'; intuneWinAppUtil='c:\t\x.exe' }
+            language=@{ script='EN'; dossier='DE' }
+            author=@{ person='Pat'; company='PHAT' }
+            intune=@{ uploadEnabled=$true; tenantId='t'; clientId='c'; secretRef='..\..\evil.dpapi' }
+        } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $script:root 'config.json')
+        $r = & (Join-Path $script:root 'scripts/Get-PsadtConfig.ps1') -SkillRoot $script:root
+        ($r.Missing -join '|') | Should -Match 'secretRef'
+    }
+}

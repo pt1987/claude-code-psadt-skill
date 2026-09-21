@@ -41,6 +41,16 @@ param(
 $probe      = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot
 $configPath = $probe.Path
 $configHome = $probe.Home
+
+# A legacy config beside scripts\ makes the SKILL FOLDER the config home. Reading it is the migration
+# path; writing to it is not: the secret would then live inside a tree that a re-clone, an update or a
+# re-install can read, move or overwrite - the one thing SECURITY.md promises it never does. The doctor
+# migrates it in one step; until then this refuses rather than quietly writing to the wrong place.
+if ($probe.LegacyInUse) {
+    throw ("config.json still sits inside the skill folder ($configPath). Migrate it first: " +
+           "pwsh scripts/Initialize-PsadtSkill.ps1 -Fix - it moves config, secret and tools into " +
+           "$($probe.DefaultHome) and leaves the originals as *.migrated.")
+}
 $dir = Split-Path -Parent $configPath
 if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 

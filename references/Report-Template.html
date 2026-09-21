@@ -11,12 +11,11 @@
      Self-contained: no external assets, logo embedded as data URI.
      DE/EN toggle: data-de/data-en (text) + .only-de/.only-en (blocks).
      ============================================================ */
-  /* HanseMerkur corporate fonts: family names are kept first in the stack so a locally-installed
-     Metric face (corporate device) is used when present; otherwise the Segoe fallback applies.
-     No @font-face web fetch -> opening the file locally (file://) triggers no CORS-blocked request
-     and no console errors. To embed the real fonts offline, add @font-face with base64 woff2. */
+  /* System font stack only: no @font-face web fetch, so opening the file locally (file://) triggers no
+     CORS-blocked request and no console errors. To put a corporate face first, prepend its family name
+     to --font / --font-display, or add @font-face with base64 woff2 to embed it offline. */
   :root {
-    /* HanseMerkur corporate design - green brand family on light/mint canvas */
+    /* Green palette on a light mint canvas. Swap these four values to rebrand the dossier. */
     --accent:        #00A075;   /* secondary green - interactive / structural highlights   */
     --accent-dark:   #005E52;   /* dark green - hero band, emphasis                         */
     --accent-soft:   #EDF6F2;   /* mint - soft surfaces, section-icon bg, TOC hover         */
@@ -37,8 +36,8 @@
     --neutral-bg:    #EAF2EE;
     --radius:        14px;
     --shadow:        0 1px 2px rgba(0,94,82,.07), 0 4px 12px rgba(0,94,82,.08);
-    --font:          "Metric-Regular","Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,sans-serif;
-    --font-display:  "Metric-SemiBold","Segoe UI Variable Display","Segoe UI Semibold","Segoe UI",sans-serif;
+    --font:          "Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,sans-serif;
+    --font-display:  "Segoe UI Variable Display","Segoe UI Semibold","Segoe UI",sans-serif;
     --mono:          "Cascadia Code","Cascadia Mono",Consolas,"Courier New",monospace;
   }
   * { box-sizing: border-box; }
@@ -237,7 +236,7 @@
   /* =====================================================================
      EDITORIAL DATA-REPORT  -  modern overrides (last in the cascade so they win).
      Flat hairline sections, oversized section numerals, at-a-glance KPI band,
-     generous air.  Stays fully within the HanseMerkur corporate palette.
+     generous air.  Stays fully within the palette defined on :root.
      ===================================================================== */
   .hero { padding-top: 46px; padding-bottom: 40px; }
   .hero.scrolled { padding-top: 12px; padding-bottom: 12px; }

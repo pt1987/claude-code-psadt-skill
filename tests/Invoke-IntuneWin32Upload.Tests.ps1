@@ -177,3 +177,37 @@ Describe 'Return codes come from the shared canonical table' {
               -ReturnCodes @(@{ Code = 1603; Type = 'failed' }) } | Should -Throw -ExpectedMessage '*not found*'
     }
 }
+
+Describe '-ManifestPath alone (0.43.0): the .intunewin comes from artifacts.intunewin' {
+    # 2026-09-21 audit (B02): SKILL.md Phase 9 shows `-ManifestPath <pkg>\psadt-package.json` as the whole
+    # command, and -IntuneWinPath was Mandatory in every parameter set - the documented command could not
+    # bind, at the one step that writes to the tenant. Invoke-PsadtPackage.ps1 records the artifact in the
+    # manifest; the upload reads it from there. Child pwsh: a Mandatory parameter would PROMPT in-process.
+    BeforeEach {
+        $script:pkgDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item $script:pkgDir -ItemType Directory -Force | Out-Null
+        $script:mf = Join-Path $script:pkgDir 'psadt-package.json'
+    }
+
+    It 'no longer marks -IntuneWinPath as Mandatory' {
+        $attrs = (Get-Command $script:Upload).Parameters['IntuneWinPath'].Attributes |
+            Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }
+        @($attrs | ForEach-Object { $_.Mandatory }) | Should -Not -Contain $true
+    }
+
+    It 'binds with -ManifestPath alone and takes the .intunewin from the manifest' {
+        @{ schema = 1; app = @{ vendor = 'V'; name = 'N'; version = '1.0'; arch = 'x64' }
+           artifacts = @{ intunewin = $script:DummyWin } } |
+            ConvertTo-Json -Depth 8 | Set-Content $script:mf -Encoding UTF8
+        $out = (& pwsh -NoProfile -NonInteractive -Command "& '$($script:Upload)' -ManifestPath '$($script:mf)'" 2>&1) -join "`n"
+        $out | Should -Match 'Not found'                             # reached the artifact step = binding succeeded
+        $out | Should -Match ([regex]::Escape($script:DummyWin))     # with the path the manifest recorded
+    }
+
+    It 'names the packaging step when the manifest carries no artifacts.intunewin yet' {
+        @{ schema = 1; app = @{ vendor = 'V'; name = 'N'; version = '1.0'; arch = 'x64' } } |
+            ConvertTo-Json -Depth 8 | Set-Content $script:mf -Encoding UTF8
+        $out = (& pwsh -NoProfile -NonInteractive -Command "& '$($script:Upload)' -ManifestPath '$($script:mf)'" 2>&1) -join "`n"
+        $out | Should -Match 'Invoke-PsadtPackage'
+    }
+}

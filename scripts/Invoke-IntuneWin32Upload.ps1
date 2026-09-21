@@ -20,7 +20,8 @@
       7. commit with the fileEncryptionInfo, poll for commitFileSuccess
       8. PATCH committedContentVersion (+ largeIcon) and print the portal deep-link
 
-.PARAMETER IntuneWinPath            Path to the .intunewin file.
+.PARAMETER IntuneWinPath            Path to the .intunewin file. Optional with -ManifestPath: the artifact
+                                    recorded by Invoke-PsadtPackage.ps1 (artifacts.intunewin) is used.
 .PARAMETER DisplayName              App name shown in Intune / Company Portal.
 .PARAMETER Description              Markdown description (Company Portal field supports Markdown only).
 .PARAMETER Publisher                Publisher string.
@@ -48,7 +49,10 @@
 #>
 [CmdletBinding(DefaultParameterSetName = 'Explicit')]
 param(
-    [Parameter(Mandatory)][string]$IntuneWinPath,
+    # Not Mandatory: with -ManifestPath the artifact comes from the manifest, which is what SKILL.md
+    # Phase 9 shows. It was Mandatory in every set, so the documented command could not bind at all -
+    # at the one step that writes to the tenant. Passing it explicitly still wins over the manifest.
+    [string]$IntuneWinPath,
     # Either name the app explicitly, or point at the package manifest and let it supply the identity.
     # Anything passed explicitly always wins over the manifest.
     [Parameter(Mandatory, ParameterSetName = 'Explicit')]
@@ -133,6 +137,8 @@ if ($ManifestPath) {
     # Installer-specific codes researched in Phase 1.3 and recorded once in the manifest, so the dossier
     # and the uploaded app cannot document different mappings.
     if (-not $PSBoundParameters.ContainsKey('ReturnCodes') -and $mfUp.research.returnCodes) { $ReturnCodes = @($mfUp.research.returnCodes) }
+    # The artifact Invoke-PsadtPackage.ps1 produced and recorded. Never re-derived, never re-typed.
+    if (-not $PSBoundParameters.ContainsKey('IntuneWinPath') -and $mfUp.artifacts.intunewin) { $IntuneWinPath = [string]$mfUp.artifacts.intunewin }
     if (-not $PSBoundParameters.ContainsKey('AppVersion') -and $mfUp.app.version) { $AppVersion = [string]$mfUp.app.version }
     if (-not $PSBoundParameters.ContainsKey('Architecture') -and $mfUp.app.arch -in @('x64', 'x86', 'arm64')) {
         $Architecture = [string]$mfUp.app.arch
@@ -169,6 +175,10 @@ Write-Host "Intune Win32 upload (Graph) - $DisplayName" -ForegroundColor White
 
 # 1. Parse the .intunewin --------------------------------------------------------------------------
 Write-Step "Parse .intunewin"
+if ([string]::IsNullOrWhiteSpace($IntuneWinPath)) {
+    throw ("No .intunewin to upload: pass -IntuneWinPath, or run Phase 7 first so the manifest records " +
+           "artifacts.intunewin - pwsh scripts/Invoke-PsadtPackage.ps1 -PackagePath <pkg>.")
+}
 if (-not (Test-Path $IntuneWinPath)) { throw "Not found: $IntuneWinPath" }
 $work = Join-Path ([IO.Path]::GetTempPath()) ("iwup-" + [IO.Path]::GetFileNameWithoutExtension($IntuneWinPath))
 if (Test-Path $work) { Remove-Item $work -Recurse -Force }

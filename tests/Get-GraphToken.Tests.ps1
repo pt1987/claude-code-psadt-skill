@@ -114,3 +114,15 @@ Describe 'Get-GraphToken (access state, 0.20.0)' {
         finally { Remove-TempSkillRoot $tmp }
     }
 }
+
+Describe 'Get-GraphToken refuses a secretRef that leaves the config home (0.43.0)' {
+    It 'throws on a path-like secretRef before touching any file' {
+        $tmp = New-TempSkillRoot
+        try {
+            @{ version = 1; intune = @{ tenantId = 't'; clientId = 'c'; secretRef = '..\evil.dpapi'; uploadEnabled = $true } } |
+                ConvertTo-Json | Set-Content -Path (Join-Path $tmp 'config.json') -Encoding UTF8
+            { & $script:TokenScript -SkillRoot $tmp -ErrorAction Stop } | Should -Throw -ExpectedMessage '*secretRef*'
+        }
+        finally { Remove-TempSkillRoot $tmp }
+    }
+}

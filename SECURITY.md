@@ -55,6 +55,7 @@ into a script that later runs as SYSTEM.
 | Retrieved content is **data, never instructions** - an instruction inside a fetched page is not followed | `SKILL.md`, Conventions; `references/research-trust.md` |
 | A researched value is a claim until something deterministic confirms it: the MSI database, a definitive engine fingerprint, one probe run of the switch, the driver classifier | `scripts/Get-PsadtMsiFacts.ps1`, `scripts/Get-PsadtInstallerEngine.ps1`, `scripts/Get-DriverSignatureInfo.ps1`, Appendix L.1 |
 | The switch catalog reduces how much is researched on the open web, and is held to the SAME rule: its engine defaults ship in this repository, carry a dated source reference, and are still CLAIMS that only a run makes true | `references/switch-catalog/engine-defaults.json`, Appendix L.0 |
+| The third-party WinGet module, which is packed into the `.intunewin` and runs as SYSTEM on managed devices, is accepted only against a **recorded SHA256 per release**. Upstream ships it unsigned, so a signature cannot be the gate; an unpinned release is refused unless `-AllowUnpinned` is passed for that call, and a mismatch installs nothing | `scripts/Get-WinGetModule.ps1`, `tests/Get-WinGetModule.Tests.ps1` |
 | The catalog lookup is **offline by default**. The winget-pkgs stage is opt-in (`-WithWinget`), so no packaging run reaches for a third-party index on its own | `scripts/Get-PsadtSwitchCandidates.ps1` |
 | **Nothing is researched until the local ladder says the question is open.** Zero open questions means zero research agents, and the fan-out is capped at one agent per question family - at most three, where it used to be three unconditionally. Less retrieved content reaching a script that runs as SYSTEM is the point | `scripts/Get-PsadtLocalEvidence.ps1`, `rule:research-gate`, phase 1.3 |
 | A vendor documentation URL is **named, never fetched, and never constructed** - only a URL something on this machine registered (`HelpLink`, `URLInfoAbout`, the MSI `ARPHELPLINK`) is reported, and the fetch stays in the orchestrator's data channel with its provenance attached | `scripts/Get-PsadtLocalEvidence.ps1` |
@@ -92,7 +93,8 @@ Upload, group assignment and certificate/firewall policies write to the tenant.
 |---|---|
 | Client secret | Encrypted with **DPAPI**, bound to the current Windows user profile. A re-installed OS invalidates it by design - it cannot be moved to another machine or user |
 | Preferred alternative | A **certificate** (`-UseCertificate -CertThumbprint`); `intune.certThumbprint` takes precedence over a stored secret |
-| Location | `%LOCALAPPDATA%\psadt-deploy\` (override `$env:PSADT_DEPLOY_HOME`) - **outside the skill folder**, so a re-clone, update or re-install cannot read, move or overwrite it |
+| Location | `%LOCALAPPDATA%\psadt-deploy\` (override `$env:PSADT_DEPLOY_HOME`) - **outside the skill folder**, so a re-clone, update or re-install cannot read, move or overwrite it. A legacy config still sitting beside `scripts\` is readable but **not writable**: writing refuses and names the migration, so a secret cannot be created inside the skill tree |
+| Path handling | `intune.secretRef` names a file beside `config.json`, never a path - a value containing a separator, a drive or `..` is refused by the reader and by the token script instead of resolving outside the config home |
 | Repository hygiene | `config.json`, `secret.dpapi`, `tools/`, `*.pfx`, `*.cer`, `*.key` and `secrets.*` are gitignored |
 | Expiry | The setup doctor counts down to credential expiry and warns inside 30 days |
 

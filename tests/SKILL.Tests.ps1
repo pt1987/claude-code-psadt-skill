@@ -51,3 +51,35 @@ Describe 'the Gate 1 package-type decision covers every model the guide document
         $script:skillMd | Should -Match '(?s)MSIX.*line-of-business|(?s)line-of-business.*MSIX'
     }
 }
+
+Describe 'every script invocation SKILL.md shows can bind' {
+    # 2026-09-21 audit (B02): the Phase 9 example named a script whose Mandatory parameter the example did
+    # not pass. Prose examples rot when parameter sets change; this guard binds each one against the real
+    # param block: every -Name must exist, and at least one parameter set must have all of its mandatory
+    # parameters supplied by the example. Values are placeholders and are not inspected.
+    It 'names only real parameters and satisfies one parameter set per example' {
+        $spans = [regex]::Matches($script:skillMd, '`(?:pwsh\s+)?(?:scripts/)?([A-Z][A-Za-z0-9-]+\.ps1)([^`]*)`')
+        $examples = @($spans | Where-Object { $_.Groups[2].Value -match '(^|\s)-[A-Za-z]' })
+        $examples.Count | Should -BeGreaterThan 5 -Because 'SKILL.md is the control plane and shows real invocations'
+        $problems = foreach ($m in $examples) {
+            $script = $m.Groups[1].Value
+            $names  = @([regex]::Matches($m.Groups[2].Value, '(?:^|\s)-([A-Za-z][A-Za-z0-9]*)') | ForEach-Object { $_.Groups[1].Value })
+            $path   = Join-Path $script:skillRoot "scripts/$script"
+            if (-not (Test-Path -LiteralPath $path)) { "$script - not in scripts/"; continue }
+            $cmd = Get-Command -Name $path -ErrorAction Stop
+            $unknown = @($names | Where-Object { -not $cmd.Parameters.ContainsKey($_) })
+            if ($unknown) { "$script - unknown parameter(s): $($unknown -join ', ')"; continue }
+            $satisfied = @($cmd.ParameterSets | Where-Object {
+                $set = $_
+                $valid = @($names | Where-Object { $set.Parameters.Name -notcontains $_ }).Count -eq 0
+                $mandatory = @($set.Parameters | Where-Object { $_.IsMandatory } | ForEach-Object { $_.Name })
+                $valid -and (@($mandatory | Where-Object { $names -notcontains $_ }).Count -eq 0)
+            })
+            if (-not $satisfied) {
+                $need = @($cmd.ParameterSets | ForEach-Object { $_.Parameters | Where-Object IsMandatory | ForEach-Object Name } | Sort-Object -Unique)
+                "$script - example passes [$($names -join ', ')] but every parameter set needs more; mandatory across sets: [$($need -join ', ')]"
+            }
+        }
+        $problems | Should -BeNullOrEmpty -Because "each example in SKILL.md must bind as written`n$($problems -join "`n")"
+    }
+}

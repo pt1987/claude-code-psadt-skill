@@ -170,8 +170,12 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.42.0 - Finding the logo cost as long as testing the package.** Acquiring one app logo took
-about as long as the whole Phase 6 gate - the same search and the same two name traps every time, none of
-which changes between versions. A per-product source catalog now records where each logo comes from and
-why that file rather than the one beside it, and `Get-PsadtAppLogo.ps1` rasterises an SVG through headless
-Edge in under three seconds. An unknown product returns a miss, never a guessed URL.
+Latest: **0.43.0 - The command that writes to the tenant could not bind.** A deep analysis of 0.42.0 read
+every control `SECURITY.md` claims, packaged an app end to end and ran the suite; its five stop-ship
+findings are fixed here. The Phase 9 upload command shown in `SKILL.md` could not bind, because
+`-IntuneWinPath` was mandatory while the artifact had been in the manifest since Phase 7 - and a new guard
+now binds every invocation the control plane shows against the real parameter sets. The third-party WinGet
+module that ships inside the `.intunewin` is pinned by SHA256 instead of a two-byte header. Three operator
+values that reached scripts running as SYSTEM are escaped or validated. A legacy config can no longer be
+written to, so the secret cannot be created inside the skill folder. The dossier template no longer names a
+customer.
