@@ -15,7 +15,7 @@
 <p align="center"><sub><a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#what-makes-it-different">What makes it different</a> · <a href="#go-deeper">Go deeper</a> · <a href="#security">Security</a> · <a href="#changelog">Changelog</a></sub></p>
 
 ---
-<img width="3200" height="2000" alt="psadt-workflow" src="https://github.com/user-attachments/assets/448dc382-cd5f-44e1-9dc8-4740279e4260" />
+<img width="3200" height="1637" alt="psadt-workflow" src="https://github.com/user-attachments/assets/6a0eff79-8165-4994-83e0-d2476f204ff8" />
 
 ## What is this?
 
