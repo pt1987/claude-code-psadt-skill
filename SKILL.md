@@ -116,7 +116,7 @@ Short form. Full text, reasoning and the failure each one prevents: `references/
 <!-- rule:real-logo-only -->
 - **Real logo only.** The real app logo (PNG, transparent, >=512px, square preferred) into `Assets\` and
   the Output folder - never the PSADT default `AppIcon.png`/Banner, which the upload script blocks by
-  SHA256. Verify real corner-pixel alpha AND look at the image. Sources + MSI-icon fallback: App. J. (The
+  SHA256. Verify real corner-pixel alpha AND look at the image. `Get-PsadtAppLogo.ps1`; App. J. (The
   logo goes to Intune's App-information tab, not into the `.intunewin`.)
 <!-- rule:access-state-driven -->
 - **Intune access is state-driven, never trial-and-error.** Before Phase 9 / 10 / any cert-or-firewall
@@ -249,7 +249,8 @@ replace it. Record them once as `research.returnCodes` in the manifest and dossi
 with real umlauts, and that text is copied into Company Portal verbatim - the report REFUSES to render
 without it when `decisions.upload = true`, and marks it as missing otherwise. It is not a field the
 generator can invent for you; nor are the hooks and cmdlet list, which it reads out of the launcher.
-Structure: App. F.2, keys: F.0. Logo fetch + verify + MSI-icon fallback: App. J. WinGet dossier
+Structure: App. F.2, keys: F.0. Logo: `Get-PsadtAppLogo.ps1` first (App. J.0), then verify + MSI-icon
+fallback: App. J. WinGet dossier
 additions (WinGet >= 1.7.10582 requirement, registry/file detection note): App. I.6.
 
 <!-- rule:upload-dry-run-first -->
@@ -365,6 +366,7 @@ unchanged, so "App. L.1" or "Phase 6.2" still resolves.
 | App. K - **script-only / remediation packages** (ESP-safe) | `references/appendix-k-remediation.md` |
 | App. L - **installer technologies + silent switches**, consult BEFORE web research (L.0 catalog lookup, L.8 MSIX/AppX, L.9 App-V) | `references/appendix-l-installers.md` |
 | **Engine catalog** - silent-switch defaults per installer engine, read by `Get-PsadtSwitchCandidates.ps1` | `references/switch-catalog/engine-defaults.json` |
+| **Logo catalog** - where each product's real logo comes from, read by `Get-PsadtAppLogo.ps1` | `references/switch-catalog/logo-sources.json` |
 | App. M - **group assignment** (opt-in: config, naming, permissions) | `references/appendix-m-group-assignment.md` |
 | App. N - **certificate store deployment** (driver-trust / TrustedPublisher; RootCATrustedCertificates CSP OMA-URI; `New-IntuneTrustedCertPolicy.ps1`) | `references/appendix-n-cert-store.md` |
 | App. O - **browser-extension force-install** (Edge/Chrome/Firefox policy keys, Firefox `REG_MULTI_SZ` trap, merge/selective-remove; `New-BrowserExtensionPackage.ps1`) | `references/appendix-o-browser-extensions.md` |

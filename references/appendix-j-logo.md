@@ -10,6 +10,60 @@ The logo is uploaded separately (Intune **App information** tab / Phase 9); it i
 square preferred) → `<pkg>\Assets\<App>-Logo.png` AND a copy in `Output\<App>\`. **Never** ship the PSADT
 default `Assets\AppIcon.png`/`Banner.Classic.png` (see H.10 - the upload script blocks them by SHA256).
 
+## Contents
+
+- [J.0 The catalog route - look it up once, never again](#j0-the-catalog-route---look-it-up-once-never-again)
+- [J.1 License-clear sources, in priority order](#j1-license-clear-sources-in-priority-order)
+- [J.2 Verify (resolution + ACTUAL transparency + correct brand)](#j2-verify-resolution--actual-transparency--correct-brand)
+
+### J.0 The catalog route - look it up once, never again
+
+`pwsh scripts/Get-PsadtAppLogo.ps1 -ProductName '<as the binary reports it>' -OutFile '<pkg>\Assets\<App>-Logo.png'`
+
+Acquiring one logo cost about as long as the entire Phase 6 gate. Measured on Thunderbird 156.0
+(2026-09-21): roughly four minutes - a Commons search over twelve hits, three metadata calls, a webp
+decode, a background removal and two visual checks - against 3.8 minutes for the five-scenario SYSTEM
+test. None of that work changes between versions, so none of it belongs in a packaging run.
+
+`references/switch-catalog/logo-sources.json` records, per `productName`, the source that was checked
+once **and the trap that made it worth recording**. The key is the product name the binary reports, the
+same one the verified-switch store falls back on.
+
+| field | |
+|---|---|
+| `url` | taken verbatim; the script never builds one from a product name |
+| `fetch` | `svg-rasterize` (headless Edge) / `png-direct` / `webp-decode` (WIC) |
+| `postProcess` | `border-key`, for a mark published on an opaque ground |
+| `note` | why THIS file and not the neighbouring one - the part a later reader cannot see |
+
+**No source is reliably right, which is the whole point of recording them one at a time.**
+
+| | strength | how it bites |
+|---|---|---|
+| [logo.wine](https://www.logo.wine/) | stable URL `/a/logo/<Slug>/<Slug>-Logo.wine.svg`, no hotlink protection, SVG so transparent by construction, unambiguous slugs | can be YEARS out of date - its Thunderbird is the pre-2023 bird, wrong for any recent build |
+| Wikimedia Commons | renders a PNG server-side at a width you choose | `File:` names are ambiguous, and a current mark may exist only as webp on an opaque ground |
+
+Two real mistakes, both caught only by looking at the picture: `File:Firefox brand logo, 2019.svg` is the
+product-family flame ring with no fox and it is the FIRST search hit, ahead of the browser logo; and
+Thunderbird's current Supernova mark is published by Commons only as webp on white.
+
+**SVG is rasterised by headless Edge**, which ships with Windows:
+`--headless=new --default-background-color=00000000 --window-size=N,N --screenshot=out.png`. That one
+background flag is the difference between a transparent PNG in three seconds and an opaque one that needs
+keying out by hand afterwards.
+
+**`border-key` is not a white key.** It floods transparency in from the image border and stops where the
+artwork starts, because the background is only the white CONNECTED TO THE EDGE. Keying every white pixel
+erases the white envelope inside the Thunderbird mark. It also reaches into concave notches, which four
+edge scans would leave filled.
+
+**An unknown product returns a miss, never a guess.** A slug guessed from a product name that 404s costs a
+minute; one that RESOLVES hands over a confident wrong logo, and nothing downstream looks at the picture.
+The miss names both routes below; add the entry after seeing the image.
+
+**Measured is not seen.** The script returns size, squareness and real corner alpha, and says so - the
+verification below still has to happen with your eyes.
+
 ### J.1 License-clear sources, in priority order
 
 1. **Microsoft products:** `https://learn.microsoft.com/en-us/<product>/media/index/<product>.png`
