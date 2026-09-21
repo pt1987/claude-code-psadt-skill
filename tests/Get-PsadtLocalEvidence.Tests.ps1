@@ -1,4 +1,4 @@
-# SCOPE NOTE: this script is the gate on the Phase 2 research fan-out, so the tests that matter are
+﻿# SCOPE NOTE: this script is the gate on the Phase 2 research fan-out, so the tests that matter are
 # about the NUMBER it reports and about what it refuses to do on its own.
 #
 # Three rules are enforced here as behaviour, not as prose:
@@ -39,6 +39,25 @@ BeforeAll {
         [void]$builder.Insert($t.Extent.StartOffset, (' ' * $len))
     }
     $script:code = $builder.ToString()
+
+    # A throwaway copy of a file Windows ships, used where a fixture needs a real ProductName:
+    # New-TestPe writes no version resource, and the store's same-product fallback matches on
+    # exactly that field, so a synthetic PE can never exercise it.
+    function New-NamedTestBinary {
+        $dest = Join-Path ([System.IO.Path]::GetTempPath()) ('named_' + [guid]::NewGuid().ToString('N') + '.exe')
+        Copy-Item -LiteralPath (Join-Path $env:WINDIR 'System32\notepad.exe') -Destination $dest -Force
+        return $dest
+    }
+
+    # Writes a verified-switch store into the redirected config home. $script:tempHome is set per
+    # test in BeforeEach, so this reads it at call time rather than closing over it. Lives here and
+    # not in the Context that uses it: Pester runs a Context body during DISCOVERY, and a function
+    # defined there is gone by the time an It runs.
+    function Write-LocalStore {
+        param([object[]]$Entries)
+        ([pscustomobject]@{ schemaVersion = 1; entries = $Entries } | ConvertTo-Json -Depth 12) |
+            Set-Content -LiteralPath (Join-Path $script:tempHome 'verified-switches.json') -Encoding UTF8
+    }
 
     # Builds one Add/Remove-Programs row under whatever root is passed in.
     function New-ArpKey {
@@ -264,6 +283,143 @@ Describe 'Get-PsadtLocalEvidence' {
             $u.Answer | Should -BeExactly $q
             $u.ClosedBy | Should -Be 1
             $r.OpenQuestions.Id | Should -Not -Contain 'silent-uninstall'
+        }
+    }
+
+    Context 'the store is evidence everywhere it is actually evidence' {
+        # 0.40.0 gave the store two layers and taught rung 0 to serve the INSTALL switch from it. The
+        # uninstall switch sat in the very same entry, proven by the very same GREEN gate, and was read
+        # into TopCandidateUninstall for display and then dropped. So a machine holding a five-scenario
+        # proof for this exact binary still reported silent-uninstall Open with 'dispatch-agent', and
+        # the fan-out went looking on the web for a command the skill had already proven.
+        #
+        # Found on Firefox 156.0 (2026-09-21): an exact-hash hit changed AgentBudget by nothing at all.
+        # That is the 400k-token failure wearing a different hat, so the assertions mirror that Context.
+
+        It 'closes the uninstall question from an exact-hash store hit, with no ARP row anywhere' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
+            Write-LocalStore @(@{
+                    sha256     = $sha; install = '/VERYSILENT /PROVEN'; uninstall = '/VERYSILENT /GONE'
+                    scenarios  = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $r = & $script:src -Path $p -ProductName 'Fixture App' -UninstallRoots $script:reg
+            $u = @($r.Questions | Where-Object Id -eq 'silent-uninstall')[0]
+            $u.Status | Should -Be 'Closed'
+            $u.Confidence | Should -Be 'verified'
+            $u.Answer | Should -BeExactly '/VERYSILENT /GONE'
+            $r.OpenQuestions.Id | Should -Not -Contain 'silent-uninstall'
+        }
+
+        It 'closes the runtime prerequisite too, because the gate that wrote the entry ran in a CLEAN sandbox' {
+            # A throwaway Windows Sandbox carries no redistributable anyone put there. An Install that
+            # went GREEN in one is a stronger statement about missing runtimes than any vendor page,
+            # and it is a statement about THIS binary rather than about other people's fleets - which
+            # is exactly the line the neighbouring Context draws.
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
+            Write-LocalStore @(@{
+                    sha256     = $sha; install = '/VERYSILENT /PROVEN'; uninstall = '/VERYSILENT /GONE'
+                    scenarios  = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $r = & $script:src -Path $p -ProductName 'Fixture App' -UninstallRoots $script:reg
+            $q = @($r.Questions | Where-Object Id -eq 'runtime-prerequisite')[0]
+            $q.Status | Should -Be 'Closed'
+            $r.OpenQuestions.Id | Should -Not -Contain 'runtime-prerequisite'
+        }
+
+        It 'leaves exactly one question worth an agent after an exact-hash hit' {
+            # The number is the whole point of this script. Intune pitfalls are the one thing a local
+            # run genuinely cannot settle, so one is the honest floor - not three.
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
+            Write-LocalStore @(@{
+                    sha256     = $sha; install = '/VERYSILENT /PROVEN'; uninstall = '/VERYSILENT /GONE'
+                    scenarios  = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $r = & $script:src -Path $p -ProductName 'Fixture App' -UninstallRoots $script:reg
+            $r.AgentBudget | Should -Be 1
+            $r.OpenQuestions.Id | Should -Contain 'intune-pitfalls'
+        }
+
+        It 'sends a different build of the same product to the probe run, never to an agent' {
+            # The objection this was found by, and it is correct: a new version changes the hash while
+            # the switch stays what it always was. Demoting the confidence is right; throwing the
+            # knowledge away and paying an agent to rediscover it is not. Phase 6 runs either way.
+            $p = Track (New-NamedTestBinary)
+            $engine = & (Join-Path (Split-Path $script:src -Parent) 'Get-PsadtInstallerEngine.ps1') -Path $p
+            $engine.ProductName | Should -Not -BeNullOrEmpty -Because 'the fallback matches on this field'
+            Write-LocalStore @(@{
+                    sha256     = ('d' * 64); productName = $engine.ProductName; appVersion = '1.0'
+                    install    = '/VERYSILENT /PROVEN'; uninstall = '/VERYSILENT /GONE'
+                    scenarios  = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $r = & $script:src -Path $p -ProductName $engine.ProductName -UninstallRoots $script:reg
+            $u = @($r.Questions | Where-Object Id -eq 'silent-uninstall')[0]
+            $u.Answer | Should -BeExactly '/VERYSILENT /GONE'
+            $u.Confidence | Should -Be 'medium'
+            $u.Resolution | Should -Be 'probe-run'
+            $r.OpenQuestions.Id | Should -Not -Contain 'silent-uninstall'
+        }
+
+        It 'spends nothing on the vendor-doc family when the store covered a neighbouring build' {
+            # The real-world shape, and the one the objection was about: Firefox 156.0 against a store
+            # entry for 153.3.0. Nothing lands 'verified' because the hash moved, yet every vendor-doc
+            # question is now either answered or waiting on the probe run, so that family dispatches
+            # nobody. Two is the honest remainder - a runtime question a different build can genuinely
+            # change, and Intune pitfalls no local run can settle.
+            $p = Track (New-NamedTestBinary)
+            $engine = & (Join-Path (Split-Path $script:src -Parent) 'Get-PsadtInstallerEngine.ps1') -Path $p
+            Write-LocalStore @(@{
+                    sha256     = ('d' * 64); productName = $engine.ProductName; appVersion = '1.0'
+                    install    = '/VERYSILENT /PROVEN'; uninstall = '/VERYSILENT /GONE'
+                    scenarios  = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $r = & $script:src -Path $p -ProductName $engine.ProductName -UninstallRoots $script:reg
+            $r.AgentBudget | Should -Be 2
+            $r.OpenQuestions.Id | Should -Not -Contain 'repair-strategy'
+            $r.OpenQuestions.Id | Should -Not -Contain 'post-install-config'
+            $rep = @($r.Questions | Where-Object Id -eq 'repair-strategy')[0]
+            $rep.Confidence | Should -Be 'medium'
+            $rep.Resolution | Should -Be 'probe-run'
+        }
+
+        It 'does not close the runtime prerequisite from a different build' {
+            # A later build can pick up a dependency the proven one never had. The uninstall SWITCH
+            # surviving a version bump is a fair bet; the dependency graph surviving one is not.
+            $p = Track (New-NamedTestBinary)
+            $engine = & (Join-Path (Split-Path $script:src -Parent) 'Get-PsadtInstallerEngine.ps1') -Path $p
+            Write-LocalStore @(@{
+                    sha256     = ('d' * 64); productName = $engine.ProductName; appVersion = '1.0'
+                    install    = '/VERYSILENT /PROVEN'; uninstall = '/VERYSILENT /GONE'
+                    scenarios  = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $r = & $script:src -Path $p -ProductName $engine.ProductName -UninstallRoots $script:reg
+            @($r.Questions | Where-Object Id -eq 'runtime-prerequisite')[0].Status | Should -Not -Be 'Closed'
+        }
+
+        It 'still prefers what Windows registered on this machine over the store' {
+            # The 400k-token case must not regress: an exact ARP row for this build is a registration
+            # by the vendor's own installer, and it describes the install that is actually here.
+            $q = '"C:\Program Files\Fixture App\unins000.exe" /SILENT'
+            New-ArpKey -Root $script:reg -Name 'Fixture_is1' -Values @{
+                DisplayName = 'Fixture App'; DisplayVersion = '1.0'; QuietUninstallString = $q
+            } | Out-Null
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
+            Write-LocalStore @(@{
+                    sha256     = $sha; install = '/VERYSILENT /PROVEN'; uninstall = '/VERYSILENT /GONE'
+                    scenarios  = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $r = & $script:src -Path $p -ProductName 'Fixture App' -ProductVersion '1.0' -UninstallRoots $script:reg
+            @($r.Questions | Where-Object Id -eq 'silent-uninstall')[0].Answer | Should -BeExactly $q
         }
     }
 

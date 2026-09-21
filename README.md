@@ -1,4 +1,4 @@
-<h1 align="center">PSADT v4 → Intune Deployment Skill</h1>
+﻿<h1 align="center">PSADT v4 → Intune Deployment Skill</h1>
 
 <p align="center">
   <em>A Claude Code skill that drives the full lifecycle of a PowerShell App Deployment Toolkit (PSADT) v4.x Intune Win32 package - from first conversation to a tested, upload-ready <code>.intunewin</code>.</em>
@@ -104,7 +104,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **724 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **731 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -122,7 +122,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 724 Pester tests.
+verified against a live tenant. The helper scripts are covered by 731 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -171,8 +171,9 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.40.0 - The store now ships, and a user's own file extends it.** The verified-switch store
-was machine-local, so every proof stayed on the machine that produced it and a fresh installation began
-from nothing. There are two layers now, merged by installer SHA256: one shipped with the skill, one
-machine-local, with the local entry winning. Merging on the hash is what makes it idempotent. The shipped
-layer seeds with 21 entries, each from a GREEN full gate.
+Latest: **0.41.0 - The catalog proved it, and the ladder went looking anyway.** The store recorded a
+proven uninstall switch and the research gate never read it, so a sub-agent was dispatched to find a
+command the skill had already proven. On Firefox 156.0 that cut the dispatch from three agents to two,
+and an exact hash match now leaves exactly one - the Intune pitfalls, which no local run can settle. A
+version bump changes the hash, not the installation, so a neighbouring build's proof is demoted to
+`medium` and handed to the probe run instead of to a search.
