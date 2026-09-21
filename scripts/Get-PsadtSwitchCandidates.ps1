@@ -86,6 +86,22 @@ function Add-Miss([int]$StageNo, [string]$Source, [string]$Reason) {
 $engineInfo = & (Join-Path $PSScriptRoot 'Get-PsadtInstallerEngine.ps1') -Path $Path
 
 # ---------------------------------------------------------------------------------------------------
+# A stored switch can name a file that lived in the package it was proved in - the manifest records
+# $($adtSession.DirSupportFiles) as the placeholder <SupportFiles>. The store keeps the switch and not
+# the file, so the entry is a true record of what was proved and still not something a caller can run
+# as-is. Saying so is the whole job here; deciding what to do about it belongs to the caller.
+function Get-SupportFilesNote {
+    param([string]$Install, [string]$Uninstall)
+    $names = @()
+    foreach ($s in @($Install, $Uninstall)) {
+        if (-not $s) { continue }
+        foreach ($m in [regex]::Matches([string]$s, '<SupportFiles>\\([^\s"'']+)')) { $names += $m.Groups[1].Value }
+    }
+    $names = @($names | Sort-Object -Unique)
+    if (-not $names.Count) { return @() }
+    return @("NOT self-contained: this switch names $($names -join ', ') under SupportFiles\, and the store carries the switch but not that file. Create it in the package before using this switch, or the installer is handed a path that does not resolve - which most installers accept silently.")
+}
+
 # Stage 0: what a run on this machine already proved. Keyed by SHA256, because a product name is a
 # label and a hash is the file.
 # ---------------------------------------------------------------------------------------------------
@@ -146,6 +162,10 @@ if ($stagesRequested -contains 0) {
             if (-not $fromLocal) {
                 $hitNotes += "Proved on another machine and shipped with the skill, not on this one - the SHA256 is identical, so it is the same installer."
             }
+            # A switch naming <SupportFiles>\something was proved WITH a companion file, and the store
+            # carries the switch but not the file. Handed on unread it becomes a literal path that does
+            # not resolve, and installers of this family accept that silently (Firefox, Thunderbird).
+            $hitNotes += @(Get-SupportFilesNote $hit.install $hit.uninstall)
             $candidates.Add([pscustomobject]@{
                     Stage      = 0
                     Source     = 'cache'
@@ -195,7 +215,8 @@ if ($stagesRequested -contains 0) {
                         DetectHint = $sameProduct.detectHint
                         ReturnCodes = @($sameProduct.returnCodes)
                         Scenarios  = @($sameProduct.scenarios)
-                        Notes      = @("Proven on a DIFFERENT build of this product - vendors change switches between versions.")
+                        Notes      = @("Proven on a DIFFERENT build of this product - vendors change switches between versions.") +
+                                     @(Get-SupportFilesNote $sameProduct.install $sameProduct.uninstall)
                         Evidence   = "same productName, different hash"
                     })
             }

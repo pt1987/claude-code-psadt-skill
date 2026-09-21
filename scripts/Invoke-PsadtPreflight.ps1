@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Pre-flight verifier for a scaffolded PSADT v4 package - the Phase 5 Reviewer gate as ONE deterministic check.
 
@@ -335,6 +335,41 @@ if ($mf.Exists -and -not $mf.Error -and $mf.Manifest.research -and $mf.Manifest.
                 Add-Check 'SwitchSync' 'FAIL' "manifest and launcher disagree on the install switches, and the verified-switch store records the MANIFEST. manifest='$nd' launcher='$na'. Fix with Set-PsadtPackageManifest.ps1 -Updates @{ 'research.switches.installArgs' = '<what the launcher runs>' }" 'psadt-package.json'
             }
         }
+    }
+}
+
+# --- 8b: a SupportFiles path the package does not carry -------------------------------------------
+# SwitchSync normalises $($adtSession.DirSupportFiles) to a placeholder so the manifest can be compared
+# with the launcher, and nothing ever asked whether the file at the end of that path is IN the package.
+# Nothing else notices either: it is not a parse error, not a missing hook, and the installer does not
+# fail - Firefox and Thunderbird both accept a /INI= that does not resolve, install silently, exit 0 and
+# leave the vendor's own updater running. The Phase 6 gate goes GREEN on a package that did the opposite
+# of what it promised, which is why this is a FAIL and not a warning.
+#
+# All three hooks are read, unlike SwitchSync: the other hooks legitimately differ in their SWITCHES, but
+# a missing file is not a disagreement - it breaks whichever hook names it.
+$sfSources = @($launcher)
+$extPsm1 = Join-Path $PackagePath 'PSAppDeployToolkit.Extensions\PSAppDeployToolkit.Extensions.psm1'
+if (Test-Path -LiteralPath $extPsm1) { $sfSources += $extPsm1 }
+
+$sfRefs = New-Object System.Collections.Generic.List[string]
+foreach ($src in $sfSources) {
+    $txt = Get-Content -LiteralPath $src -Raw
+    foreach ($m in [regex]::Matches($txt, '\$\(\$adtSession\.DirSupportFiles\)\\([^"''\s\)]+)')) {
+        $rel = $m.Groups[1].Value.Trim()
+        if ($rel -and -not $sfRefs.Contains($rel)) { [void]$sfRefs.Add($rel) }
+    }
+}
+
+if ($sfRefs.Count) {
+    $sfDir = Join-Path $PackagePath 'SupportFiles'
+    $missing = @($sfRefs | Where-Object { -not (Test-Path -LiteralPath (Join-Path $sfDir $_)) })
+    if ($missing.Count) {
+        Add-Check 'SupportFiles' 'FAIL' ("the launcher passes a SupportFiles path that is not in the package: " +
+            ($missing -join ', ') + ". Put the file in SupportFiles\ or drop the argument - the installer will be handed a path that does not resolve, and most installers accept that silently") 'SupportFiles'
+    }
+    else {
+        Add-Check 'SupportFiles' 'PASS' ("every SupportFiles path the launcher passes exists: " + ($sfRefs -join ', ')) 'SupportFiles'
     }
 }
 
