@@ -49,7 +49,22 @@ One self-inflicted bug worth recording, caught by its own test: the first cut re
 is the engine-catalog default, and its uninstall string was served labelled `verified-switch-store`. A
 wrong provenance is worse than no answer, so the branches read a candidate with `Source = 'cache'`.
 
-Suite 724 -> 731.
+**A SupportFiles path nothing checked.** `SwitchSync` normalises `$($adtSession.DirSupportFiles)` to a
+placeholder so the manifest can be compared with the launcher, and nothing ever asked whether the file at
+the end of that path is in the package. Nothing else noticed either - it is not a parse error, not a
+missing hook, and the installer does not fail: Firefox and Thunderbird both accept a `/INI=` that does not
+resolve, install silently, exit 0, and leave the vendor's own updater running. A GREEN Phase 6 gate on a
+package that did the opposite of what it promised. Pre-flight now FAILs on it, reading all three hooks and
+the Extensions module, and stays silent for the packages that reference nothing.
+
+**The store says when a switch is not self-contained.** Two of the 21 shipped entries - Firefox and
+Thunderbird - record `/S /INI=<SupportFiles>\...ini`. That is a true record of what a gate proved and
+still not something a caller can run, because the store keeps the switch and not the file. The candidate
+now carries a note naming the missing file, on the exact-hash hit and on the demoted same-product one -
+the latter being the candidate a version bump actually serves, and so the one most likely to be handed
+straight to a generator.
+
+Suite 731 -> 738.
 
 ## 0.40.0 - 2026-09-20 - The store now ships, and a user's own file extends it
 

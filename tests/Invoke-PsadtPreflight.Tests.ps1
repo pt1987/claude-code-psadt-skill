@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $script:pf = Join-Path $PSScriptRoot '..\scripts\Invoke-PsadtPreflight.ps1'
     $script:utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
@@ -7,7 +7,7 @@ BeforeAll {
     function New-Pkg {
         # Since 0.21.0 a package without a manifest is RED (check 8), so the helper writes a complete
         # identity by default; -NoManifest / -PartialManifest exercise the gate itself.
-        param([string]$Launcher, [string]$Ext, [string]$Bundled, [switch]$NoManifest, [switch]$PartialManifest, [string]$InstallArgs)
+        param([string]$Launcher, [string]$Ext, [string]$Bundled, [switch]$NoManifest, [switch]$PartialManifest, [string]$InstallArgs, [string[]]$SupportFile)
         $dir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
         [System.IO.File]::WriteAllText((Join-Path $dir 'Invoke-AppDeployToolkit.ps1'), $Launcher, $script:utf8NoBom)
@@ -30,6 +30,12 @@ BeforeAll {
         if ($Bundled) {
             $fd = Join-Path $dir 'Files'; New-Item -ItemType Directory -Path $fd -Force | Out-Null
             [System.IO.File]::WriteAllText((Join-Path $fd 'bundled.ps1'), $Bundled, $script:utf8NoBom)
+        }
+        foreach ($sf in @($SupportFile)) {
+            if (-not $sf) { continue }
+            $sd = Join-Path $dir 'SupportFiles'; New-Item -ItemType Directory -Path $sd -Force | Out-Null
+            [System.IO.File]::WriteAllText((Join-Path $sd $sf), "; fixture`
+", $script:utf8NoBom)
         }
         return $dir
     }
@@ -282,8 +288,83 @@ function Install-ADTDeployment {
 function Uninstall-ADTDeployment { }
 function Repair-ADTDeployment { }
 '@
-        $r = & $script:pf -PackagePath (New-Pkg -Launcher $l -InstallArgs '/S /INI=<SupportFiles>\app.ini')
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $l -InstallArgs '/S /INI=<SupportFiles>\app.ini' -SupportFile 'app.ini')
         ($r.Checks | Where-Object { $_.Name -eq 'SwitchSync' }).Status | Should -Be 'PASS'
+    }
+
+    It 'FAILs when the launcher points at a SupportFiles file the package does not carry' {
+        # The trap this exists for: SwitchSync normalises $($adtSession.DirSupportFiles) to a placeholder
+        # so the manifest can be compared to the launcher, and nothing ever asked whether the file at the
+        # end of that path is IN the package. It is not a parse error and not a missing hook, so every
+        # other check passes - and at run time the installer is handed a path that does not resolve.
+        # Firefox and Thunderbird are the real cases: without the .ini they install silently, succeed,
+        # and leave the vendor's own updater running, which is the opposite of what the package promised.
+        $l = @'
+[CmdletBinding()]
+param([string]$DeploymentType)
+$adtSession = @{ AppName = 'App'; LogName = 'x.log' }
+function Install-ADTDeployment {
+    Start-ADTProcess -FilePath "$($adtSession.DirFiles)\setup.exe" -ArgumentList "/S /INI=$($adtSession.DirSupportFiles)\app.ini"
+}
+function Uninstall-ADTDeployment { }
+function Repair-ADTDeployment { }
+'@
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $l -InstallArgs '/S /INI=<SupportFiles>\app.ini')
+        $c = @($r.Checks | Where-Object { $_.Name -eq 'SupportFiles' })[0]
+        $c | Should -Not -BeNullOrEmpty
+        $c.Status | Should -Be 'FAIL'
+        $c.Detail | Should -Match 'app\.ini'
+        $r.Overall | Should -Be 'RED' -Because 'the install it would run cannot work'
+    }
+
+    It 'PASSes once the file is actually in SupportFiles' {
+        $l = @'
+[CmdletBinding()]
+param([string]$DeploymentType)
+$adtSession = @{ AppName = 'App'; LogName = 'x.log' }
+function Install-ADTDeployment {
+    Start-ADTProcess -FilePath "$($adtSession.DirFiles)\setup.exe" -ArgumentList "/S /INI=$($adtSession.DirSupportFiles)\app.ini"
+}
+function Uninstall-ADTDeployment { }
+function Repair-ADTDeployment { }
+'@
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $l -InstallArgs '/S /INI=<SupportFiles>\app.ini' -SupportFile 'app.ini')
+        @($r.Checks | Where-Object { $_.Name -eq 'SupportFiles' })[0].Status | Should -Be 'PASS'
+    }
+
+    It 'says nothing at all when the launcher references no SupportFiles path' {
+        # A check that reports on every package teaches everyone to skim past it.
+        $l = @'
+[CmdletBinding()]
+param([string]$DeploymentType)
+$adtSession = @{ AppName = 'App'; LogName = 'x.log' }
+function Install-ADTDeployment {
+    Start-ADTProcess -FilePath "$($adtSession.DirFiles)\setup.exe" -ArgumentList '/S'
+}
+function Uninstall-ADTDeployment { }
+function Repair-ADTDeployment { }
+'@
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $l -InstallArgs '/S')
+        @($r.Checks | Where-Object { $_.Name -eq 'SupportFiles' }).Count | Should -Be 0
+    }
+
+    It 'checks the Uninstall and Repair hooks too, not only Install' {
+        # SwitchSync deliberately looks at Install alone, because the other hooks legitimately differ.
+        # A missing file is not a disagreement though - it breaks whichever hook names it.
+        $l = @'
+[CmdletBinding()]
+param([string]$DeploymentType)
+$adtSession = @{ AppName = 'App'; LogName = 'x.log' }
+function Install-ADTDeployment { }
+function Uninstall-ADTDeployment {
+    Start-ADTProcess -FilePath "$($adtSession.DirFiles)\setup.exe" -ArgumentList "/S /INI=$($adtSession.DirSupportFiles)\remove.ini"
+}
+function Repair-ADTDeployment { }
+'@
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $l)
+        $c = @($r.Checks | Where-Object { $_.Name -eq 'SupportFiles' })[0]
+        $c.Status | Should -Be 'FAIL'
+        $c.Detail | Should -Match 'remove\.ini'
     }
 
     It 'compares only the additional arguments for an MSI package' {

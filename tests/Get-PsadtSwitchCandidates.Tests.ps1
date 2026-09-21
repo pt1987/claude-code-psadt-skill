@@ -1,4 +1,4 @@
-# SCOPE NOTE: the candidate lookup is the thing Phase 2 calls BEFORE any web research, so the tests that
+﻿# SCOPE NOTE: the candidate lookup is the thing Phase 2 calls BEFORE any web research, so the tests that
 # matter most are about what it does when it finds nothing, and about what it refuses to do on its own.
 #
 # Two rules are enforced here as behaviour, not as prose:
@@ -25,6 +25,15 @@ BeforeAll {
             Set-Content -LiteralPath (Join-Path $script:tempHome 'verified-switches.json') -Encoding UTF8
     }
 
+
+    # A throwaway copy of a file Windows ships, for the fixtures that need a real ProductName:
+    # New-TestPe writes no version resource, and the same-product fallback matches on exactly that
+    # field, so a synthetic PE can never reach it. A test that can only ever skip is not a test.
+    function New-NamedTestBinary {
+        $dest = Join-Path ([System.IO.Path]::GetTempPath()) ('named_' + [guid]::NewGuid().ToString('N') + '.exe')
+        Copy-Item -LiteralPath (Join-Path $env:WINDIR 'System32\notepad.exe') -Destination $dest -Force
+        return $dest
+    }
 
     # Source guards match against the CODE with comments blanked out. Matching raw source would flag the
     # comment in which the script explains the very trap it avoids - the guard would fail on a correct
@@ -130,6 +139,57 @@ Describe 'Get-PsadtSwitchCandidates' {
 
         # Everything below was unreachable until Set-PsadtVerifiedSwitch.ps1 existed: the store had no
         # producer, so the hit branches had never run against anything but a hand-written JSON file.
+
+        It 'says out loud when the stored switch is not self-contained' {
+            # The store keeps the SWITCH and not the file it names. Firefox and Thunderbird are both
+            # recorded as '/S /INI=<SupportFiles>\...ini', which is a true record of what a GREEN gate
+            # proved and still not something a caller can run: handed on unread it becomes a literal
+            # path that does not resolve, and installers of this family accept that silently.
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash $p -Algorithm SHA256).Hash.ToLower()
+            Write-Store @(@{
+                    sha256     = $sha; productName = 'Fixture App'; productVersion = '1.0'
+                    install    = '/S /INI=<SupportFiles>\app.ini'; uninstall = '/S'
+                    scenarios  = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $top = @((& $script:src -Path $p).Candidates | Where-Object { $_.Stage -eq 0 })[0]
+            ($top.Notes -join ' ') | Should -Match 'NOT self-contained'
+            ($top.Notes -join ' ') | Should -Match 'app\.ini'
+        }
+
+        It 'stays quiet about SupportFiles when the switch does not name one' {
+            # A note on every entry is a note nobody reads.
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash $p -Algorithm SHA256).Hash.ToLower()
+            Write-Store @(@{
+                    sha256     = $sha; productName = 'Fixture App'; productVersion = '1.0'
+                    install    = '/VERYSILENT'; uninstall = '/VERYSILENT'
+                    scenarios  = @('Install', 'Uninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $top = @((& $script:src -Path $p).Candidates | Where-Object { $_.Stage -eq 0 })[0]
+            ($top.Notes -join ' ') | Should -Not -Match 'self-contained'
+        }
+
+        It 'carries the note onto a different build of the same product as well' {
+            # The demoted candidate is the one a version bump actually serves, so it is the one most
+            # likely to be handed straight to a generator.
+            $p = Track (New-NamedTestBinary)
+            $engine = & (Join-Path (Split-Path $script:src -Parent) 'Get-PsadtInstallerEngine.ps1') -Path $p
+            $engine.ProductName | Should -Not -BeNullOrEmpty -Because 'the fallback matches on this field'
+            Write-Store @(@{
+                    sha256     = ('e' * 64); productName = $engine.ProductName; appVersion = '1.0'
+                    install    = '/S /INI=<SupportFiles>\app.ini'; uninstall = '/S'
+                    scenarios  = @('Install', 'Uninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $top = @((& $script:src -Path $p).Candidates | Where-Object { $_.Stage -eq 0 -and $_.Source -eq 'cache' })[0]
+            $top | Should -Not -BeNullOrEmpty -Because 'the same-product fallback must have matched'
+            $top.HashMatch | Should -BeFalse
+            ($top.Notes -join ' ') | Should -Match 'NOT self-contained'
+            ($top.Notes -join ' ') | Should -Match 'app\.ini'
+        }
 
         It 'serves a hash match as verified' {
             $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
