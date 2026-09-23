@@ -36,7 +36,7 @@ The README names the highlights; this page is the complete list. Depth beyond it
   commands changed; researches silent install / uninstall / repair switches and known Intune pitfalls.
 - **All three deployment types from the start** - Install, Uninstall *and* Repair, acid-tested, so
   Company-Portal uninstalls actually work.
-- **Pre-flight gate - 11 checks** - encoding/BOM, AST parse, v3-cmdlet scan, hook structure, the
+- **Pre-flight gate - 14 checks** - encoding/BOM, AST parse, v3-cmdlet scan, hook structure, the
   GUID-to-`-FilePath` anti-pattern, an uninstall that trusts a vendor EXE's exit code, top-level
   statements, the detection-script contract, the package manifest, the per-run log name and driver trust.
   GREEN or RED, with the failing file named.
@@ -122,5 +122,5 @@ The app's **native installer is always the default**. Everything else is opt-in 
 - **Self-update** - `scripts/Update-PsadtSkill.ps1` compares against GitHub, shows what changed, and
   updates in place on your confirmation (`git pull --ff-only` for a clone, otherwise a branch-zip overwrite
   of tracked files only). Machine-local state is never touched. Say *"psadt update"*.
-- **657 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
+- **824 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
   disagree - one of them reads the published landing page and compares its figures against the repository.

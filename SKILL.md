@@ -44,11 +44,9 @@ researched defaults; recommended option first.
    (App. P, `New-WindowsFeaturePackage.ps1`) · driver (App. Q, `New-DriverPackage.ps1`; classify first
    with `Get-DriverSignatureInfo.ps1`, unsigned = no package) · MSIX/AppX (App. L.8).
    > **A `.msix` is not the "native installer" default.** Intune takes it natively as a
-   > line-of-business app - that is the default answer, and no PSADT package is built. Wrap it only
-   > for what the native type cannot do (closing processes, removing a legacy MSI/EXE of the same
-   > product, importing the signing cert, per-machine config, >8 GB) - and read **App. L.8** first if
-   > you do, because `Add-AppxPackage` under SYSTEM reports success while registering the app for
-   > nobody.
+   > line-of-business app - that is the default answer, and no PSADT package is built. Wrap one only for
+   > what the native type cannot do, and read **App. L.8** first: `Add-AppxPackage` under SYSTEM reports
+   > success while registering the app for nobody.
 
    Plus any **external runtime prerequisite** Phase 2 found: separate package + Intune dependency
    (recommended) / bundle it / document as manual / skip. Options + why: phase 1.4.
@@ -116,8 +114,8 @@ Short form. Full text, reasoning and the failure each one prevents: `references/
 <!-- rule:real-logo-only -->
 - **Real logo only.** The real app logo (PNG, transparent, >=512px, square preferred) into `Assets\` and
   the Output folder - never the PSADT default `AppIcon.png`/Banner, which the upload script blocks by
-  SHA256. Verify real corner-pixel alpha AND look at the image. `Get-PsadtAppLogo.ps1`; App. J. (The
-  logo goes to Intune's App-information tab, not into the `.intunewin`.)
+  SHA256. `Get-PsadtAppLogo.ps1`; verify it and LOOK at the image: App. J. (It goes to Intune's
+  App-information tab, not into the `.intunewin`.)
 <!-- rule:access-state-driven -->
 - **Intune access is state-driven, never trial-and-error.** Before Phase 9 / 10 / any cert-or-firewall
   policy, read the state instead of provoking a 403: `pwsh scripts/Test-PsadtIntuneAccess.ps1` ->
@@ -130,9 +128,7 @@ Short form. Full text, reasoning and the failure each one prevents: `references/
   staging a 3rd-party driver, whose "install device software?" prompt blocks a SYSTEM-silent install - is
   a first-class deliverable, not a note. Own it in **exactly one place**: the Intune policy
   (`scripts/New-IntuneTrustedCertPolicy.ps1`) **or** a package import, never both - they fight on
-  uninstall/sync. Single-line base64 only (PEM/line breaks -> `0x87d1fde8`). TrustedPublisher and
-  TrustedPeople need the `RootCATrustedCertificates` CSP via a Custom OMA-URI profile; never claim Intune
-  "can't" do TrustedPublisher. App. N.
+  uninstall/sync. Never claim Intune "can't" do TrustedPublisher; the CSP and the base64 rules: App. N.
 <!-- rule:self-contained-deliverables -->
 - **Self-contained deliverables.** Any helper script placed in an app's **Output folder** is copied to and
   run on test clients that do NOT have the skill installed. It must therefore be fully self-contained: no
@@ -177,8 +173,9 @@ with `Get-Command -Module PSAppDeployToolkit`, never adopt a version by number):
 
 **Phase 3 - Scaffold.** **A generator is the default route** - it writes the launcher, the detection
 script, the per-run `LogName` and the manifest in one go: MSI → `New-MsiPackage.ps1` (self-updating:
-`-SelfUpdatingBinary`, 4.3), browser extension → `New-BrowserExtensionPackage.ps1`, Windows features →
-`New-WindowsFeaturePackage.ps1`. Only when none fits: `New-ADTTemplate`, then fill `$adtSession` yourself
+`-SelfUpdatingBinary`, 4.3), EXE → `New-ExePackage.ps1`, browser extension →
+`New-BrowserExtensionPackage.ps1`, Windows features → `New-WindowsFeaturePackage.ps1`, driver →
+`New-DriverPackage.ps1` (classify with `Get-DriverSignatureInfo.ps1` first - Gate 1).
 and write the manifest immediately (`Set-PsadtPackageManifest.ps1`) - a hand-scaffold still owes a
 per-run `LogName` and a `.NOTES` changelog. A generic gap: fix the generator first, generate once. Every
 field, the 4.1.x parameter set and the WinGet variant: phase 3, App. I.2.

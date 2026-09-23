@@ -55,7 +55,7 @@ psadt-deploy/
 ├─ SKILL.md · README.md · CHANGELOG.md · SECURITY.md · LICENSE
 ├─ package.json · bin/install.mjs        the npx installer (Node 18+, zero dependencies)
 ├─ docs/                                 this documentation set
-├─ scripts/                              35 files: 32 invocable, 3 shared includes
+├─ scripts/                              38 files: 35 invocable, 3 shared includes
 │  │  setup + config
 │  ├─ Initialize-PsadtSkill.ps1          setup doctor (Phase 0, GREEN/YELLOW/RED, -Fix/-Set)
 │  ├─ Get-PsadtConfig.ps1                config read + config-home resolver
@@ -81,7 +81,7 @@ psadt-deploy/
 │  ├─ New-WindowsFeaturePackage.ps1      optional features / capabilities (opt-in)
 │  ├─ New-DriverPackage.ps1              driver packages, pnputil staging (opt-in)
 │  │  gates + deliverables
-│  ├─ Invoke-PsadtPreflight.ps1          pre-flight GREEN/RED gate (Phase 5, 11 checks)
+│  ├─ Invoke-PsadtPreflight.ps1          pre-flight GREEN/RED gate (Phase 5, 14 checks)
 │  ├─ Invoke-PsadtSandboxTest.ps1        SYSTEM test in Windows Sandbox (Phase 6, the default route)
 │  ├─ Invoke-PsadtSystemTest.ps1         SYSTEM test, one action on a DEV VM (Phase 6, fallback)
 │  ├─ Invoke-PsadtPackage.ps1            build the .intunewin (Phase 7, named + verified)
@@ -107,7 +107,7 @@ psadt-deploy/
 │  ├─ conventions.md · research-trust.md the binding conventions, and why fetched text is data
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
 ├─ evals/                                trigger + behaviour eval suite
-└─ tests/                                Pester suite, 657 tests
+└─ tests/                                Pester suite, 824 tests
 ```
 
 Machine-local state lives outside the skill folder:

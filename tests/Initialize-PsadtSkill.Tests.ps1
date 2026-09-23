@@ -183,3 +183,17 @@ Describe 'Initialize-PsadtSkill' {
         $fromDisk.Checks.Count | Should -Be $r.Checks.Count
     }
 }
+
+Describe 'the elevation warning describes the route the skill actually takes' {
+    # 2026-09-21 audit (B17): the WARN said "the Phase 6 SYSTEM test needs an elevated session". Since the
+    # sandbox became the default route it does not - it needs no elevation at all, which is its selling
+    # point. A standard user reads this at Phase 0 and concludes the workflow is closed to them.
+    It 'does not claim Phase 6 needs elevation' {
+        $src = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Initialize-PsadtSkill.ps1') -Raw
+        $line = [regex]::Match($src, "Add-Check 'Elevation' 'WARN'[^
+]*").Value
+        $line | Should -Not -BeNullOrEmpty
+        $line | Should -Not -Match 'Phase 6 SYSTEM test needs an elevated session'
+        $line | Should -Match 'sandbox|DEV VM|per-action' -Because 'it must say which route needs elevation instead'
+    }
+}

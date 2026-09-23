@@ -164,7 +164,7 @@ else { Add-Check 'WindowsPowerShell51' 'WARN' 'powershell.exe (5.1) not found - 
 
 $isElevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if ($isElevated) { Add-Check 'Elevation' 'PASS' 'session is elevated' $null }
-else { Add-Check 'Elevation' 'WARN' 'not elevated - the Phase 6 SYSTEM test needs an elevated session' 'reopen the shell as administrator when you reach Phase 6' }
+else { Add-Check 'Elevation' 'WARN' 'not elevated - the sandbox route needs no elevation; the per-action DEV VM route does' 'only if you take the per-action route at Phase 6: reopen as administrator' }
 
 if (Get-Command git -ErrorAction SilentlyContinue) { Add-Check 'Git' 'PASS' 'git on PATH' $null }
 else { Add-Check 'Git' 'WARN' 'git missing - skill updates fall back to the branch-zip route' 'winget install Git.Git' }

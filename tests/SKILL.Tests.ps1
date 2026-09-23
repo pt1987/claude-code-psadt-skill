@@ -83,3 +83,20 @@ Describe 'every script invocation SKILL.md shows can bind' {
         $problems | Should -BeNullOrEmpty -Because "each example in SKILL.md must bind as written`n$($problems -join "`n")"
     }
 }
+
+Describe 'Phase 3 routes to every generator that ships' {
+    # 2026-09-21 audit (B10): New-ExePackage.ps1 appeared nowhere in SKILL.md or references/, so Phase 3
+    # sent all fifteen EXE engines to New-ADTTemplate and a hand-scaffold - the exact cost 0.35.0 built the
+    # generator to remove. New-DriverPackage.ps1 was named at Gate 1 and in the reference table, but not in
+    # the generator list an agent reads when it reaches Phase 3.
+    It 'names each New-*Package.ps1 in the Phase 3 paragraph' {
+        $phase3 = [regex]::Match($script:skillMd, '(?ms)^\*\*Phase 3 - Scaffold.*?(?=^\*\*Phase 4 )').Value
+        $phase3 | Should -Not -BeNullOrEmpty -Because 'Phase 3 is the scaffold step'
+        $generators = @(Get-ChildItem -LiteralPath (Join-Path $script:skillRoot 'scripts') -Filter 'New-*Package.ps1' -File |
+            ForEach-Object { $_.Name })
+        $generators.Count | Should -BeGreaterThan 3
+        foreach ($g in $generators) {
+            $phase3 | Should -Match ([regex]::Escape($g)) -Because "Phase 3 decides how a package is scaffolded, and $g exists to be chosen there"
+        }
+    }
+}
