@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS  Runs the COMPLETE Install/Detect/Uninstall/Reinstall/Repair loop inside a throwaway Windows Sandbox, every action as SYSTEM.
 .DESCRIPTION
   The complement to Invoke-PsadtSystemTest.ps1, which performs ONE action on the machine it runs on and
@@ -125,6 +125,10 @@ param(
     # generated runner without needing Windows Sandbox on the machine running the tests.
     [switch]$GenerateOnly,
 
+    # Start the VM without a current GREEN pre-flight. Deliberate and visible - a gate run on a package
+    # the reviewer has not passed tests something nobody will ship (Chrome 154, 0.44.0).
+    [switch]$SkipPreflightGate,
+
     # Unused downstream; accepted so callers can pass it through. Empty = Get-PsadtConfig resolves the home.
     [string]$SkillRoot
 )
@@ -148,6 +152,14 @@ if (-not $DetectionScript) {
     else { throw "$($found.Count) Detect*.ps1 scripts found in $PackagePath. Pass -DetectionScript to say which one Intune will use." }
 } elseif (-not (Test-Path -LiteralPath (Join-Path $PackagePath $DetectionScript))) {
     throw "DetectionScript '$DetectionScript' not found in $PackagePath."
+}
+
+# Hard handoff (0.44.0): a VM boot costs 139 s fixed and the full gate ~5 min. Spending that on a package
+# whose pre-flight is RED, stale or missing produces a verdict about something nobody will ship.
+# -GenerateOnly starts nothing, so it is not gated.
+if (-not $GenerateOnly -and -not $SkipPreflightGate) {
+    $gate = & (Join-Path $PSScriptRoot 'Test-PsadtPreflightCurrent.ps1') -PackagePath $PackagePath
+    if (-not $gate.Current) { throw "Not starting the sandbox: $($gate.Reason). (-SkipPreflightGate overrides this deliberately.)" }
 }
 
 # --- 2. Sandbox guards -----------------------------------------------------------------------------
@@ -221,6 +233,11 @@ if (Test-Path -LiteralPath $workRoot) {
 $workFolder = Join-Path $workRoot $workLeaf
 $resultsFolder = Join-Path $workFolder 'results'
 New-Item -ItemType Directory -Path $resultsFolder -Force | Out-Null
+# The evidence folder next to the .intunewin only appears when the run ENDS, and a caller that buffers
+# this script's output (| Out-String, a background job) sees nothing until then either - on Chrome 154
+# that read as a hung VM and cost a round of process hunting. So the live file is named up front, where
+# a watcher can poll it: the guest writes progress.json here while the run is under way.
+Write-Host "Live progress (host path, updated during the run): $(Join-Path $resultsFolder 'progress.json')"
 
 # --- 4. Generate the in-sandbox runner --------------------------------------------------------------
 function ConvertTo-PsArrayLiteral([string[]]$Values) {

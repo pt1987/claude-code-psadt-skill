@@ -69,7 +69,7 @@ Describe 'Invoke-PsadtPackage' {
     }
 
     It 'names the artifact and its folder after the identity, not after the setup file' {
-        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool
+        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate
 
         $r.Stem         | Should -Be 'Mobotix_MxManagementCenter_2.9.1_x64'
         $r.OutputFolder | Should -Be (Join-Path $script:out 'Mobotix_MxManagementCenter_2.9.1_x64')
@@ -80,7 +80,7 @@ Describe 'Invoke-PsadtPackage' {
     }
 
     It 'keeps the SetupFile from the INNER Detection.xml (which is why renaming is safe)' {
-        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool
+        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate
         $r.SetupFile        | Should -Be 'Invoke-AppDeployToolkit.exe'
         $r.UnencryptedSize  | Should -Be 4096
         $r.Sha256           | Should -Match '^[0-9A-F]{64}$'
@@ -88,25 +88,25 @@ Describe 'Invoke-PsadtPackage' {
 
     It 'sanitizes a messy identity into a usable file name' {
         & $script:SetMf -PackagePath $script:pkg -Updates @{ 'app.vendor' = 'Muenchener Rueck AG'; 'app.name' = 'Tool: Pro/Max' } | Out-Null
-        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool
+        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate
         $r.Stem | Should -Be 'Muenchener_Rueck_AG_Tool_Pro_Max_2.9.1_x64'
         [IO.Path]::GetFileName($r.IntuneWin) | Should -Not -Match '[^A-Za-z0-9._-]'
     }
 
     It 'refuses an output folder inside the package - that is the -o-inside-c bug' {
-        { & $script:Pack -PackagePath $script:pkg -OutputRoot $script:pkg -ToolPath $script:tool -ErrorAction Stop } |
+        { & $script:Pack -PackagePath $script:pkg -OutputRoot $script:pkg -ToolPath $script:tool -SkipPreflightGate -ErrorAction Stop } |
             Should -Throw -ExpectedMessage '*inside the package folder*'
-        { & $script:Pack -PackagePath $script:pkg -OutputRoot (Join-Path $script:pkg 'Output') -ToolPath $script:tool -ErrorAction Stop } |
+        { & $script:Pack -PackagePath $script:pkg -OutputRoot (Join-Path $script:pkg 'Output') -ToolPath $script:tool -SkipPreflightGate -ErrorAction Stop } |
             Should -Throw -ExpectedMessage '*inside the package folder*'
     }
 
     It 'refuses to pack an incomplete identity instead of producing a half-named file' {
         $bare = New-TempPackage
         try {
-            { & $script:Pack -PackagePath $bare -OutputRoot $script:out -ToolPath $script:tool -ErrorAction Stop } |
+            { & $script:Pack -PackagePath $bare -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate -ErrorAction Stop } |
                 Should -Throw -ExpectedMessage '*No psadt-package.json*'
             & $script:SetMf -PackagePath $bare -Updates @{ 'app.name' = 'OnlyAName' } | Out-Null
-            { & $script:Pack -PackagePath $bare -OutputRoot $script:out -ToolPath $script:tool -ErrorAction Stop } |
+            { & $script:Pack -PackagePath $bare -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate -ErrorAction Stop } |
                 Should -Throw -ExpectedMessage '*identity is incomplete*'
         }
         finally { Remove-Item $bare -Recurse -Force -ErrorAction SilentlyContinue }
@@ -118,7 +118,7 @@ Describe 'Invoke-PsadtPackage' {
         $legacy = Join-Path $folder 'Invoke-AppDeployToolkit.intunewin'
         Set-Content $legacy 'legacy-build' -NoNewline
 
-        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -WarningAction SilentlyContinue
+        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate -WarningAction SilentlyContinue
 
         ($r.Warnings -join ' ') | Should -BeLike '*Invoke-AppDeployToolkit.intunewin*'
         (Test-Path $legacy)     | Should -BeTrue
@@ -127,13 +127,13 @@ Describe 'Invoke-PsadtPackage' {
 
     It 'copies the detection script next to the artifact' {
         Set-Content (Join-Path $script:pkg 'Detect-MxManagementCenter.ps1') '# detect' -NoNewline
-        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool
+        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate
         $r.Detection | Should -Be (Join-Path $r.OutputFolder 'Detect-MxManagementCenter.ps1')
         (Test-Path $r.Detection) | Should -BeTrue
     }
 
     It 'warns when the package has no detection script' {
-        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -WarningAction SilentlyContinue
+        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate -WarningAction SilentlyContinue
         ($r.Warnings -join ' ') | Should -BeLike '*Detect*'
         $r.Detection | Should -BeNullOrEmpty
     }
@@ -142,12 +142,12 @@ Describe 'Invoke-PsadtPackage' {
         New-Item (Join-Path $script:pkg 'Assets') -ItemType Directory -Force | Out-Null
         Set-Content (Join-Path $script:pkg 'Assets\AppIcon.png') 'default' -NoNewline
         Set-Content (Join-Path $script:pkg 'Assets\MxManagementCenter.png') 'real-logo' -NoNewline
-        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool
+        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate
         [IO.Path]::GetFileName($r.Logo) | Should -Be 'MxManagementCenter.png'
     }
 
     It 'records artifacts and results.package in the manifest' {
-        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool
+        $r = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate
         $m = Get-Manifest $script:pkg
         $m.package.name            | Should -Be $r.Stem
         $m.artifacts.intunewin     | Should -Be $r.IntuneWin
@@ -158,15 +158,15 @@ Describe 'Invoke-PsadtPackage' {
     }
 
     It 'replaces its own previous build without touching anything else' {
-        $first  = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool
-        $second = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool
+        $first  = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate
+        $second = & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate
         $second.IntuneWin | Should -Be $first.IntuneWin
         @(Get-ChildItem $second.OutputFolder -Filter '*.intunewin').Count | Should -Be 1
     }
 
     It 'throws when the setup file is not in the package' {
         Remove-Item (Join-Path $script:pkg 'Invoke-AppDeployToolkit.exe') -Force
-        { & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -ErrorAction Stop } |
+        { & $script:Pack -PackagePath $script:pkg -OutputRoot $script:out -ToolPath $script:tool -SkipPreflightGate -ErrorAction Stop } |
             Should -Throw -ExpectedMessage '*Setup file not found*'
     }
 }

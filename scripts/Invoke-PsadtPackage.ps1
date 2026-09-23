@@ -53,6 +53,8 @@ param(
     [string]$ToolPath,
     [string]$SetupFile = 'Invoke-AppDeployToolkit.exe',
     [switch]$Json,
+    # Pack without a current GREEN pre-flight. Deliberate and visible - for fixtures and forensics only.
+    [switch]$SkipPreflightGate,
     [string]$SkillRoot
 )
 $ErrorActionPreference = 'Stop'
@@ -71,6 +73,12 @@ if (-not $mf.Exists) {
 if ($mf.Error)   { throw $mf.Error }
 if ($mf.Missing) { throw "The manifest identity is incomplete ($($mf.Missing -join ', ')) - the artifact name is derived from it, so packaging would produce a half-named file. Fill it with Set-PsadtPackageManifest.ps1." }
 $stem = $mf.Stem
+
+# --- 1b. Hard handoff: no pack without a current GREEN pre-flight (0.44.0) ---------------------------
+if (-not $SkipPreflightGate) {
+    $gate = & (Join-Path $PSScriptRoot 'Test-PsadtPreflightCurrent.ps1') -PackagePath $PackagePath
+    if (-not $gate.Current) { throw "Not packing: $($gate.Reason). (-SkipPreflightGate overrides this deliberately.)" }
+}
 
 # --- 2. Resolve output root + tool ----------------------------------------------------------------
 $cfg = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot

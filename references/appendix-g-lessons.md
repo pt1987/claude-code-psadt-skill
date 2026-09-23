@@ -12,6 +12,7 @@
 - [2026-09-08 - BootForge + Windows ADK + WinPE add-on (three packages, one dependency chain)](#2026-09-08---bootforge--windows-adk--winpe-add-on-three-packages-one-dependency-chain)
 - [2026-09-11 - Google Chrome: the sandbox ran nothing as SYSTEM and blamed the package](#2026-09-11---google-chrome-the-sandbox-ran-nothing-as-system-and-blamed-the-package)
 - [2026-09-14 - Citrix Workspace + Greenshot: five faults that all blamed the package](#2026-09-14---citrix-workspace--greenshot-five-faults-that-all-blamed-the-package)
+- [2026-09-23 - Google Chrome 154: a GREEN package that would have looped in production](#2026-09-23---google-chrome-154-a-green-package-that-would-have-looped-in-production)
 
 ## Appendix G: Lessons Learned (from real-world incidents)
 
@@ -349,3 +350,48 @@ nothing but a RED verdict and a guess.
 it from hours to one run each - the timeout process/task capture and the ARP dump - both existed only
 because an earlier run had already been wasted. Build the capture before the second attempt, not the
 fifth.
+
+---
+
+### 2026-09-23 - Google Chrome 154: a GREEN package that would have looped in production
+
+The update from the 153 package was routine: `New-MsiPackage.ps1`, pre-flight GREEN, full sandbox gate
+GREEN on the first run. Every check passed, and the package was still wrong for the fleet it was meant for.
+
+**Symptom (predicted, not yet seen):** Intune shows Chrome as "not installed" on devices that plainly have
+it, and retries the install every ~24h. Reported repeatedly for Chrome (Microsoft Tech Community, msendpoint),
+and it matches the mechanism exactly.
+
+**Cause:** every Chrome build ships a NEW MSI ProductCode (153: `{CB47EDA1-...}`, 154: `{C8B3A0BF-...}`),
+and GoogleUpdater replaces the binaries in place without re-running the MSI. The generator keyed all three
+things on this build's GUID: the detection script, the Uninstall hook and the Repair hook. On a device the
+updater has already moved on, that means: the next package never detects, the older MSI over a newer build
+is a 1603 downgrade, and Uninstall/Repair aim at a GUID the device does not have. Audacity had shown the
+same "new ProductCode per build" (README benchmark); the EXE generator had drawn the conclusion (version
+floor), the MSI generator had not.
+
+**Fix:** `New-MsiPackage.ps1 -SelfUpdatingBinary 'Google\Chrome\Application\chrome.exe'`. Detection is a
+version floor on the binary, Install returns early on an equal or newer build, Uninstall/Repair resolve the
+MSI registered under the exact ARP name (`Uninstall-ADTApplication` / `Get-ADTApplication -NameMatch
+Exact`). Verified: default mode byte-identical to the previous generator, self-updating mode 20/20 sandbox
+assertions (Install, Uninstall, Reinstall, Repair, FinalUninstall), detection negative on a host running
+Chrome 153 in both 32- and 64-bit PowerShell.
+
+**General lesson:** the sandbox proves the package against a machine where the app has never updated
+itself. It cannot see time. For any self-updating app, ask in Phase 2 what a device looks like one update
+later - and check that detection, install, uninstall and repair each still hold there. The ladder now asks
+it (`self-updating`), with any earlier package's different ProductCode as evidence.
+
+**Why the run took ~35 minutes for ~10 minutes of packaging - and what now stops each cause:**
+
+| What went wrong | Cost | Anchor since 0.44.0 |
+|---|---|---|
+| Scaffold, pack and sandbox started while the pitfall researcher was still out; its answer rewrote every hook | one full gate (~5 min) on the wrong package | the ladder records its questions per SHA256; pre-flight `Research` is FAIL until each has `research.answers.<id>` |
+| The package was hand-fixed and gated, THEN the generator was fixed and the package regenerated and gated again | a second full gate | phase 4.3 + SKILL.md: a generic gap goes into the generator first |
+| The sandbox was started without anything checking the pre-flight verdict - the "Reviewer GREEN before pack" handoff was prose | (would have caught the first row) | `Test-PsadtPreflightCurrent.ps1`; pack and sandbox refuse a RED, missing or stale verdict |
+| The sandbox output was piped through `Out-String`: empty until the end, read as a hung VM | a round of process hunting | the harness prints the live `progress.json` host path first; phase 6.1 says poll it |
+| The dry-run upload failed on a missing `-IntuneWinPath` the manifest already recorded; detection, logo and description had to be retyped | one round each | the upload reads `artifacts.*` + `app.description`; refuses `-MsiProductCode` on a `versionFloor` package |
+| The Company-Portal description was typed twice (dossier + upload), the hook rationale was hand-written into `-Metadata`, and the dossier said "pre-flight not run" on a GREEN package | three re-renders | `app.description.de/en` read by both; hooks carry the launcher's `##` comments; `results.preflight.checks` rendered |
+
+None of these was a PSADT problem. Every one was the pipeline trusting the operator to remember a rule
+that a script could check - which is the whole reason the rules exist as scripts.

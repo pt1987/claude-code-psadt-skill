@@ -185,12 +185,15 @@ Mechanics and the hard-won Graph lessons: Appendix H. Permissions: `references/a
 
 ```powershell
 # ALWAYS dry-run first (read-only), show the summary, confirm, only then -Execute:
-pwsh scripts/Invoke-IntuneWin32Upload.ps1 -IntuneWinPath '<artifacts.intunewin>' -ManifestPath '<pkg>\psadt-package.json'
+pwsh scripts/Invoke-IntuneWin32Upload.ps1 -ManifestPath '<pkg>\psadt-package.json'
 ```
 
 `-ManifestPath` supplies DisplayName / Publisher / AppVersion / Architecture, so the app in Intune carries
-the same identity as the artifact and the dossier; anything passed explicitly still wins. After a
-successful `-Execute` the app id, content version, portal URL and tenant land in `results.upload`. Check
+the same identity as the artifact and the dossier; anything passed explicitly still wins. It
+also supplies the `.intunewin` (`artifacts.intunewin`, 0.43.0), the logo (`artifacts.logo`) and the
+Company-Portal description (`app.description.<language.dossier>` - the same text the dossier renders,
+recorded once; 0.44.0). For a `package.detection = versionFloor` package it takes `artifacts.detection` as
+the detection script and **refuses** `-MsiProductCode` (0.44.0). After a successful `-Execute` the app id, content version, portal URL and tenant land in `results.upload`. Check
 `Capabilities.Upload` first (`Test-PsadtIntuneAccess.ps1`) instead of discovering a missing role from a 403
 mid-upload.
 

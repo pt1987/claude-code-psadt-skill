@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Pre-flight verifier for a scaffolded PSADT v4 package - the Phase 5 Reviewer gate as ONE deterministic check.
 
@@ -31,6 +31,9 @@
                       (driverTrust.owner) - the PnP prompt would block the silent install. WARN for a
                       vendor-signed KERNEL driver: TrustedPublisher does not satisfy Code Integrity.
                       Guide Appendix Q.
+     11. Research   - every question Get-PsadtLocalEvidence.ps1 sent to a researcher for THIS installer
+                      (recorded per SHA256 in <config home>\evidence) has research.answers.<id> in the
+                      manifest. FAIL otherwise; WARN when the ladder never ran for this installer.
 
     GREEN = no FAIL checks. WARN does not flip the verdict. Works under Windows PowerShell 5.1 and PowerShell 7.
 
@@ -373,6 +376,33 @@ if ($sfRefs.Count) {
     }
 }
 
+# --- 8c: research that was open when the ladder ran must be answered -------------------------------
+# Chrome 154 (0.44.0): the package was scaffolded, packed and sent into the sandbox while the Intune
+# pitfall researcher was still out. Its answer - a new ProductCode per build plus in-place self-update -
+# rewrote detection, install, uninstall and repair, so one full gate had tested the wrong package.
+# Get-PsadtLocalEvidence.ps1 records, per installer SHA256, which questions it sent to an agent; every
+# one of them needs research.answers.<id> in the manifest before this can be GREEN.
+$instFile = if ($mf.Exists -and -not $mf.Error) { [string]$mf.Manifest.package.installerFile } else { '' }
+$instPath = if ($instFile) { Join-Path $filesDir $instFile } else { '' }
+if ($instPath -and (Test-Path -LiteralPath $instPath -PathType Leaf)) {
+    $instSha = (Get-FileHash -LiteralPath $instPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $evHome = $null
+    try { $evHome = [string](& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot).Home } catch {}
+    $evFile = if ($evHome) { Join-Path (Join-Path $evHome 'evidence') "$instSha.json" } else { '' }
+    if ($evFile -and (Test-Path -LiteralPath $evFile)) {
+        $ev = Get-Content -LiteralPath $evFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        $answers = $mf.Manifest.research.answers
+        $unanswered = @(@($ev.MustAnswer) | Where-Object { $_ -and -not ($answers -and [string]$answers.($_.Id)) } | ForEach-Object { $_.Id })
+        if ($unanswered.Count) {
+            Add-Check 'Research' 'FAIL' ("open research without a recorded answer: $($unanswered -join ', '). Wait for the researcher, then record it: Set-PsadtPackageManifest.ps1 -Updates @{ 'research.answers.$($unanswered[0])' = '<finding + source>' }. A package built before its findings is tested against the wrong question.") 'psadt-package.json'
+        } else {
+            Add-Check 'Research' 'PASS' ("every question the ladder sent out has an answer ($(@($ev.MustAnswer).Count))") 'psadt-package.json'
+        }
+    } else {
+        Add-Check 'Research' 'WARN' "no ladder evidence for this installer (SHA256 $instSha) - run Get-PsadtLocalEvidence.ps1 -Path <installer> before scaffolding" 'psadt-package.json'
+    }
+}
+
 # --- 9: per-run log name (WARN only) --------------------------------------------------------------
 # Without LogName the launcher inherits PSADT's fixed default name AND LogAppend, so every run of every
 # version piles into one file. Packages scaffolded before 0.21.0 are in that state; they still work.
@@ -429,6 +459,8 @@ if ($mf.Exists -and -not $mf.Error) {
                 fails   = @($checks | Where-Object { $_.Status -eq 'FAIL' }).Count
                 warns   = @($checks | Where-Object { $_.Status -eq 'WARN' }).Count
                 at      = (Get-Date).ToUniversalTime().ToString('o')
+                # The dossier renders these; without them it showed "not run" on a GREEN package.
+                checks  = @($checks | ForEach-Object { @{ Name = $_.Name; Status = $_.Status; Detail = $_.Detail; File = $_.File } })
             }
         } | Out-Null
     } catch { Write-Warning "Could not record the pre-flight verdict in the manifest: $($_.Exception.Message)" }

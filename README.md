@@ -1,4 +1,4 @@
-﻿<h1 align="center">PSADT v4 → Intune Deployment Skill</h1>
+<h1 align="center">PSADT v4 → Intune Deployment Skill</h1>
 
 <p align="center">
   <em>A Claude Code skill that drives the full lifecycle of a PowerShell App Deployment Toolkit (PSADT) v4.x Intune Win32 package - from first conversation to a tested, upload-ready <code>.intunewin</code>.</em>
@@ -170,12 +170,11 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.43.0 - The command that writes to the tenant could not bind.** A deep analysis of 0.42.0 read
-every control `SECURITY.md` claims, packaged an app end to end and ran the suite; its five stop-ship
-findings are fixed here. The Phase 9 upload command shown in `SKILL.md` could not bind, because
-`-IntuneWinPath` was mandatory while the artifact had been in the manifest since Phase 7 - and a new guard
-now binds every invocation the control plane shows against the real parameter sets. The third-party WinGet
-module that ships inside the `.intunewin` is pinned by SHA256 instead of a two-byte header. Three operator
-values that reached scripts running as SYSTEM are escaped or validated. A legacy config can no longer be
-written to, so the secret cannot be created inside the skill folder. The dossier template no longer names a
-customer.
+Latest: **0.44.0 - A GREEN package that would have looped in production.** Google Chrome ships a new MSI
+ProductCode with every build and updates itself in place, so the MSI generator's ProductCode-keyed package
+passed every gate and would still have been re-installed by Intune every day once GoogleUpdater moved a
+device on. `New-MsiPackage.ps1 -SelfUpdatingBinary` now generates a version-floor detection, an install
+that skips an equal or newer build, and uninstall/repair by the registered ARP name - verified in the full
+sandbox gate on Chrome 154. Every other lesson of that run became a gate too: pre-flight stays RED while
+research is unanswered, packing and the sandbox refuse a RED or stale pre-flight, and the upload and the
+dossier take the description, logo and detection script from the manifest instead of asking again.
