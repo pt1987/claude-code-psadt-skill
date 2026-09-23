@@ -27,8 +27,8 @@ on demand instead of inlining it.
    `PROBLEM: <one line>. TRIED: <what>. OPTIONS: 1) <action> 2) <action>.`
    Then take option 1 if it is safe and reversible; otherwise hand the exact command back to the user.
 
-Do not assume Adobe/Oracle (or any vendor) as a default - the app always comes from the user; guide examples
-are illustration only. Never pass `-SkillRoot` to a script and never build a path from the skill folder -
+Never assume a vendor - the app comes from the user (Adobe/Oracle in the guide are examples).
+Never pass `-SkillRoot` to a script and never build a path from the skill folder -
 every script resolves the config home itself (see Conventions).
 
 ## Decision gates (the ONLY AskUserQuestion moments)
@@ -44,7 +44,7 @@ researched defaults; recommended option first.
    (App. P, `New-WindowsFeaturePackage.ps1`) · driver (App. Q, `New-DriverPackage.ps1`; classify first
    with `Get-DriverSignatureInfo.ps1`, unsigned = no package) · MSIX/AppX (App. L.8).
    > **A `.msix` is not the "native installer" default.** Intune takes it natively as a
-   > line-of-business app, so that is the default answer and a PSADT package is NOT built. Wrap it only
+   > line-of-business app - that is the default answer, and no PSADT package is built. Wrap it only
    > for what the native type cannot do (closing processes, removing a legacy MSI/EXE of the same
    > product, importing the signing cert, per-machine config, >8 GB) - and read **App. L.8** first if
    > you do, because `Add-AppxPackage` under SYSTEM reports success while registering the app for
@@ -169,18 +169,19 @@ doc URL for you to fetch) - returning `OpenQuestions[]` + `AgentBudget`.
 **`AgentBudget` IS the dispatch rule: 0 open questions = 0 sub-agents; N = at most N, one per question,
 each given that question's `KnownContext` so it confirms instead of rediscovering.** Never a fixed three,
 never one for a question the ladder closed. One WebFetch is not a fan-out.
-Findings before scaffold, per deployment type: install/uninstall/repair, exit codes, log path, leftovers,
-and the unbundled runtime Gate 1
-decides (phase 1.4) - a GREEN Phase 6 proves the PACKAGE works, never that the app does.
+Findings before scaffold - pre-flight `Research` stays RED until each is `research.answers.<id>` - per
+deployment type: install/uninstall/repair, exit codes, log path, leftovers, and the unbundled runtime
+Gate 1 decides (phase 1.4) - a GREEN Phase 6 proves the PACKAGE works, never that the app does.
 Ladder detail, queries, per-type research (K · O.2 · P.2 · I.1) and the PSADT release-notes diff (verify
 with `Get-Command -Module PSAppDeployToolkit`, never adopt a version by number): phases 1.1/1.3, App. D/L.
 
 **Phase 3 - Scaffold.** **A generator is the default route** - it writes the launcher, the detection
-script, the per-run `LogName` and the manifest in one go: MSI → `New-MsiPackage.ps1`, browser extension
-→ `New-BrowserExtensionPackage.ps1`, Windows features → `New-WindowsFeaturePackage.ps1`. Only when none
-fits: `New-ADTTemplate`, then fill `$adtSession` yourself and write the manifest immediately
-(`Set-PsadtPackageManifest.ps1`) - a hand-scaffold still owes a per-run `LogName` and a `.NOTES`
-changelog. Every field, the 4.1.x parameter set and the WinGet variant: phase 3, App. I.2.
+script, the per-run `LogName` and the manifest in one go: MSI → `New-MsiPackage.ps1` (self-updating:
+`-SelfUpdatingBinary`, 4.3), browser extension → `New-BrowserExtensionPackage.ps1`, Windows features →
+`New-WindowsFeaturePackage.ps1`. Only when none fits: `New-ADTTemplate`, then fill `$adtSession` yourself
+and write the manifest immediately (`Set-PsadtPackageManifest.ps1`) - a hand-scaffold still owes a
+per-run `LogName` and a `.NOTES` changelog. A generic gap: fix the generator first, generate once. Every
+field, the 4.1.x parameter set and the WinGet variant: phase 3, App. I.2.
 
 <!-- rule:driver-classify-first -->
 **Phase 4 - Customize all three hooks.** User drops the installer in `<pkg>\Files\`; fill
@@ -197,23 +198,23 @@ table, the pnputil staging route and the certificate options: App. Q.1.
 
 <!-- rule:preflight-green-gate -->
 **Phase 5 - Pre-flight (Reviewer gate).** `scripts/Invoke-PsadtPreflight.ps1 -PackagePath <pkg>` returns
-`{ Overall='GREEN'|'RED'; Checks=@(...) }` and runs every gate check deterministically - encoding, AST
-parse, v3-cmdlet scan, top-level statements, the structural acid-test, the GUID-to-`-FilePath`
-anti-pattern. **`Overall` must be GREEN to proceed** (any RED = STOP, even if Install looks fine - else
-Company-Portal uninstall returns 0x80070001). Per-check explanations and the encoding fix: phase 5
-(5.1-5.6), App. C. WinGet must use the acid-test stub, since a live acid test would install: App. I.4.
+`{ Overall='GREEN'|'RED'; Checks=@(...) }`, every gate check deterministically (list: phase 5).
+**`Overall` must be GREEN to proceed** - packing and the sandbox refuse a RED or stale verdict (any RED =
+STOP, even if Install looks fine - else Company-Portal uninstall returns 0x80070001). Per-check
+explanations and the encoding fix: phase 5 (5.1-5.6), App. C. WinGet must use the acid-test stub, since a
+live acid test would install: App. I.4.
 
 <!-- rule:phase6-system-test -->
 **Phase 6 - SYSTEM test loop.** **BINDING before any upload; skippable ONLY when no upload is planned**
-- and that decision is recorded as `decisions.upload` in the manifest, which is what the dossier enforces.
-Each run appends to `results.systemTest[]` + `artifacts.logs[]`.
+- and that decision is recorded as `decisions.upload` in the manifest, which is what the dossier
+enforces. Runs append to `results.systemTest[]`.
 
 **Default route: `pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg>`.** One throwaway Windows
 Sandbox, every action as SYSTEM. No elevation, host untouched. Runs the FULL gate by default: a VM boot
-costs 139s fixed, so a second run is never cheap. Red Install/Uninstall SKIPS the rest (they could only
-re-prove it); `-Quick` is the deliberate pair. **Start the VM, then do Phases 7+8 in the SAME turn** -
-neither needs the verdict, and waiting idle costs the whole run twice. Verdict keyed on the DETECTION
-SCRIPT - what Intune evaluates. Each run snapshots the real installed-app entry (`InstalledAppFacts`):
+costs 139s fixed, so a second run is never cheap. Red Install/Uninstall skips the rest; `-Quick` = the
+pair. Poll the `progress.json` it names; never buffer its output. **Start the VM, then do Phases 7+8 in
+the SAME turn** - neither needs the verdict, and waiting idle costs the whole run twice. Verdict = the
+DETECTION SCRIPT (what Intune evaluates). Each run snapshots the real installed-app entry (`InstalledAppFacts`):
 write hooks against those strings, never a guess. `-Paths*`, prerequisite, wrong-host case: phase 6.1.
 
 **A package that stages a driver needs `-TrustedPublisherCert`.** No policy trusts that signer in the
@@ -222,8 +223,8 @@ SYSTEM - and the phase burns its timeout looking like a slow installer. Cancel w
 killing the process, which orphans the VM worker. Never hand-roll this harness: App. G, phase 6.1.
 
 **After GREEN, offer a manual interactive test** for an unfamiliar app/vendor or a suspected runtime
-prerequisite - situational, not a gate. A missing runtime, a first-run wizard or an absent licence all
-leave the loop GREEN, because nothing in it ever launches the app. How: phase 6.4.
+prerequisite - situational, not a gate. The loop never launches the app, so a missing runtime,
+first-run wizard or licence stays GREEN. How: phase 6.4.
 
 **Per-action route (DEV VM, or when the sandbox cannot host the app).** `Invoke-PsadtSystemTest.ps1` runs
 ONE action as SYSTEM and fixes nothing - **YOU drive the loop, hard cap 5 iterations**, on an ELEVATED
@@ -245,10 +246,12 @@ Intune accepts exactly `success`, `softReboot`, `hardReboot`, `retry`, `failed`;
 invalid type THROWS rather than rendering. Pass only the INSTALLER-SPECIFIC codes as
 `@{ Code; Type; De; En }` - they merge over the mandatory `0, 1707, 3010, 1641, 1618, 60001, 60008` table, never
 replace it. Record them once as `research.returnCodes` in the manifest and dossier + upload both pick them up.
-**Pass `-Metadata` with the app description.** `DescMdDe`/`DescMdEn` are Markdown, in the dossier language,
-with real umlauts, and that text is copied into Company Portal verbatim - the report REFUSES to render
-without it when `decisions.upload = true`, and marks it as missing otherwise. It is not a field the
-generator can invent for you; nor are the hooks and cmdlet list, which it reads out of the launcher.
+**Record the app description once: `app.description.de` / `.en` in the manifest** (Markdown, real
+umlauts). The report renders it and the upload copies it into Company Portal verbatim - one text, so the
+two can never differ (`-Metadata DescMdDe/DescMdEn` still overrides). The report REFUSES to render without
+it when `decisions.upload = true`, and marks it as missing otherwise. It is not a field the generator can
+invent for you. The hooks (with the launcher's `##` rationale), the cmdlet list and the pre-flight checks
+it reads itself.
 Structure: App. F.2, keys: F.0. Logo: `Get-PsadtAppLogo.ps1` first (App. J.0), then verify + MSI-icon
 fallback: App. J. WinGet dossier
 additions (WinGet >= 1.7.10582 requirement, registry/file detection note): App. I.6.

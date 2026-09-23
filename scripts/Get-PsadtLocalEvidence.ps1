@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS  Runs the local-evidence ladder before Phase 2 opens a browser, and reports the questions that are STILL OPEN.
 .DESCRIPTION
   Phase 2 used to dispatch three Researcher sub-agents unconditionally, on every job. On an app that was
@@ -89,7 +89,17 @@ param(
     [string]$JsonPath,
 
     # Unused downstream; accepted so callers can pass it through.
-    [string]$SkillRoot
+    [string]$SkillRoot,
+
+    # Where earlier packages live (default: config paths.packageRoot). Read for the self-updating
+    # question: a previous build of the same product with a different ProductCode is local proof that
+    # the ProductCode changes per build.
+    [string]$PackageRoot,
+
+    # Where the result is recorded per installer SHA256 (default: <config home>\evidence). Pre-flight
+    # reads it back and stays RED while a question that was open here has no recorded answer - the
+    # Chrome 154 run scaffolded, packed and tested while its researchers were still out (0.44.0).
+    [string]$EvidenceStore
 )
 $ErrorActionPreference = 'Stop'
 
@@ -473,6 +483,10 @@ $qConfig    = New-Question 'post-install-config'  'config'       'Known post-ins
 $qRuntime   = New-Question 'runtime-prerequisite' 'runtime'      'External runtime prerequisite (1.4)' 'blocking' 'runtime' $false
 $qPitfalls  = New-Question 'intune-pitfalls'      'intune'       'Known Intune pitfalls' 'important' 'intune' $false
 $qDrift     = New-Question 'psadt-command-drift'  'tooling'      'PSADT command drift (renamed or removed cmdlets)' 'blocking' 'tooling'
+# Chrome 154 (0.44.0): pre-flight and the full sandbox gate went GREEN on a package that would have
+# looped reinstalls in production, because the sandbox never sees a device one update later. Asked here,
+# before the scaffold, because the answer changes the generator call (New-MsiPackage -SelfUpdatingBinary).
+$qSelfUpd   = New-Question 'self-updating'        'updates'      'Does the app update itself, and does every build ship a new ProductCode?' 'blocking' 'intune' $false
 
 # --- silent install --------------------------------------------------------------------------------
 if ($topCand -and [string](Get-Prop $topCand 'Confidence') -eq 'verified') {
@@ -644,6 +658,42 @@ if ($corpusHit.Count -gt 0) {
     })
 }
 
+# --- self-updating / ProductCode per build -----------------------------------------------------------
+# Only the MSI generator keys a package on the ProductCode; New-ExePackage already detects by a version
+# floor. So for a non-MSI the question costs nothing and is accepted unanswered. For an MSI it stays open
+# (the updater half is a vendor fact) and folds into the 'intune' family - same agent as the pitfalls, so
+# the budget does not grow - but a previous package of the same product with a different ProductCode is
+# local proof of the other half, and goes to that agent as KnownContext.
+$priorBuilds = New-Object System.Collections.Generic.List[object]
+if ($isMsi -and $resolvedName -and $resolvedCode) {
+    $root = $PackageRoot
+    if (-not $root) { try { $root = [string](& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')).Config.paths.packageRoot } catch { $root = $null } }
+    if ($root -and (Test-Path -LiteralPath $root)) {
+        foreach ($pmFile in @(Get-ChildItem -LiteralPath $root -Filter 'psadt-package.json' -File -Recurse -Depth 1 -ErrorAction SilentlyContinue)) {
+            $pm = $null
+            try { $pm = Get-Content -LiteralPath $pmFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+            $pmCode = [string](Get-Prop (Get-Prop $pm 'package') 'productCode')
+            if ([string](Get-Prop (Get-Prop $pm 'app') 'name') -eq $resolvedName -and $pmCode -and $pmCode -ne $resolvedCode) {
+                $priorBuilds.Add([pscustomobject]@{
+                    Version = [string](Get-Prop (Get-Prop $pm 'app') 'version'); ProductCode = $pmCode; Manifest = $pmFile.FullName
+                })
+            }
+        }
+    }
+}
+if (-not $isMsi) {
+    Set-Open $qSelfUpd 'only the MSI generator keys a package on the ProductCode; New-ExePackage already detects by a version floor' 'accept-unanswered'
+} else {
+    Set-Open $qSelfUpd 'whether the app updates itself in place is a vendor fact; a ProductCode-keyed package passes every local gate and still loops once it does' 'dispatch-agent'
+    if ($priorBuilds.Count -gt 0) {
+        $pb = $priorBuilds[0]
+        $qSelfUpd.Evidence = @([pscustomobject]@{
+            Rung = 3; Source = 'package-history'; SourceRef = $pb.Manifest; Value = $pb.ProductCode; Confidence = 'high'
+            Detail = "a previous package of $resolvedName ($($pb.Version)) has ProductCode $($pb.ProductCode), this build $resolvedCode - the ProductCode changes per build"
+        })
+    }
+}
+
 # --- post-install config -----------------------------------------------------------------------------
 if ($msi) {
     $regRows = @(Get-Prop $msi 'Registry').Count
@@ -759,6 +809,7 @@ if ($corpusHit.Count -eq 0 -and $resolvedName) {
     $baseContext.Add("This skill's own pitfall corpus (App. A/B/G/L) does NOT mention $resolvedName - do not re-derive its generic entries.")
 }
 foreach ($d in $docCands) { $baseContext.Add("Vendor URL named on this machine ($($d.Source)): $($d.Url)") }
+foreach ($pb in $priorBuilds) { $baseContext.Add("Previous package of this product: $($pb.Version) with ProductCode $($pb.ProductCode) (this build: $resolvedCode) - the ProductCode changes per build") }
 
 $communitySources = @(
     [pscustomobject]@{ Kind = 'community'; Url = 'https://silentinstallhq.com'; Why = 'silent switches for many apps' }
@@ -769,6 +820,7 @@ $acceptance = @{
     'silent-uninstall'     = 'a command line or ProductCode from the vendor''s documentation, with the URL'
     'runtime-prerequisite' = 'the vendor system-requirements or enterprise-deployment page stating whether a separate runtime must already be present, with the URL - not a forum post (phase 1.4)'
     'intune-pitfalls'      = 'a concrete, reproduced failure with its source, not a general warning'
+    'self-updating'        = 'the vendor page or a reproduced report saying whether the app updates itself in place (and with what service/task), plus whether each build ships a new ProductCode - if yes, name the binary path a version-floor detection should read'
     'post-install-config'  = 'the registry keys or config files the vendor documents for enterprise defaults, with the URL'
 }
 foreach ($q in $questions) {
@@ -782,6 +834,7 @@ foreach ($q in $questions) {
         'silent-uninstall'     { @("`"$n`" uninstall silent /quiet /qn") }
         'runtime-prerequisite' { @("`"$n`" system requirements runtime", "`"$n`" enterprise deployment prerequisites") }
         'intune-pitfalls'      { @("`"$n`" known issues intune win32", "`"$n`" intune win32 PSADT") }
+        'self-updating'        { @("`"$n`" auto update MSI ProductCode intune detection reinstall", "`"$n`" enterprise disable auto update") }
         'post-install-config'  { @("`"$n`" enterprise configuration registry policy") }
         default                { @("`"$n`" `"$v`" enterprise deployment") }
     }
@@ -878,6 +931,25 @@ $result = [pscustomobject]@{
 }
 
 if ($JsonPath) { $result | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $JsonPath -Encoding UTF8 }
+
+# Recorded per installer hash so pre-flight can hold the package RED while a question that was open
+# here has no answer in the manifest (research.answers.<id>). Everything that dispatches an agent or
+# folds into one counts - a folded question is answered by that agent, not by nobody.
+$sha = [string]$result.Identity.Sha256
+if ($sha) {
+    try {
+        $store = $EvidenceStore
+        if (-not $store) { $store = Join-Path ([string](& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')).Home) 'evidence' }
+        New-Item -ItemType Directory -Path $store -Force | Out-Null
+        $mustAnswer = @($questions | Where-Object { $_.Status -eq 'Open' -and $_.Resolution -in @('dispatch-agent', 'folded') } |
+            ForEach-Object { [pscustomobject]@{ Id = $_.Id; Question = $_.Question; Severity = $_.Severity; FoldInto = $_.FoldInto } })
+        [pscustomobject]@{
+            SchemaVersion = 1; GeneratedAt = $result.GeneratedAt; Sha256 = $sha
+            ProductName = $resolvedName; ProductVersion = $resolvedVersion; ProductCode = $resolvedCode
+            MustAnswer = $mustAnswer
+        } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $store ($sha.ToLowerInvariant() + '.json')) -Encoding UTF8
+    } catch { Write-Warning "could not record the evidence for pre-flight: $($_.Exception.Message)" }
+}
 if ($Json) { return ($result | ConvertTo-Json -Depth 10) }
 
 # --- Human view -------------------------------------------------------------------------------------

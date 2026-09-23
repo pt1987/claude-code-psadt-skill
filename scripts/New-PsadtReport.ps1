@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Generate the combined PSADT package report (Intune dossier + technical package report)
@@ -101,6 +101,13 @@ if ($ManifestPath) {
     # Installer-specific return codes researched in Phase 1.3. Recorded once in the manifest so the
     # dossier and Invoke-IntuneWin32Upload.ps1 cannot document different mappings.
     Set-FromManifest 'ReturnCodes'  $mf.research.returnCodes
+    # The Company-Portal description, recorded once (app.description.de/en) so the dossier and the upload
+    # cannot carry different texts. Chrome 154 (0.44.0): the same Markdown was typed twice, into -Metadata
+    # and into -Description, and nothing kept the two in step.
+    if ($mf.app.description) {
+        Set-FromManifest 'DescMdDe' $mf.app.description.de
+        Set-FromManifest 'DescMdEn' $mf.app.description.en
+    }
 
     # The sandbox harness already measures every action and writes its verdict, exit codes, durations and
     # detection results into result.json, recording the path in the manifest. Until 0.32.0 this document
@@ -521,11 +528,47 @@ function Format-HookItems {
 # Start-ADTProcess with Inno switches was described as calling Start-ADTMsiProcess four times.
 # Nothing in the document said the list was a guess.
 $launcherAst = $null
+$launcherTokens = $null
 if ($ManifestPath) {
     $launcherFile = Join-Path (Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath).Path) 'Invoke-AppDeployToolkit.ps1'
     if (Test-Path -LiteralPath $launcherFile) {
-        $launcherAst = [System.Management.Automation.Language.Parser]::ParseFile($launcherFile, [ref]$null, [ref]$null)
+        $launcherTokens = $null
+        $launcherAst = [System.Management.Automation.Language.Parser]::ParseFile($launcherFile, [ref]$launcherTokens, [ref]$null)
     }
+}
+
+function Get-HookItems {
+    # The hook as a reader needs it: the '##' rationale comments the launcher carries AND the ADT commands,
+    # in source order. Commands alone said "Uninstall-ADTApplication" on Chrome 154 and nothing about WHY
+    # it replaced a ProductCode call - that had to be retyped into -Metadata by hand (0.44.0).
+    # MARK banners and separator lines are template furniture, not rationale, and are skipped.
+    param($Ast, $Tokens, [string]$FunctionName)
+    if (-not $Ast) { return $null }
+    $fn = $Ast.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $FunctionName }, $true) |
+        Select-Object -First 1
+    if (-not $fn) { return $null }
+    $items = New-Object System.Collections.Generic.List[object]
+    $seen = @{}
+    foreach ($c in $fn.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true)) {
+        $name = $c.GetCommandName()
+        if ($name -and $name -match '^[A-Za-z]+-(ADT|Psadt)' -and -not $seen.ContainsKey($name)) {
+            $seen[$name] = $true
+            $items.Add([pscustomobject]@{ Offset = $c.Extent.StartOffset; Line = $c.Extent.StartLineNumber; Text = $name; Comment = $false })
+        }
+    }
+    $last = $null
+    foreach ($t in @($Tokens | Where-Object {
+                $_.Kind -eq 'Comment' -and $_.Extent.StartOffset -gt $fn.Extent.StartOffset -and $_.Extent.EndOffset -lt $fn.Extent.EndOffset })) {
+        $txt = $t.Text.Trim()
+        if ($txt -notmatch '^##\s' -or $txt -match '^##\s*(=|MARK:)') { $last = $null; continue }
+        $txt = ($txt -replace '^##\s*', '').Trim()
+        # Consecutive '##' lines are one sentence wrapped at the column limit.
+        if ($last -and $t.Extent.StartLineNumber -eq $last.Line + 1) { $last.Text = "$($last.Text) $txt"; $last.Line = $t.Extent.StartLineNumber; continue }
+        $last = [pscustomobject]@{ Offset = $t.Extent.StartOffset; Line = $t.Extent.StartLineNumber; Text = $txt; Comment = $true }
+        $items.Add($last)
+    }
+    return @($items | Sort-Object Offset | ForEach-Object { $_.Text })
 }
 
 function Get-HookCommands {
@@ -548,9 +591,13 @@ $hookRepairCmds    = Get-HookCommands $launcherAst 'Repair-ADTDeployment'
 
 $notDerived = @(@{ De = '&ndash; nicht ermittelbar (kein Launcher gefunden), nicht &uuml;bergeben'; En = '&ndash; not derivable (no launcher found), not supplied' })
 
-$hookInstall   = Format-HookItems (Get-Val 'HookInstall'   $(if ($hookInstallCmds)   { $hookInstallCmds }   else { $notDerived }))
-$hookUninstall = Format-HookItems (Get-Val 'HookUninstall' $(if ($hookUninstallCmds) { $hookUninstallCmds } else { $notDerived }))
-$hookRepair    = Format-HookItems (Get-Val 'HookRepair'    $(if ($hookRepairCmds)    { $hookRepairCmds }    else { $notDerived }))
+$hookInstallItems   = Get-HookItems $launcherAst $launcherTokens 'Install-ADTDeployment'
+$hookUninstallItems = Get-HookItems $launcherAst $launcherTokens 'Uninstall-ADTDeployment'
+$hookRepairItems    = Get-HookItems $launcherAst $launcherTokens 'Repair-ADTDeployment'
+
+$hookInstall   = Format-HookItems (Get-Val 'HookInstall'   $(if ($hookInstallItems)   { $hookInstallItems }   else { $notDerived }))
+$hookUninstall = Format-HookItems (Get-Val 'HookUninstall' $(if ($hookUninstallItems) { $hookUninstallItems } else { $notDerived }))
+$hookRepair    = Format-HookItems (Get-Val 'HookRepair'    $(if ($hookRepairItems)    { $hookRepairItems }    else { $notDerived }))
 
 # ----------------------------------------------------------------------------- cmdlets
 $derivedCmds = @($hookInstallCmds + $hookUninstallCmds + $hookRepairCmds | Where-Object { $_ } | Select-Object -Unique | Sort-Object)
@@ -563,6 +610,17 @@ $cmdChips = @(foreach ($c in $cmds) { "          <span class=`"chip`">$(Esc $c)<
 $defaultPf = @(
     @{ Title = 'Pre-flight'; Cls = 'neutral'; De = 'keine Ergebnisse &uuml;bergeben &middot; nicht ausgef&uuml;hrt'; En = 'no results supplied &middot; not run'; BDe = 'nicht ausgef&uuml;hrt'; BEn = 'not run' }
 )
+# The recorded verdict (Invoke-PsadtPreflight.ps1 writes results.preflight.checks since 0.44.0). Before
+# that, a package whose pre-flight was GREEN in the manifest still rendered "not run" here - Chrome 154.
+if ($ManifestPath -and $mf -and $mf.results.preflight -and $mf.results.preflight.checks) {
+    $defaultPf = @(foreach ($pc in @($mf.results.preflight.checks)) {
+        $cls = switch ([string]$pc.Status) { 'PASS' { 'ok' } 'WARN' { 'warn' } default { 'fail' } }
+        $bde = switch ($cls) { 'ok' { 'bestanden' } 'warn' { 'Hinweis' } default { 'fehlgeschlagen' } }
+        $ben = switch ($cls) { 'ok' { 'passed' } 'warn' { 'warning' } default { 'failed' } }
+        $title = if ($pc.File) { "$($pc.Name) - $($pc.File)" } else { [string]$pc.Name }
+        @{ Title = $title; Cls = $cls; De = (Esc ([string]$pc.Detail)); En = (Esc ([string]$pc.Detail)); BDe = $bde; BEn = $ben }
+    })
+}
 $pf = Get-Val 'Preflight' $defaultPf
 $pfChecks = @(foreach ($c in $pf) {
     $sym = switch ($c.Cls) { 'ok' { '&#10003;' } 'warn' { '!' } 'neutral' { '&ndash;' } default { '&times;' } }

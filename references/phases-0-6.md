@@ -266,6 +266,25 @@ The ladder returns every question in one of three states - `Closed` (local evide
 - `Deferred[]` - still open, but not worth an agent of its own: `probe-run`, `recheck-after-binary`,
   `accept-unanswered`, `folded`. Nothing is dropped silently.
 
+**The answers come back BEFORE the scaffold - and the pipeline checks it.** Every question the ladder
+sends to an agent (or folds into one) is recorded per installer SHA256 in
+`%LOCALAPPDATA%\psadt-deploy\evidence\<sha256>.json`. Record each finding with its source as
+`research.answers.<id>` in the manifest:
+
+```powershell
+Set-PsadtPackageManifest.ps1 -PackagePath <pkg> -Updates @{ 'research.answers.self-updating' = '<finding> (<source URL>)' }
+```
+
+Until every recorded question has one, pre-flight's `Research` check is FAIL, and with it packing and the
+sandbox refuse to start. Measured on Chrome 154 (2026-09-23): scaffold, pack and a full sandbox gate ran
+while the pitfall researcher was still out; its answer rewrote all three hooks and the detection, and the
+gate had tested the wrong package. **Wait for the researchers. Do not scaffold "in the meantime".**
+
+The **`self-updating`** question (0.44.0) asks whether the app updates itself and ships a new
+ProductCode per build. It shares the `intune` family with the pitfalls, so it costs no extra agent; a
+previous package of the same product with a different ProductCode goes to that agent as KnownContext. A
+yes means `New-MsiPackage.ps1 -SelfUpdatingBinary` (phase 4.3).
+
 **`AgentBudget` is the dispatch rule** (`rule:research-gate`, anchored in SKILL.md). Zero open
 questions means zero sub-agents. N open questions
 means at most N, one per question, and each agent gets that question's `KnownContext` - the engine, the
@@ -502,6 +521,39 @@ function Install-ADTDeployment {
 }
 ```
 
+**Self-updating MSI apps (Chrome, Audacity, ...) - never key the package on the ProductCode.** Decide this
+in Phase 2: does the app update itself, and does every build ship a new ProductCode? If yes, the
+ProductCode-based package works exactly once. Measured on Google Chrome 154.0.8037.58 (2026-09-23), it
+breaks three ways:
+
+| Keyed on the ProductCode | What happens on a device GoogleUpdater already moved on |
+|---|---|
+| Detection | the NEXT package's GUID is never registered -> "not installed" -> Intune reinstalls every ~24h |
+| Install | the older MSI over a newer build -> 1603 (downgrade) |
+| Uninstall / Repair | `-ProductCode` aims at a GUID the device no longer has |
+
+Generate it with `New-MsiPackage.ps1 -SelfUpdatingBinary '<Vendor>\<App>\<app>.exe'` (relative to Program
+Files; `-ArpDisplayName` defaults to `-AppName`). That writes, in one go:
+
+- **Detection:** a version FLOOR on the binary (`>= AppVersion`), with Program Files resolved via
+  `ProgramW6432`, because Intune may run the script 32-bit.
+- **Install:** returns early when an equal or newer build is present (`Get-InstalledBinaryVersion` in the
+  Extensions module), so it neither closes the running app for nothing nor hits the downgrade.
+- **Uninstall:** `Uninstall-ADTApplication -Name '<ARP name>' -NameMatch Exact -ApplicationType MSI`
+  removes whichever build is registered.
+- **Repair:** `Get-ADTApplication` for the registered MSI -> `Start-ADTMsiProcess -Action Repair
+  -ProductCode $registeredMsi.ProductCode`; if nothing is registered, the packaged MSI is installed again.
+- **Manifest:** `package.detection = versionFloor` + `package.selfUpdating`.
+
+Take the exact ARP `DisplayName` from the sandbox run's `InstalledAppFacts`, never a guess: `Exact` matching
+is what keeps "Google Chrome" from also taking "Google Chrome Beta". The upload takes the detection
+script from the manifest for a `versionFloor` package and **refuses** `-MsiProductCode` - an MSI detection
+rule would bring the reinstall loop straight back. Full incident: App. G, 2026-09-23.
+
+**The same rule one level up: a gap no generator covers yet goes INTO the generator first.** On Chrome 154
+the package was hand-patched and gated, then the generator was fixed and the package regenerated and
+gated again - two full runs where one would have done. Fix the tool, generate once, test once.
+
 **Pattern for an EXE wrapper:**
 ```powershell
 Start-ADTProcess -FilePath "$($adtSession.DirFiles)\setup.exe" -ArgumentList '/silent /allusers=1 /log="C:\Windows\Logs\Software\install.log"' -SuccessExitCodes @(0, 3010, 1641) -WaitForMsiExec
@@ -531,6 +583,16 @@ Run everything in this phase. Each failure = DO NOT continue.
 > **Fast path:** `scripts/Invoke-PsadtPreflight.ps1 -PackagePath <pkg>` runs all of 3.1-3.6 in one shot and
 > returns `{ Overall = 'GREEN'|'RED'; Checks = ... }` (GREEN required to proceed). The sub-sections below
 > explain each check so you can diagnose a RED; the script is the gate, this is the reference.
+
+**The verdict is enforced, not just advised (0.44.0).** `Invoke-PsadtPackage.ps1` and
+`Invoke-PsadtSandboxTest.ps1` call `scripts/Test-PsadtPreflightCurrent.ps1` and refuse to run unless
+`results.preflight` is GREEN **and** newer than the launcher, the Extensions module, the detection script
+and everything under `Files\` / `SupportFiles\`. Any edit after the pre-flight makes it stale - re-run it.
+`-SkipPreflightGate` exists for fixtures and forensics and says so in its name. The recorded checks
+(`results.preflight.checks`) are what the dossier renders.
+
+**Check 11 - `Research`:** FAIL while a question the ladder sent to a researcher for this installer
+(matched by SHA256) has no `research.answers.<id>`; WARN when the ladder never ran for it. Phase 1.3.
 
 ### 5.1 Encoding check (UTF-8 with BOM or ASCII-only)
 
@@ -672,6 +734,12 @@ Intune Management Extension. Returns
 `{ Verdict, Steps, FailedAssertions, Assertions, InstalledAppFacts, ResultPath, LogFolder }`, writes
 `results.sandboxTest` plus one `results.systemTest[]` entry per action, and copies the PSADT logs back
 to the host.
+
+**Watch it through the file it names, not through its output.** The first line it prints is
+`Live progress (host path, updated during the run): ...\results\progress.json`; poll that file. The
+evidence folder beside the `.intunewin` appears only when the run ENDS, and output piped through
+`| Out-String` (or held by a background job) stays empty until then - on Chrome 154 that read as a hung
+VM and cost a round of process hunting. Start it in the background with no pipe, then read the file.
 
 **One run by default, because a VM run has a floor price.** Measured 2026-09-17 on the VS Code gate:
 406 s total, of which **139 s is fixed overhead** - VM boot, guest prep, the two canaries, teardown -

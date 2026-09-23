@@ -22,6 +22,8 @@
 
 .PARAMETER IntuneWinPath            Path to the .intunewin file. Optional with -ManifestPath: the artifact
                                     recorded by Invoke-PsadtPackage.ps1 (artifacts.intunewin) is used.
+                                    For a version-floor package (package.detection = versionFloor) the logo,
+                                    the description and the detection script come from the manifest too.
 .PARAMETER DisplayName              App name shown in Intune / Company Portal.
 .PARAMETER Description              Markdown description (Company Portal field supports Markdown only).
 .PARAMETER Publisher                Publisher string.
@@ -145,6 +147,28 @@ if ($ManifestPath) {
     }
     if ([string]::IsNullOrWhiteSpace($DisplayName)) {
         throw "The manifest has no app.name and no -DisplayName was passed. Fill the identity with Set-PsadtPackageManifest.ps1."
+    }
+
+    # The rest of what the pipeline already recorded (0.44.0). Retyped, the logo or detection script can come
+    # from a different folder than the dossier shows, and the description drifts from the dossier's text.
+    if (-not $PSBoundParameters.ContainsKey('LogoPath') -and $mfUp.artifacts.logo) { $LogoPath = [string]$mfUp.artifacts.logo }
+    if (-not $PSBoundParameters.ContainsKey('Description') -and $mfUp.app.description) {
+        $descLang = 'de'
+        try {
+            $cfgL = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot).Config
+            if ($cfgL.language -and $cfgL.language.dossier) { $descLang = ([string]$cfgL.language.dossier).ToLowerInvariant() }
+        } catch {}
+        $Description = [string]$(if ($mfUp.app.description.$descLang) { $mfUp.app.description.$descLang } else { $mfUp.app.description.en })
+    }
+
+    # A self-updating package (New-MsiPackage -SelfUpdatingBinary) is detected by a version floor. An MSI
+    # ProductCode rule would key detection on this one build again - exactly the reinstall loop the
+    # package was built to avoid (Chrome 154, App. G 2026-09-23). Refused, not warned.
+    if ([string]$mfUp.package.detection -eq 'versionFloor') {
+        if ($MsiProductCode) {
+            throw "This package detects by version floor (package.detection = versionFloor). -MsiProductCode would key detection on this build's ProductCode and loop reinstalls once the app updates itself. Use the detection script."
+        }
+        if (-not $DetectionScriptPath -and $mfUp.artifacts.detection) { $DetectionScriptPath = [string]$mfUp.artifacts.detection }
     }
 }
 
