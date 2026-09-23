@@ -93,6 +93,11 @@ function Expand-CommaSeparated([string[]]$Values) {
 function Assert-NoTokenLeak([string]$value, [string]$paramName) {
     if ($value -match '__[A-Z0-9_]+__') { throw "Parameter '$paramName' must not contain a template placeholder sequence ('$($Matches[0])')." }
 }
+# A value carrying the comment-block terminator would END the launcher's <# .. #> help block, and what
+# follows it becomes top-level code in a script that later runs as SYSTEM. Reject it at the source.
+function Assert-NoCommentTerminator([string]$value, [string]$paramName) {
+    if ($value -match '#>') { throw "Parameter '$paramName' must not contain the comment terminator '#>'." }
+}
 function Assert-NoUnreplacedToken([string]$content, [string]$file) {
     # A token added to a template but forgotten in its Replace() chain produces a file that looks fine
     # and ships a literal '__TOKEN__' into a detection rule or an uninstall command. It happened here
@@ -109,6 +114,8 @@ foreach ($pair in @(@('Name', $Name), @('AppVendor', $AppVendor), @('AppName', $
         @('VerifyRelativePath', $VerifyRelativePath), @('DesktopShortcutName', $DesktopShortcutName), @('Changelog', $Changelog))) {
     Assert-NoTokenLeak ([string]$pair[1]) $pair[0]
 }
+Assert-NoCommentTerminator ([string]$Author) 'Author'
+Assert-NoCommentTerminator ([string]$Changelog) 'Changelog'
 if (-not (Test-Path -LiteralPath $InstallerPath)) { throw "InstallerPath not found: $InstallerPath" }
 # A GUID here means an MSI was passed to the EXE generator - the MSI route has its own, and mixing them
 # produces a package whose uninstall hook looks for a vendor .exe that does not exist.

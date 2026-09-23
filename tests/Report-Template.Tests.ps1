@@ -81,3 +81,12 @@ Describe 'Report template JavaScript' {
         $script:Js | Should -Match 'getSelection'
     }
 }
+
+Describe 'Report template carries no customer brand' {
+    # 2026-09-21 audit (B04): the template named a customer's corporate design and a licensed font family
+    # in a public MIT repository. The dossier is a deliverable for ANY tenant; the look stays, the names go.
+    It 'names no customer and no licensed font family' {
+        $script:Html | Should -Not -Match 'HanseMerkur'
+        $script:Html | Should -Not -Match 'Metric-(Regular|SemiBold|Medium|Bold)'
+    }
+}

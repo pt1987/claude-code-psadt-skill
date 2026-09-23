@@ -63,10 +63,17 @@ function Get-SqEscaped([string]$s) { ($s -replace "'", "''") }
 function Assert-NoTokenLeak([string]$value, [string]$paramName) {
     if ($value -match '__[A-Z0-9_]+__') { throw "Parameter '$paramName' must not contain a template placeholder sequence ('$($Matches[0])')." }
 }
+# A value carrying the comment-block terminator would END the launcher's <# .. #> help block, and what
+# follows it becomes top-level code in a script that later runs as SYSTEM. Reject it at the source.
+function Assert-NoCommentTerminator([string]$value, [string]$paramName) {
+    if ($value -match '#>') { throw "Parameter '$paramName' must not contain the comment terminator '#>'." }
+}
 if ($Name -match '[\\/:*?"<>|]' -or $Name -match '\.\.') { throw "Name '$Name' must be a simple folder name (no path separators or '..')." }
 foreach ($pair in @(@('Name', $Name), @('AppVendor', $AppVendor), @('AppName', $AppName), @('AppVersion', $AppVersion), @('Author', $Author), @('Changelog', $Changelog))) {
     Assert-NoTokenLeak ([string]$pair[1]) $pair[0]
 }
+Assert-NoCommentTerminator ([string]$Author) 'Author'
+Assert-NoCommentTerminator ([string]$Changelog) 'Changelog'
 
 # --- Validate + normalize the extension list ------------------------------------------------------
 $chromiumIdPattern = '^[a-p]{32}$'

@@ -89,7 +89,12 @@ if ($cfg.intune -and $cfg.intune.uploadEnabled) {
         }
     } else {
         $ref = if ($cfg.intune.secretRef) { $cfg.intune.secretRef } else { 'secret.dpapi' }
-        if (-not (Test-Path (Join-Path $configHome $ref))) { $missing.Add('intune.secret') }
+        # secretRef names a FILE beside config.json, never a path: joined unchecked, '..\..\x' resolves
+        # outside the config home and the credential would be read from wherever the config points.
+        if ($ref -match '[\/]' -or $ref -match '^[A-Za-z]:' -or $ref -match '\.\.') {
+            $missing.Add("intune.secretRef (must be a file name beside config.json, not a path: '$ref')")
+        }
+        elseif (-not (Test-Path (Join-Path $configHome $ref))) { $missing.Add('intune.secret') }
     }
 }
 if ($cfg.intune -and $cfg.intune.groups -and $cfg.intune.groups.enabled) {

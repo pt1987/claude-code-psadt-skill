@@ -112,6 +112,10 @@ if (-not [string]::IsNullOrWhiteSpace([string]$cfg.intune.certThumbprint)) {
 } else {
     # --- DPAPI client secret path ---
     $secretRef = if ($cfg.intune.secretRef) { $cfg.intune.secretRef } else { 'secret.dpapi' }
+    # The credential is read from beside config.json and nowhere else - see Get-PsadtConfig.ps1.
+    if ($secretRef -match '[\/]' -or $secretRef -match '^[A-Za-z]:' -or $secretRef -match '\.\.') {
+        throw "intune.secretRef must be a file name beside config.json, not a path: '$secretRef'."
+    }
     $secretPath = Join-Path $probe.Home $secretRef
     if (-not (Test-Path $secretPath)) { throw "Encrypted secret not found: $secretPath (run New-PsadtEntraApp.ps1)." }
 

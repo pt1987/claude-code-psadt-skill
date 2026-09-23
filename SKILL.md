@@ -256,7 +256,7 @@ additions (WinGet >= 1.7.10582 requirement, registry/file detection note): App. 
 <!-- rule:upload-dry-run-first -->
 **Phase 9 - Direct Graph upload (opt-in).** Gate 4. ALWAYS dry-run first (read-only) → show summary +
 `On -Execute` action → confirm → `-Execute`. `Invoke-IntuneWin32Upload.ps1 -ManifestPath <pkg>\psadt-package.json`
-(identity from the manifest, `results.upload` written back; via `Get-GraphToken.ps1`; asserts the upload role first): MSI →
+(identity AND the `.intunewin` from the manifest - Phase 7 recorded it as `artifacts.intunewin`; `results.upload` written back; via `Get-GraphToken.ps1`; asserts the upload role first): MSI →
 `-MsiProductCode '{GUID}'`; EXE/non-MSI → `-DetectionScriptPath` (a detection rule accepts only
 `ruleType, enforceSignatureCheck, runAs32Bit, scriptContent`; the detect script writes stdout + `exit 0` when
 installed, nothing when not). Fill every objective field; impose no category/notes/featured (group assignment

@@ -12,7 +12,10 @@ param(
     [Parameter(Mandatory)][string]$AppName,         # display name in $adtSession (may contain / etc.)
     [Parameter(Mandatory)][string]$AppVersion,
     [Parameter(Mandatory)][string]$AppArch,         # x64 | x86 | ARM64
-    [Parameter(Mandatory)][string]$ProductCode,     # {GUID}
+    # Validated at binding, like Invoke-IntuneWin32Upload.ps1 does: this value is substituted into a
+    # single-quoted literal in BOTH the launcher and the detection script, and both run as SYSTEM.
+    [Parameter(Mandatory)][ValidatePattern('^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$')]
+    [string]$ProductCode,                           # {GUID}
     [Parameter(Mandatory)][string]$InstallerFile,   # filename placed into Files\
     [Parameter(Mandatory)][string]$InstallerPath,   # source path of the MSI to copy in
     [string]$AdditionalArgs = '',                   # extra MSI properties only (NOT /qn)
@@ -49,10 +52,17 @@ function Expand-CommaSeparated([string[]]$Values) {
 function Assert-NoTokenLeak([string]$value, [string]$paramName) {
     if ($value -match '__[A-Z0-9_]+__') { throw "Parameter '$paramName' must not contain a template placeholder sequence ('$($Matches[0])')." }
 }
+# A value carrying the comment-block terminator would END the launcher's <# .. #> help block, and what
+# follows it becomes top-level code in a script that later runs as SYSTEM. Reject it at the source.
+function Assert-NoCommentTerminator([string]$value, [string]$paramName) {
+    if ($value -match '#>') { throw "Parameter '$paramName' must not contain the comment terminator '#>'." }
+}
 if ($Name -match '[\\/:*?"<>|]' -or $Name -match '\.\.') { throw "Name '$Name' must be a simple folder name (no path separators or '..')." }
 foreach ($pair in @(@('Name', $Name), @('AppVendor', $AppVendor), @('AppName', $AppName), @('AppVersion', $AppVersion), @('Author', $Author), @('AdditionalArgs', $AdditionalArgs), @('InstallerFile', $InstallerFile), @('DisplayNameLike', $DisplayNameLike), @('Changelog', $Changelog))) {
     Assert-NoTokenLeak ([string]$pair[1]) $pair[0]
 }
+Assert-NoCommentTerminator ([string]$Author) 'Author'
+Assert-NoCommentTerminator ([string]$Changelog) 'Changelog'
 if (-not (Test-Path -LiteralPath $InstallerPath)) { throw "InstallerPath not found: $InstallerPath" }
 
 # 1) Scaffold
@@ -166,7 +176,7 @@ function Install-ADTDeployment
     $adtSession.InstallPhase = "Post-$($adtSession.DeploymentType)"
 
     ## Remove any desktop shortcut the installer may have created (Start Menu only policy).
-    foreach ($lnk in @("$env:Public\Desktop\__APPNAME_FILE__.lnk"))
+    foreach ($lnk in @((Join-Path "$env:Public\Desktop" '__APPNAME_FILE__.lnk')))
     {
         if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue }
     }
@@ -297,14 +307,15 @@ catch
 if (-not $Changelog) { $Changelog = "- 0.1 ($today, $Author): Initial version." }
 $addArgsLine = if ($AdditionalArgs) { " -AdditionalArgumentList '$(Get-SqEscaped $AdditionalArgs)'" } else { '' }
 
-# Values that land in single-quoted $adtSession literals are single-quote-escaped; __APPNAME_FILE__ is the
-# raw name for the double-quoted desktop-shortcut path (apostrophes are valid inside a double-quoted string).
+# Every operator value that lands in the generated script goes through Get-SqEscaped and into a
+# SINGLE-quoted literal - including the desktop-shortcut name, which used to sit in a double-quoted
+# string where a $ in an app name interpolated at client runtime, as SYSTEM.
 # The per-run log name shares the artifact stem, and the sanitizing rule lives in exactly ONE place
 # (Get-PsadtPackageManifest -Identity) so a second copy can never drift and rename an app.
 $logStem = (& (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -Identity @{ vendor = $AppVendor; name = $AppName; version = $AppVersion; arch = $AppArch }).Stem
 $out = $tpl.
     Replace('__APPVENDOR__', (Get-SqEscaped $AppVendor)).
-    Replace('__APPNAME_FILE__', $AppName).
+    Replace('__APPNAME_FILE__', (Get-SqEscaped $AppName)).
     Replace('__APPNAME__', (Get-SqEscaped $AppName)).
     Replace('__APPVERSION__', (Get-SqEscaped $AppVersion)).
     Replace('__APPARCH__', (Get-SqEscaped $AppArch)).

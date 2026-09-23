@@ -65,11 +65,15 @@ Describe 'Set-PsadtConfig' {
             (Test-Path (Join-Path $script:cfgHome 'secret.dpapi')) | Should -BeTrue
         }
 
-        It 'keeps writing to a legacy config beside scripts/ until it is migrated' {
+        It 'refuses to write while the legacy config beside scripts/ is still in use' {
+            # 2026-09-21 audit (B05): the legacy fallback made the skill folder the config home, and the
+            # secret then landed INSIDE the repository tree - the one place SECURITY.md promises it never is.
+            # The legacy file stays readable; writing waits for the doctor to migrate it.
             @{ version=1; author=@{ person='Legacy' } } | ConvertTo-Json | Set-Content (Join-Path $script:root 'config.json')
-            & $script:setNoRoot -Updates @{ 'author.company' = 'PHAT' }
-            $cfg = Get-Content (Join-Path $script:root 'config.json') -Raw | ConvertFrom-Json
-            $cfg.author.company | Should -Be 'PHAT'
+            { & $script:setNoRoot -Secret (ConvertTo-SecureString 'x' -AsPlainText -Force) -ErrorAction Stop } |
+                Should -Throw -ExpectedMessage '*Initialize-PsadtSkill*'
+            (Test-Path (Join-Path $script:root 'secret.dpapi')) | Should -BeFalse
+            (Get-Content (Join-Path $script:root 'config.json') -Raw | ConvertFrom-Json).author.person | Should -Be 'Legacy'
             (Test-Path (Join-Path $script:cfgHome 'config.json')) | Should -BeFalse
         }
     }

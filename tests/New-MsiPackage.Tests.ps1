@@ -133,3 +133,33 @@ Describe 'New-MsiPackage array parameters (0.26.2)' {
         $raw | Should -Match 'uninstallArgs\s*=\s*''/qn /norestart'''
     }
 }
+
+Describe 'New-MsiPackage.ps1 keeps operator values out of the code path (0.43.0)' {
+    # 2026-09-21 audit (B03): three placeholders were substituted raw into a launcher that runs as SYSTEM.
+    # A ProductCode with an apostrophe broke a single-quoted literal in launcher AND detection script; an
+    # AppName with a $ interpolated inside the double-quoted desktop-shortcut path; a Changelog with #>
+    # terminated the comment-based help and turned what followed into top-level code.
+    BeforeAll { . "$PSScriptRoot/_helpers.ps1"; $script:text = Get-Content -LiteralPath $script:src -Raw }
+
+    It 'validates -ProductCode as a GUID at binding' {
+        $p = $script:ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'ProductCode' }
+        @($p.Attributes | ForEach-Object { $_.TypeName.Name }) | Should -Contain 'ValidatePattern'
+    }
+
+    It 'embeds the desktop-shortcut name as a single-quoted, escaped literal, never inside a double-quoted string' {
+        $script:text | Should -Not -Match '"[^"\r\n]*__APPNAME_FILE__[^"\r\n]*"'
+        $script:text | Should -Match "'__APPNAME_FILE__\.lnk'"
+        $script:text | Should -Match 'Replace\(''__APPNAME_FILE__'', \(Get-SqEscaped \$AppName\)\)'
+    }
+
+    It 'rejects an Author or Changelog carrying the comment terminator' {
+        . ([scriptblock]::Create((Get-ScriptFunctionText -Path $script:src -Name 'Assert-NoCommentTerminator')))
+        { Assert-NoCommentTerminator '- 0.1 (2026-09-21, Pat): initial' 'Changelog' } | Should -Not -Throw
+        { Assert-NoCommentTerminator 'x #> Write-Host injected' 'Changelog' } | Should -Throw -ExpectedMessage '*Changelog*'
+    }
+
+    It 'runs the terminator guard over Author and Changelog' {
+        $script:text | Should -Match 'Assert-NoCommentTerminator[^\r\n]*\$Author'
+        $script:text | Should -Match 'Assert-NoCommentTerminator[^\r\n]*\$Changelog'
+    }
+}

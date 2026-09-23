@@ -2,6 +2,52 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.43.0 - 2026-09-21 - The command that writes to the tenant could not bind
+
+A deep analysis of 0.42.0 (`docs/audit/2026-09-21-tiefenanalyse.md`) ran the suite, packaged 7-Zip end to
+end in a throwaway sandbox and read every control `SECURITY.md` claims. The five findings it ranked as
+stop-ship are fixed here. They share a shape: the skill's own promise was right and the code had drifted
+away from it.
+
+**Phase 9 could not be executed as written.** `SKILL.md` shows
+`Invoke-IntuneWin32Upload.ps1 -ManifestPath <pkg>\psadt-package.json` as the whole command, and
+`-IntuneWinPath` was `Mandatory` in every parameter set - so the documented invocation failed at binding,
+at the one step that writes to a tenant, leaving the model to improvise parameters there. The artifact was
+in the manifest the whole time: Phase 7 records it as `artifacts.intunewin`. The upload now reads it from
+there, and without it names the packaging step instead of a parameter. A new guard in `tests/SKILL.Tests.ps1`
+binds EVERY script invocation shown in the control plane against the real parameter sets, so prose and
+parameters cannot drift apart again.
+
+**A third-party module reached the fleet on a two-byte check.** `PSAppDeployToolkit.WinGet` is packed into
+the `.intunewin` and runs as SYSTEM on every assigned device; it was accepted on a `PK` header, with the
+Authenticode verdict as a warning. Upstream ships it unsigned (verified: `.psm1`, `.psd1` and both bundled
+DLLs are `NotSigned`), so a signature can never be the gate here - a recorded SHA256 per release is.
+`1.0.5` is pinned, an unpinned release is refused unless `-AllowUnpinned` is passed for that call, and a
+mismatch installs nothing. The fallback URL also used tag `v1.0.5`, which answers 404: upstream tags are
+unprefixed.
+
+**Three operator values were substituted raw into scripts that run as SYSTEM.** `-ProductCode` had no
+`ValidatePattern` (the upload script has had one for versions) and went into single-quoted literals in both
+the launcher and the detection script; the desktop-shortcut name went into a DOUBLE-quoted path, where a `$`
+in an app name interpolates at client runtime; and `-Changelog` / `-Author` went into the `<# .. #>` help
+block, where a `#>` ends the block and turns what follows into top-level code. The GUID is validated at
+binding, the shortcut name is escaped into a single-quoted literal, and all five generators reject the
+comment terminator.
+
+**The secret could still land inside the skill folder.** The legacy fallback makes the skill folder the
+config home when no `config.json` exists in the real one - and `Set-PsadtConfig.ps1` then wrote `secret.dpapi`
+there, into a tree that a re-clone, an update or a re-install can read or overwrite. Reading a legacy config
+is the migration path and stays; writing to one now refuses and names `Initialize-PsadtSkill.ps1 -Fix`.
+`intune.secretRef` is a file name beside `config.json`, never a path: a separator, a drive or `..` is
+refused by the reader and by the token script.
+
+**The dossier template named a customer.** `references/Report-Template.html` carried "HanseMerkur corporate
+design" and the licensed "Metric" font family in a public MIT repository. The palette and the layout are
+unchanged; the names are gone and the stack is system fonts, with a comment saying where to put a corporate
+face back. A test keeps both out.
+
+Suite 757 -> 781.
+
 ## 0.42.0 - 2026-09-21 - Finding the logo cost as long as testing the package
 
 Acquiring one app logo took about as long as the entire Phase 6 gate. Measured on Thunderbird 156.0: a
