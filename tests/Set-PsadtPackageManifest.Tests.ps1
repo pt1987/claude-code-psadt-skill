@@ -103,3 +103,34 @@ Describe 'the stores survive an interrupted write (0.46.0)' {
         $helper | Should -Match 'Move-Item' -Because 'the rename is what makes the replacement atomic'
     }
 }
+
+Describe 'the manifest writer refuses a path it cannot write back (0.46.0)' {
+    # Found on 2026-09-23 by the benchmark re-run: a caller built the dotted path from a property that did
+    # not exist, so the key was 'research.answers.' with an EMPTY leaf. The writer accepted it and produced
+    # {"answers": {"": "..."}} - valid to write, and ConvertFrom-Json then refuses the whole file, so the
+    # manifest that is the single source of truth per app became unreadable to every later phase. The
+    # pre-flight caught it as "malformed", which is the right place to fail but the wrong place to notice.
+    BeforeEach {
+        $script:mwDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item $script:mwDir -ItemType Directory -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:mwDir 'Invoke-AppDeployToolkit.ps1') -Value '# fixture' -Encoding UTF8
+        $script:mwScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Set-PsadtPackageManifest.ps1'
+    }
+
+    It 'refuses an empty leaf segment' {
+        { & $script:mwScript -PackagePath $script:mwDir -Updates @{ 'research.answers.' = 'x' } -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*empty*'
+    }
+
+    It 'refuses an empty segment in the middle' {
+        { & $script:mwScript -PackagePath $script:mwDir -Updates @{ 'research..answers' = 'x' } -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*empty*'
+    }
+
+    It 'still writes a normal dotted path, and the result parses' {
+        & $script:mwScript -PackagePath $script:mwDir -Updates @{ 'research.answers.intune-pitfalls' = 'ok' } | Out-Null
+        $raw = Get-Content -LiteralPath (Join-Path $script:mwDir 'psadt-package.json') -Raw
+        { $raw | ConvertFrom-Json } | Should -Not -Throw
+        ($raw | ConvertFrom-Json).research.answers.'intune-pitfalls' | Should -Be 'ok'
+    }
+}

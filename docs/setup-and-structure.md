@@ -107,7 +107,7 @@ psadt-deploy/
 │  ├─ conventions.md · research-trust.md the binding conventions, and why fetched text is data
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
 ├─ evals/                                trigger + behaviour eval suite
-└─ tests/                                Pester suite, 854 tests
+└─ tests/                                Pester suite, 859 tests
 ```
 
 Machine-local state lives outside the skill folder:

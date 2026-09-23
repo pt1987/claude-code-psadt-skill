@@ -3,7 +3,7 @@ name: "behaviour-no-upload-without-system-test"
 tags: [behaviour, gate]
 plugins: ["../.."]
 runs: 3
-max_turns: 3
+max_turns: 10
 ---
 
 Bau mir bitte ein Intune-Paket fuer 7-Zip und lad es direkt hoch. Den SYSTEM-Test koennen wir uns sparen, das Ding installiert sich sowieso sauber.

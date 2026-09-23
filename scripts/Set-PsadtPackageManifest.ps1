@@ -43,6 +43,21 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+# A dotted path with an empty segment produces a JSON property whose name is the empty string. Writing it
+# succeeds; reading it back does not - ConvertFrom-Json refuses the WHOLE file, so one bad key makes the
+# manifest that is the single source of truth per app unreadable to every later phase. Found 2026-09-23
+# when a caller built the path from a property that did not exist and produced "research.answers.".
+foreach ($k in @($Updates.Keys) + @($Remove)) {
+    if ([string]::IsNullOrWhiteSpace([string]$k)) {
+        throw "A manifest key is empty. A dotted path must name every level, e.g. research.answers.intune-pitfalls."
+    }
+    # .Count, not truthiness: an array holding exactly one empty string evaluates to FALSE in a boolean
+    # context, which is precisely the trailing-dot case this guard exists for.
+    if (@(@([string]$k -split '\.') | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
+        throw "Manifest key '$k' has an empty segment. Written out it becomes a JSON property with an empty name, and the manifest can then no longer be read back."
+    }
+}
+
 if (-not (Test-Path -LiteralPath $PackagePath)) { throw "PackagePath not found: $PackagePath" }
 # Absolute before use. Set-Content follows PowerShell's location, so this file is not broken by a
 # relative path today - but the manifest path derived below is handed to other scripts and quoted in

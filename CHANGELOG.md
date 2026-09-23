@@ -61,7 +61,33 @@ CSP mechanics are Appendix N's subject, the logo verification Appendix J's, the 
 `BENCHMARK.md` now says on its first screen that its numbers were measured once, on 2026-09-18, against
 0.35.0, and that three releases since have changed the phases it times.
 
-Suite 824 -> 854.
+Suite 824 -> 859.
+
+**Three things this release found by running instead of reading.** B11 asked for the eval suite to be
+executed - it never had been in full. The first complete run (21 cases, 3 runs each, 15.18 USD) showed
+all nine trigger cases at 1.0, including the two that scored 0 of 3 before the description named browser
+extensions and Windows features, and all eight near-miss cases still at 1.0 - the property that widening
+the description could have broken, measured rather than assumed. It also showed why four cases had never
+run at all: their graders carry `criteria`, `focus` and `target`, which the current schema rejects, so the
+case does not load. And it caught a regression inside this very release: the widened description put a
+colon-space inside an unquoted YAML scalar, which ends the value, stops the frontmatter parsing and stops
+the skill loading ENTIRELY. Every trigger case scored 0 while every near-miss passed, because nothing
+fired. `tests/SKILL.Tests.ps1` now refuses a colon-space in an unquoted frontmatter value - the suite
+checked what the file says and never that it still loads.
+
+**B20 re-measured five applications end to end** (7-Zip, PuTTY, Notepad++, VLC as MSI, Git for Windows as
+Inno Setup), serial, full gate, on 0.46.0: 5 of 5 GREEN, median 3:44 min. `BENCHMARK.md` is regenerated
+from those runs and says how old it is; the 2026-09-18 ten-application run is kept as a dated section,
+with its roster and markers beside it. The markers now carry the skill version, the model and a token
+count, so a number can no longer outlive the tree that produced it - and the report derives its own title
+and its rejection sentence from the data, having claimed "Ten applications" over a five-application run.
+
+**The benchmark also found a defect the tests did not.** A caller built a dotted manifest path from a
+property that did not exist, so the key was `research.answers.` with an empty leaf.
+`Set-PsadtPackageManifest.ps1` wrote it, and the resulting `{"answers": {"": ...}}` made the whole manifest
+unreadable to `ConvertFrom-Json` - the single source of truth per app, lost to one bad key. It now refuses
+an empty segment. The first guard for it did nothing, because an array holding exactly one empty string is
+false in a PowerShell condition; it counts now.
 
 ## 0.45.0 - 2026-09-23 - Every number in the docs was written by hand, so every number was wrong
 

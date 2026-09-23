@@ -1,8 +1,8 @@
 {
   "key": "7zip",
   "name": "7-Zip",
-  "packagePath": "C:\\PSADT\\Packages\\7-Zip",
-  "outputFolder": "C:\\PSADT\\Output\\Igor_Pavlov_7-Zip_26.03_x64",
+  "packagePath": "C:\\Users\\PatrickTaubert\\AppData\\Local\\Temp\\psadt-bench046\\Packages\\7-Zip",
+  "outputFolder": "C:\\Users\\PatrickTaubert\\AppData\\Local\\Temp\\psadt-bench046\\Output\\Igor_Pavlov_7-Zip_26.03_x64",
   "verdict": "GREEN",
   "scenarios": [
     "Install",
@@ -11,7 +11,9 @@
     "Repair",
     "FinalUninstall"
   ],
-  "unencryptedSize": 11961343,
+  "unencryptedSize": 11961204,
   "version": "26.03",
-  "productCode": null
+  "productCode": "{23170F69-40C1-2702-2603-000001000000}",
+  "agentBudget": 1,
+  "skillVersion": "0.46.0"
 }

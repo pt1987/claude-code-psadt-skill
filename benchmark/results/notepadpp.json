@@ -1,8 +1,8 @@
 {
   "key": "notepadpp",
   "name": "Notepad++",
-  "packagePath": "C:\\PSADT\\Packages\\NotepadPlusPlus",
-  "outputFolder": "C:\\PSADT\\Output\\Notepad_Team_Notepad_8.9.8_x64",
+  "packagePath": "C:\\Users\\PatrickTaubert\\AppData\\Local\\Temp\\psadt-bench046\\Packages\\NotepadPlusPlus",
+  "outputFolder": "C:\\Users\\PatrickTaubert\\AppData\\Local\\Temp\\psadt-bench046\\Output\\NotepadPlus_Team_NotepadPlus_8.9.8_x64",
   "verdict": "GREEN",
   "scenarios": [
     "Install",
@@ -11,7 +11,9 @@
     "Repair",
     "FinalUninstall"
   ],
-  "unencryptedSize": 17469914,
+  "unencryptedSize": 17469496,
   "version": "8.9.8",
-  "productCode": null
+  "productCode": "{224C0E17-FB79-4AE2-9A47-5556FCEF39C4}",
+  "agentBudget": 1,
+  "skillVersion": "0.46.0"
 }

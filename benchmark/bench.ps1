@@ -15,7 +15,12 @@ param(
     [Parameter(Mandatory)][string]$App,
     [Parameter(Mandatory)][string]$Phase,
     [Parameter(Mandatory)][ValidateSet('start', 'end')][string]$Event,
-    [string]$Note = ''
+    [string]$Note = '',
+    # 2026-09-21 audit B20: the markers recorded seconds and nothing else, so BENCHMARK.md could not say
+    # which skill version produced them - and it silently kept claiming 0.35.0 through seven minors. The
+    # version is read from package.json, so a marker cannot disagree with the tree it was written in.
+    [string]$Model = $env:PSADT_BENCH_MODEL
+    ,[int64]$Tokens = 0
 )
 $ErrorActionPreference = 'Stop'
 $now = [System.DateTimeOffset]::UtcNow
@@ -26,5 +31,8 @@ $rec = [pscustomobject]@{
     ts    = [math]::Round($now.ToUnixTimeMilliseconds() / 1000, 3)
     iso   = $now.ToString('o')
     note  = $Note
+    skillVersion = (Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'package.json') -Raw | ConvertFrom-Json).version
+    model  = $Model
+    tokens = $Tokens
 }
 Add-Content -LiteralPath (Join-Path $PSScriptRoot 'bench.jsonl') -Value ($rec | ConvertTo-Json -Compress) -Encoding utf8

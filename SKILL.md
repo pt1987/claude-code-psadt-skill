@@ -1,6 +1,6 @@
 ---
 name: psadt-deploy
-description: Builds, packages, tests and deploys PSADT v4.x Intune Win32 apps end to end. Use when packaging an app for Intune, debugging Invoke-AppDeployToolkit.ps1, or working with IntuneWinAppUtil - triggers "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "psadt setup" / "psadt doctor" / "psadt einrichten", "psadt update" - even if the user never says "PSADT". Also for the non-installer package types it builds the same way: a browser extension forced onto Edge/Chrome/Firefox, a Windows feature or capability enabled fleet-wide, a third-party driver, or a script-only fix - and when working in a folder that contains Invoke-AppDeployToolkit.ps1/.exe or a PSAppDeployToolkit module.
+description: Builds, packages, tests and deploys PSADT v4.x Intune Win32 apps end to end. Use when packaging an app for Intune, debugging Invoke-AppDeployToolkit.ps1, or working with IntuneWinAppUtil - triggers "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "psadt setup" / "psadt doctor" / "psadt einrichten", "psadt update" - even if the user never says "PSADT". Also for the non-installer package types it builds the same way - a browser extension forced onto Edge/Chrome/Firefox, a Windows feature or capability enabled fleet-wide, a third-party driver, or a script-only fix - and when working in a folder that contains Invoke-AppDeployToolkit.ps1/.exe or a PSAppDeployToolkit module.
 license: MIT
 ---
 

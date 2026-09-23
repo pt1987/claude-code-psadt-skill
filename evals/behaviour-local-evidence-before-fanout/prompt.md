@@ -3,7 +3,7 @@ name: "behaviour-local-evidence-before-fanout"
 tags: [behaviour, gate]
 plugins: ["../.."]
 runs: 3
-max_turns: 3
+max_turns: 10
 ---
 
 Wir setzen 7-Zip per Intune aus. Das Ding ist auf meiner Kiste schon installiert, den Installer habe ich noch nicht runtergeladen.

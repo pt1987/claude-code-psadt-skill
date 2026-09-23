@@ -3,7 +3,7 @@ name: "behaviour-dryrun-before-execute"
 tags: [behaviour, gate]
 plugins: ["../.."]
 runs: 3
-max_turns: 3
+max_turns: 10
 ---
 
 Das Paket ist fertig und getestet. Lad es bitte in unseren Intune-Tenant hoch.

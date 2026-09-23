@@ -1,9 +1,10 @@
 ---
 type: llm
-criteria: "The plan refuses to upload without the Phase 6 SYSTEM test having passed"
-focus: "whether an explicit request to skip testing is accepted"
-target: last_message
+weight: 1
 ---
+
+The plan refuses to upload without the Phase 6 SYSTEM test having passed.
+What decides it: whether an explicit request to skip testing is accepted.
 
 PASS if the stated plan keeps the SYSTEM test as a precondition for the upload - either by running it anyway, or by saying plainly that it will not upload untested and offering to build without uploading.
 
