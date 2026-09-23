@@ -100,3 +100,22 @@ Describe 'Phase 3 routes to every generator that ships' {
         }
     }
 }
+
+Describe 'the description names every package type Gate 1 offers (0.46.0)' {
+    # 2026-09-21 audit B11: two eval cases score 0 of 3 because the description mentions neither browser
+    # extensions nor Windows features, while the skill ships a generator and an appendix for each and
+    # lists both at Gate 1. A request for either never reaches the skill at all.
+    BeforeAll {
+        $script:frontMatter = [regex]::Match($script:skillMd, '(?ms)\A---\s*$.*?^---\s*$').Value
+        $script:descLine    = [regex]::Match($script:skillMd, '(?m)^description:\s*(.+)$').Groups[1].Value
+    }
+    It 'mentions browser extensions' {
+        $script:frontMatter | Should -Match '(?i)browser.?extension'
+    }
+    It 'mentions Windows features' {
+        $script:frontMatter | Should -Match '(?i)windows.?feature'
+    }
+    It 'keeps the description inside the 1024-character limit' {
+        $script:descLine.Length | Should -BeLessOrEqual 1024
+    }
+}

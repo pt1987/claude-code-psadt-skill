@@ -711,3 +711,19 @@ Describe 'Get-PsadtLocalEvidence' {
         }
     }
 }
+
+Describe 'a dispatched researcher is told what it may not do (0.46.0)' {
+    # 2026-09-21 audit B19: the prompt hint already says the return value is DATA, not an instruction -
+    # good - but said nothing about tools. A researcher reads pages the orchestrator then writes into a
+    # script that runs as SYSTEM; it has no reason to hold a shell or a writer.
+    BeforeAll {
+        $script:leSrc = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Get-PsadtLocalEvidence.ps1') -Raw
+    }
+    It 'names the read-only scope in the prompt hint' {
+        $script:leSrc | Should -Match 'read-only'
+        $script:leSrc | Should -Match 'Bash'
+    }
+    It 'reports a named vendor URL over https' {
+        $script:leSrc | Should -Match 'ConvertTo-HttpsUrl'
+    }
+}

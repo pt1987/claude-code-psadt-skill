@@ -302,7 +302,16 @@ function Get-LogoDataUri {
 }
 
 # ----------------------------------------------------------------------------- scalar values
-$lang          = Get-Val 'Lang' 'de'
+# language.dossier is what SKILL.md promises decides this, and until 0.46.0 nothing read it: the template
+# is bilingual, so the key only chooses which language the file OPENS in. -Metadata Lang still wins.
+$cfgLang = $null
+try {
+    $cfgProbe = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')
+    if ($cfgProbe.Config -and $cfgProbe.Config.language -and $cfgProbe.Config.language.dossier) {
+        $cfgLang = ([string]$cfgProbe.Config.language.dossier).ToLowerInvariant()
+    }
+} catch { }
+$lang          = Get-Val 'Lang' $(if ($cfgLang) { $cfgLang } else { 'de' })
 $appName       = Get-Val 'AppName' 'App'
 $appVersion    = Get-Val 'AppVersion' '0.0.0'
 $publisher     = Get-Val 'Publisher' ''
@@ -763,6 +772,28 @@ if ($leftover) {
 $dir = Split-Path $OutputPath -Parent
 if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 [System.IO.File]::WriteAllText($OutputPath, $html, [System.Text.UTF8Encoding]::new($false))
+
+# The dossier is a deliverable, so the manifest has to carry it like every other artefact. Without this
+# the file existed on disk and nothing downstream could assert it - which is why rule:dossier-always was
+# a sentence rather than a check. Only when the caller came in through -ManifestPath: the explicit
+# -Metadata route has no manifest to record into.
+if ($ManifestPath) {
+    try {
+        & (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath (Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath).Path) -Updates @{
+            'artifacts.dossier' = (Resolve-Path -LiteralPath $OutputPath).Path
+            'results.report'    = @{
+                verdict  = 'OK'
+                at       = (Get-Date).ToString('o')
+                template = (Split-Path -Leaf $TemplatePath)
+                language = $lang
+            }
+        } | Out-Null
+    }
+    catch {
+        # The dossier itself is written and valid; failing to record it must not fail the phase.
+        Write-Warning "Dossier written, but recording it in the manifest failed: $($_.Exception.Message)"
+    }
+}
 
 Write-Verbose "Report written: $OutputPath"
 if ($PassThru) { Get-Item -LiteralPath $OutputPath }

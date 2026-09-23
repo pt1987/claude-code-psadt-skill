@@ -1,6 +1,6 @@
 ---
 name: psadt-deploy
-description: Builds, packages, tests and deploys PSADT v4.x Intune Win32 apps end to end. Use when packaging an app for Intune, debugging Invoke-AppDeployToolkit.ps1, or working with IntuneWinAppUtil - triggers "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "psadt setup" / "psadt doctor" / "psadt einrichten", "psadt update" - even if the user never says "PSADT". Also when working in a folder that contains Invoke-AppDeployToolkit.ps1/.exe or a PSAppDeployToolkit module.
+description: Builds, packages, tests and deploys PSADT v4.x Intune Win32 apps end to end. Use when packaging an app for Intune, debugging Invoke-AppDeployToolkit.ps1, or working with IntuneWinAppUtil - triggers "PSADT paket bauen", "intune paket fuer <app>", "<app> via intune paketieren", "PSADT v4 deploy", "PSADT troubleshooting", "psadt setup" / "psadt doctor" / "psadt einrichten", "psadt update" - even if the user never says "PSADT". Also for the non-installer package types it builds the same way: a browser extension forced onto Edge/Chrome/Firefox, a Windows feature or capability enabled fleet-wide, a third-party driver, or a script-only fix - and when working in a folder that contains Invoke-AppDeployToolkit.ps1/.exe or a PSAppDeployToolkit module.
 license: MIT
 ---
 
@@ -101,16 +101,15 @@ Short form. Full text, reasoning and the failure each one prevents: `references/
 <!-- rule:one-log-per-run -->
 - **Logging: one log per run.** Stays in `C:\Windows\Logs\Software\` (IME-readable), never redirected -
   but the launcher must set a per-run `LogName`
-  (`<Vendor>_<App>_<Version>_<Arch>_<DeploymentType>_<yyyyMMdd-HHmmss>.log`), because PSADT's default is a
-  fixed name with `LogAppend` and every run of every version then piles into one unreadable file.
-  Generators do this; a hand-scaffolded launcher must too. Keep each Phase-6 log (`artifacts.logs[]`).
+  (`<Vendor>_<App>_<Version>_<Arch>_<DeploymentType>_<yyyyMMdd-HHmmss>.log`), because PSADT's default is one
+  fixed name with `LogAppend`. Generators do this; a hand-scaffold must too. Keep each Phase-6 log
+  (`artifacts.logs[]`).
 <!-- rule:dossier-always -->
 - **Dossier, always** - upload or not; "no upload" is not a reason to skip it. `Intune-Dossier.html` from
   the fixed template `references/Report-Template.html` via `scripts/New-PsadtReport.ps1`, never
-  hand-assembled. **It stays in sync without being asked:** any change to the launcher, the Extensions
-  module, the detection script, the version or the return codes means re-checking and regenerating it in
-  the SAME pass, on your own initiative. A dossier still showing the old version, detection logic or
-  stale test results is a defect. Every field: App. F.
+  hand-assembled. **It stays in sync without being asked:** any change to the launcher, the detection
+  script, the version or the return codes means regenerating it in the SAME pass, on your own initiative.
+  A dossier showing the old version, detection logic or stale test results is a defect. Fields: App. F.
 <!-- rule:real-logo-only -->
 - **Real logo only.** The real app logo (PNG, transparent, >=512px, square preferred) into `Assets\` and
   the Output folder - never the PSADT default `AppIcon.png`/Banner, which the upload script blocks by
@@ -120,8 +119,7 @@ Short form. Full text, reasoning and the failure each one prevents: `references/
 - **Intune access is state-driven, never trial-and-error.** Before Phase 9 / 10 / any cert-or-firewall
   policy, read the state instead of provoking a 403: `pwsh scripts/Test-PsadtIntuneAccess.ps1` ->
   `Capabilities.Upload|Groups|Configuration`, three-valued (`$null` = **unknown**, not `$false`). Missing
-  -> offer the exact fix from `.Hints`, never silently retry. Auth is the DPAPI secret or a cert
-  (`intune.certThumbprint` beats `secretRef`), and DPAPI dies with the Windows profile. Roles + matrix:
+  -> offer the exact fix from `.Hints`, never silently retry. Auth, roles and the DPAPI lifetime:
   `references/app-registration.md`.
 <!-- rule:cert-one-owner -->
 - **Certificates into a machine store.** A cert that must land in a store - the #1 case is an installer

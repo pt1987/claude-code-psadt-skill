@@ -175,3 +175,18 @@ Describe 'New-DriverPackage.ps1 refuses the comment terminator in Author and Cha
         $script:genText | Should -Match 'Assert-NoCommentTerminator[^\r\n]*\$Changelog'
     }
 }
+
+Describe 'the driver generator pins the same PSADT version as its siblings (0.46.0)' {
+    # 2026-09-21 audit B24: it emitted ModuleVersion 4.1.0 into the launcher while the other four emitted
+    # 4.1.8 - a floor low enough to load a module whose behaviour the package was never tested against.
+    It 'emits one PSADT floor across all five generators' {
+        $root = Split-Path $PSScriptRoot -Parent
+        $pattern = 'ModuleVersion = ''(4\.[0-9.]+)'''
+        $versions = foreach ($g in Get-ChildItem -LiteralPath (Join-Path $root 'scripts') -Filter 'New-*Package.ps1') {
+            [regex]::Matches((Get-Content -LiteralPath $g.FullName -Raw), $pattern) |
+                ForEach-Object { $_.Groups[1].Value }
+        }
+        @($versions).Count | Should -BeGreaterThan 4
+        @($versions | Sort-Object -Unique) | Should -HaveCount 1
+    }
+}

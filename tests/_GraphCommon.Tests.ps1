@@ -174,3 +174,23 @@ Describe 'Get-GraphAuthErrorHint' {
         (Get-GraphAuthErrorHint '')              | Should -BeNullOrEmpty
     }
 }
+
+Describe 'the MSAL packages are pinned by hash (0.46.0)' {
+    # 2026-09-21 audit B07: four NuGet packages were downloaded over TLS only and their managed AND native
+    # DLLs loaded in-process with Assembly::LoadFrom, and any locally cached 4.66.* was preferred over the
+    # pinned version. TLS says who served the bytes, not which bytes.
+    BeforeAll {
+        $script:gi = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/_GraphInteractive.ps1') -Raw
+    }
+    It 'records a SHA256 for every pinned package' {
+        $script:gi | Should -Match 'MsalSha256'
+        @([regex]::Matches($script:gi, "(?m)^\s*'?(Client|Broker|Native|Abstractions)'?\s*=\s*'[0-9a-fA-F]{64}'")).Count |
+            Should -Be 4 -Because 'all four packages are loaded in-process'
+    }
+    It 'verifies the downloaded package against that hash' {
+        $script:gi | Should -Match 'Get-FileHash'
+    }
+    It 'no longer prefers an arbitrary locally cached 4.66.x over the pinned version' {
+        $script:gi | Should -Not -Match "4\.66\.\*"
+    }
+}

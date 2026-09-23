@@ -24,6 +24,9 @@ param(
     [string]$Author,
     [string]$PackageRoot,
     [string]$Changelog = '',
+    # A re-run used to wipe the folder outright. Phase 4 fills the three hooks BY HAND, so that threw away
+    # work nothing else holds - along with the Extensions module, Assets\ and the recorded results.
+    [switch]$Force,
     # Self-updating MSI apps (Chrome, Audacity, ...): the app binary relative to Program Files, e.g.
     # 'Google\Chrome\Application\chrome.exe'. Switches the package from ProductCode identity to a version
     # FLOOR - see the comment at $selfUpdating below.
@@ -87,8 +90,17 @@ if ($selfUpdating) {
 }
 
 # 1) Scaffold
+# A package root that is a drive root would turn the delete below into a top-level system folder.
+if ([string]::IsNullOrWhiteSpace($PackageRoot) -or $PackageRoot -eq [System.IO.Path]::GetPathRoot($PackageRoot)) {
+    throw "PackageRoot must be a real folder, not a drive root: '$PackageRoot'. Set paths.packageRoot, or pass -PackageRoot."
+}
 $pkg = Join-Path $PackageRoot $Name
-if (Test-Path $pkg) { Remove-Item $pkg -Recurse -Force }
+if (Test-Path $pkg) {
+    if (-not $Force) {
+        throw "Package folder already exists: $pkg. Re-running the generator REPLACES it, including hand-filled hooks, the Extensions module, Assets\ and the results recorded in psadt-package.json. Pass -Force if that is what you want, or use a different -Name."
+    }
+    Remove-Item $pkg -Recurse -Force
+}
 New-ADTTemplate -Destination $PackageRoot -Name $Name -Force | Out-Null
 
 # 2) Process list literal (single-quote-escaped so a name with an apostrophe cannot break the literal)

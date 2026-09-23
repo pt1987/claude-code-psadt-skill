@@ -109,6 +109,7 @@ foreach ($key in $Remove) {
 }
 
 # Depth 12: results/artifacts nest arrays of objects, and a truncated manifest is a silent data loss.
-$manifest | ConvertTo-Json -Depth 12 | Set-Content -Path $manifestPath -Encoding UTF8
+. (Join-Path $PSScriptRoot '_JsonStore.ps1')
+Write-JsonAtomic -Path $manifestPath -Object $manifest -Depth 12
 
 [pscustomobject]@{ Path = $manifestPath; Schema = $manifest['schema'] }

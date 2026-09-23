@@ -86,3 +86,20 @@ Describe 'Set-PsadtPackageManifest' {
         finally { Remove-Item $empty -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
+
+Describe 'the stores survive an interrupted write (0.46.0)' {
+    # 2026-09-21 audit B14: all three JSON stores were read-modify-write with a plain Set-Content, no
+    # temp+rename and no lock - while SKILL.md Phase 6 tells the agent to run Phase 7 in the SAME turn, so
+    # the sandbox harness and the packaging step write this very file concurrently. A crash between
+    # truncate and flush leaves a file that Get-PsadtConfig reports as "malformed" and every script then
+    # treats as unconfigured.
+    It 'writes each store through a temporary file and renames it into place' {
+        $root = Split-Path $PSScriptRoot -Parent
+        foreach ($s in 'Set-PsadtPackageManifest.ps1', 'Set-PsadtConfig.ps1', 'Set-PsadtVerifiedSwitch.ps1') {
+            $text = Get-Content -LiteralPath (Join-Path $root "scripts/$s") -Raw
+            $text | Should -Match 'Write-JsonAtomic' -Because "$s replaces a file the next phase reads"
+        }
+        $helper = Get-Content -LiteralPath (Join-Path $root 'scripts/_JsonStore.ps1') -Raw
+        $helper | Should -Match 'Move-Item' -Because 'the rename is what makes the replacement atomic'
+    }
+}

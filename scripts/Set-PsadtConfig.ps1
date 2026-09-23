@@ -89,7 +89,8 @@ foreach ($key in $Remove) {
     if ($node -is [hashtable]) { $node.Remove($segs[-1]) }
 }
 
-$config | ConvertTo-Json -Depth 8 | Set-Content -Path $configPath -Encoding UTF8
+. (Join-Path $PSScriptRoot '_JsonStore.ps1')
+Write-JsonAtomic -Path $configPath -Object $config -Depth 8
 
 if ($Secret) {
     $enc = ConvertFrom-SecureString $Secret

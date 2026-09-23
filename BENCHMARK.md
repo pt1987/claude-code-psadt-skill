@@ -1,5 +1,11 @@
 # Ten applications, measured end to end
 
+> **These numbers were measured once, on 2026-09-18, against skill 0.35.0.** They have not been re-run
+> since, and several releases have changed the phases they time - 0.41.0 short-circuited the research
+> ladder, 0.44.0 added a pre-flight check that can stop a run, 0.46.0 added a host-side verdict check.
+> Read them as a record of that day, not as the current cost of a package. A re-run is roughly 2.7 hours
+> of serial packaging; `benchmark/bench.ps1` and `benchmark/New-BenchmarkReport.ps1` still produce it.
+
 A run of 2026-09-18 that packaged ten applications with this skill and timed every
 phase, from the first research call to the finished output files. The applications were packaged **one
 after another**, never in parallel, so the numbers stay comparable. Inside one application phase 6 runs

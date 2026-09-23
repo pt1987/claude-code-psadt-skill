@@ -684,3 +684,44 @@ Describe 'Invoke-PsadtSandboxTest array parameters' {
         $script:SbxCode2 | Should -Match 'unknown name'
     }
 }
+
+Describe 'the .wsb is valid XML whatever the package path contains (0.46.0)' {
+    # 2026-09-21 audit B22, reproduced: a folder named "7 & Zip" produced a .wsb that fails to parse at
+    # line 7. Windows Sandbox then starts WITHOUT the mapped folders and the run looks like a slow boot -
+    # the exact 0.28.0 symptom. LogonCommand was escaped; the two HostFolder values were not.
+    It 'escapes the mapped host folders' {
+        $src = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Invoke-PsadtSandboxTest.ps1') -Raw
+        $src | Should -Match 'SecurityElement\]::Escape\(\$PackagePath\)'
+        $src | Should -Match 'SecurityElement\]::Escape\(\$workFolder\)'
+    }
+}
+
+Describe 'the host checks the verdict it was handed (0.46.0)' {
+    # 2026-09-21 audit B08: result.json is written INSIDE the sandbox, into the read-write mapped folder,
+    # after vendor code has run there as SYSTEM with networking on. The host read verdict and scenarios
+    # straight into the manifest, the verified-switch store and the upload gate. A GREEN that the tested
+    # environment minted for itself is not evidence.
+    BeforeAll {
+        $script:sbx = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Invoke-PsadtSandboxTest.ps1'
+    }
+    It 'has a host-side check of the guest verdict' {
+        (Get-Content -LiteralPath $script:sbx -Raw) | Should -Match 'Assert-GuestVerdict'
+    }
+    It 'keeps a GREEN whose assertions all passed' {
+        . ([scriptblock]::Create((Get-ScriptFunctionText -Path $script:sbx -Name 'Assert-GuestVerdict')))
+        $r = [pscustomobject]@{ verdict = 'GREEN'; scenarios = @('Install','Uninstall'); steps = @(1,2); assertions = @([pscustomobject]@{ name='a'; ok=$true }) }
+        (Assert-GuestVerdict -Result $r).Verdict | Should -Be 'GREEN'
+    }
+    It 'turns a GREEN with a failed assertion into RED' {
+        . ([scriptblock]::Create((Get-ScriptFunctionText -Path $script:sbx -Name 'Assert-GuestVerdict')))
+        $r = [pscustomobject]@{ verdict = 'GREEN'; scenarios = @('Install'); steps = @(1); assertions = @([pscustomobject]@{ name='a'; ok=$true }, [pscustomobject]@{ name='b'; ok=$false }) }
+        $c = Assert-GuestVerdict -Result $r
+        $c.Verdict | Should -Be 'RED'
+        $c.Note    | Should -Match 'assertion'
+    }
+    It 'turns a GREEN that reports no assertions at all into RED' {
+        . ([scriptblock]::Create((Get-ScriptFunctionText -Path $script:sbx -Name 'Assert-GuestVerdict')))
+        $r = [pscustomobject]@{ verdict = 'GREEN'; scenarios = @('Install'); steps = @(); assertions = @() }
+        (Assert-GuestVerdict -Result $r).Verdict | Should -Be 'RED'
+    }
+}

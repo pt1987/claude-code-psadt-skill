@@ -103,7 +103,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **824 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **854 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -121,7 +121,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 824 Pester tests.
+verified against a live tenant. The helper scripts are covered by 854 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -170,11 +170,10 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.45.0 - Every number in the docs was written by hand, so every number was wrong.** The docs
-said eleven pre-flight checks while the script emitted fourteen, and quoted a test count two releases
-old. A new guard derives each figure from the repository, or from the CHANGELOG line that owns it, and
-requires every release to record what the suite counted. The control-plane budget guard was passing on
-an LF model of a CRLF file, 231 bytes over its own limit; it now weighs the stored bytes, and the room
-came from mechanics that Appendix N and Appendix J already document better. Phase 3 finally names every
-generator that ships, so an EXE installer is no longer routed to a hand-scaffold. Two messages that
-named a parameter and a requirement that do not exist are gone.
+Latest: **0.46.0 - Sixteen findings, and the two the live run had already proved.** The last sixteen
+findings from the deep analysis. A full run on 0.45.0 had shown two of them for real: the dossier
+existed on disk while the manifest said nothing about it, and the package finished with no logo and no
+warning. The manifest now records what was produced, the three JSON stores are replaced atomically, the
+packaging tool and the four MSAL packages are verified before anything executes, the host re-checks the
+verdict the sandbox hands it, a generator no longer discards a hand-filled package without -Force, and
+an ampersand in a path no longer produces a sandbox that silently starts without its mapped folders.

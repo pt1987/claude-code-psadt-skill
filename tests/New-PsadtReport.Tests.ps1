@@ -606,3 +606,50 @@ Describe 'the re-run hint names parameters that exist' {
         }
     }
 }
+
+Describe 'the dossier records itself in the manifest (0.46.0)' {
+    # 2026-09-21 audit B09, re-measured live on 0.45.0: a full run produced Intune-Dossier.html on disk
+    # while the manifest's artifacts.dossier and results.report stayed empty. The manifest is the single
+    # source of truth per app, so a deliverable nothing records cannot be asserted by anything downstream -
+    # which is why rule:dossier-always has never been enforceable.
+    BeforeEach {
+        $script:d09Dir  = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item $script:d09Dir -ItemType Directory -Force | Out-Null
+        # A manifest only ever lives inside a real package folder, and Set-PsadtPackageManifest.ps1
+        # refuses anything else - so the fixture has to look like one.
+        Set-Content -LiteralPath (Join-Path $script:d09Dir 'Invoke-AppDeployToolkit.ps1') -Value '# fixture' -Encoding UTF8
+        $script:d09Mf   = Join-Path $script:d09Dir 'psadt-package.json'
+        $script:d09Html = Join-Path $script:d09Dir 'Intune-Dossier.html'
+        @{ schema = 1
+           app = @{ vendor = 'Mobotix'; name = 'MxManagementCenter'; version = '2.9.1'; arch = 'x64' }
+           package = @{ type = 'installer' } } |
+            ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $script:d09Mf -Encoding UTF8
+    }
+
+    It 'writes artifacts.dossier and results.report back' {
+        $st = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'OK' })
+        & $script:gen -ManifestPath $script:d09Mf -OutputPath $script:d09Html `
+            -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } | Out-Null
+        $after = Get-Content -LiteralPath $script:d09Mf -Raw | ConvertFrom-Json
+        $after.artifacts.dossier      | Should -Be $script:d09Html
+        $after.results.report.verdict | Should -Be 'OK'
+        $after.results.report.at      | Should -Not -BeNullOrEmpty
+    }
+
+    It 'leaves the manifest alone when the caller asked for no manifest' {
+        # -ManifestPath is optional; the explicit-metadata route has nothing to record into.
+        $out2 = Join-Path $script:d09Dir 'explicit.html'
+        { & $script:gen -OutputPath $out2 -Metadata @{ AppName = 'X'; AppVersion = '1'; Publisher = 'Y'; DescMdDe = 'd'; DescMdEn = 'e' } } |
+            Should -Not -Throw
+    }
+}
+
+Describe 'language.dossier decides the dossier language (0.46.0)' {
+    # 2026-09-21 audit B23: the key was required by Get-PsadtConfig and defaulted by the doctor, and the
+    # dossier - the one artefact named after it - never read it. 0.44.0 gave it a consumer in the upload;
+    # this gives it the one SKILL.md actually promises.
+    It 'falls back to the configured dossier language' {
+        $src = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/New-PsadtReport.ps1') -Raw
+        $src | Should -Match 'language\.dossier'
+    }
+}

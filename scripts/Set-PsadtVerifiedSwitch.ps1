@@ -146,7 +146,8 @@ function Save-Store {
     $out = [pscustomobject]@{ schemaVersion = 1; entries = $Entries.ToArray() }
     $dir = Split-Path -Parent $storePath
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-    $out | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $storePath -Encoding UTF8
+    . (Join-Path $PSScriptRoot '_JsonStore.ps1')
+    Write-JsonAtomic -Path $storePath -Object $out -Depth 12
 }
 
 # ---------------------------------------------------------------------------------------------------
