@@ -20,6 +20,7 @@ BeforeAll {
     $script:skillPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'SKILL.md'
     $script:raw = [System.IO.File]::ReadAllBytes($script:skillPath)
     $script:lines = Get-Content -LiteralPath $script:skillPath
+    $script:eol   = if ([System.Text.Encoding]::UTF8.GetString($script:raw) -match "`r`n") { "`r`n" } else { "`n" }
 
     # 5000 tokens of dense technical Markdown. 3.5 bytes/token is the conservative end of the usual
     # 3.3-3.6 range for this kind of text (heavy on backticks, identifiers and table pipes), so the
@@ -27,9 +28,11 @@ BeforeAll {
     $script:budgetBytes = [int](5000 * 3.5)
 
     $script:phase7Line = (1..$script:lines.Count | Where-Object { $script:lines[$_ - 1] -like '**Phase 7 -*' })[0]
-    $script:bytesToPhase6End = ($script:lines[0..($script:phase7Line - 2)] |
-        ForEach-Object { [System.Text.Encoding]::UTF8.GetByteCount($_) + 1 } |
-        Measure-Object -Sum).Sum
+    # Measured on the file as it is STORED, line endings included. The earlier version added one byte per
+    # line, which models LF - this working tree is CRLF (git: i/lf w/crlf), so it understated the prefix by
+    # one byte per line and the guard passed on a file that was already 231 bytes over its own budget.
+    $script:prefixText = ($script:lines[0..($script:phase7Line - 2)] -join $script:eol) + $script:eol
+    $script:bytesToPhase6End = [System.Text.Encoding]::UTF8.GetByteCount($script:prefixText)
 }
 
 Describe 'SKILL.md survives auto-compaction with its gates intact' {
@@ -55,9 +58,10 @@ Describe 'SKILL.md survives auto-compaction with its gates intact' {
         ($positions | Sort-Object) -join ',' | Should -Be ($positions -join ',') -Because 'they must appear in this order'
     }
 
-    It 'has no UTF-8 BOM and no CRLF-only surprises that would skew the byte count' {
-        # The measurement above assumes one byte per line ending. A BOM or a stray lone CR would make
-        # the number quietly optimistic.
+    It 'measures the stored bytes, so the line endings cannot skew the count' {
+        # A BOM would add three bytes the measurement never sees. The line endings are no longer assumed:
+        # the prefix above is built with the file's own separator and weighed as UTF-8.
         ($script:raw[0] -eq 0xEF -and $script:raw[1] -eq 0xBB) | Should -BeFalse
+        $script:bytesToPhase6End | Should -Be ([System.Text.Encoding]::UTF8.GetByteCount($script:prefixText))
     }
 }

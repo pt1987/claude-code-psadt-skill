@@ -2,6 +2,45 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.45.0 - 2026-09-23 - Every number in the docs was written by hand, so every number was wrong
+
+The 0.42.0 audit counted eleven pre-flight checks in three documents against thirteen in the script. Two
+days and one release later the script emitted **fourteen** and all three documents still said eleven. The
+same release added three scripts and a test file without touching "35 files: 32 invocable" or "657 tests".
+Nothing in the suite covers a number: `DocCrossRefs` checks labels and paths, `SiteFigures` checks the
+published page, `RuleAnchors` checks rule ids. A figure written as prose has no owner, so it rots at
+exactly the rate this project releases.
+
+**`tests/DocFigures.Tests.ps1` gives every figure an owner.** The pre-flight count is read out of
+`Add-Check` calls, the script counts out of `scripts/`, the reference count out of `references/`. The
+Pester total is owned by the CHANGELOG's `Suite <old> -> <new>` line, because that is where the release
+routine already records it and a live count would make the guard slow and circular - and a second
+assertion now requires the newest entry to carry that line at all. 0.44.0 shipped without one, which is
+how 781 could still read as current; 0.36.0 through 0.40.0 did the same thing before it.
+
+**The control-plane budget was green because it measured a file that does not exist.**
+`SkillContextBudget.Tests.ps1` added one byte per line ending - an LF model - while the working tree is
+CRLF. The prefix it reported as 17,498 bytes was 17,731 on disk, 231 over its own budget, and the guard
+that exists to keep Phases 0-6 inside the compaction window had been passing for some time. It now weighs
+the stored bytes. Room came from the two conventions whose mechanics are documented better one click away:
+the certificate CSP and base64 rules are Appendix N's job, the logo verification is Appendix J's. The rules
+themselves did not move.
+
+**Phase 3 names every generator that ships.** `New-ExePackage.ps1` appeared nowhere in `SKILL.md` or
+`references/` - so an agent reaching Phase 3 with an Inno, NSIS or electron-builder installer was routed to
+`New-ADTTemplate` and a hand-scaffold, which is the cost 0.35.0 built that generator to remove.
+`New-DriverPackage.ps1` was named at Gate 1 and in the reference table but not in the list that decides.
+A guard now requires each `New-*Package.ps1` to appear in the Phase 3 paragraph.
+
+**Two messages named things that do not exist.** The dossier's refusal told the operator to re-run the gate
+with `-FullGate`, a parameter `Invoke-PsadtSandboxTest.ps1` has never had - and a test asserted that
+wording, so the suite was holding the mistake in place. The full gate is simply the default. The doctor
+told every non-elevated session that "the Phase 6 SYSTEM test needs an elevated session", which stopped
+being true when the sandbox became the default route; it needs no elevation at all, and saying otherwise
+tells a standard user the workflow is closed to them.
+
+Suite 781 -> 824.
+
 ## 0.44.0 - 2026-09-23 - A GREEN package that would have looped in production
 
 The Chrome 154 update went GREEN everywhere on the first attempt: generator, pre-flight, the full

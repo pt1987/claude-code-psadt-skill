@@ -221,7 +221,7 @@ Describe 'New-PsadtReport -ManifestPath (0.21.0)' {
         & $script:writeMf $m
         $st = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'OK' })
         { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml -ErrorAction Stop } |
-            Should -Throw -ExpectedMessage '*-FullGate*'
+            Should -Throw -ExpectedMessage '*the full gate is the default*'
     }
 
     It 'leaves the DEV-VM route alone, which has no sandbox verdict at all' {
@@ -588,5 +588,21 @@ Describe 'The dossier reads the sandbox verdict instead of asking for it (0.32.0
 
         $html | Should -Match 'SYSTEM test was not run'
         $html | Should -Not -Match '>pass<'
+    }
+}
+
+Describe 'the re-run hint names parameters that exist' {
+    # 2026-09-21 audit (B17): the refusal told the operator to re-run the gate with -FullGate, which
+    # Invoke-PsadtSandboxTest.ps1 has never had. A message that cannot be obeyed is worse than none: it
+    # sends someone to a binder error at the moment their upload is already blocked.
+    It 'passes only real Invoke-PsadtSandboxTest parameters' {
+        $src  = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/New-PsadtReport.ps1') -Raw
+        $real = (Get-Command (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Invoke-PsadtSandboxTest.ps1')).Parameters.Keys
+        foreach ($m in [regex]::Matches($src, 'Invoke-PsadtSandboxTest\.ps1[^
+"]*')) {
+            foreach ($p in [regex]::Matches($m.Value, '\s-([A-Za-z][A-Za-z0-9]*)')) {
+                $real | Should -Contain $p.Groups[1].Value -Because "the hint tells an operator to run it with -$($p.Groups[1].Value)"
+            }
+        }
     }
 }

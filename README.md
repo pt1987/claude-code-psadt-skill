@@ -73,7 +73,7 @@ Thirteen phases, each owned by a script rather than by prose, so a step either p
 | **1-2** Intake + research | blocker questions as clickable options; a local-evidence ladder (installed here? binary here? already written down?) answers what it can, and a research agent is dispatched only per question it leaves open | agent (gates 1-2) |
 | **3** Scaffold | a generator writes launcher + detection + per-run log name + manifest | `New-MsiPackage` · `New-ExePackage` · `New-BrowserExtensionPackage` · `New-WindowsFeaturePackage` · `New-DriverPackage` |
 | **4** Customize | all three hooks filled from the research, helpers in the Extensions module | agent |
-| **5** Pre-flight | 11 checks (encoding, AST parse, v3 cmdlets, structure, detection contract, manifest, log name, driver trust …) → GREEN/RED | `Invoke-PsadtPreflight.ps1` |
+| **5** Pre-flight | 14 checks (encoding, AST parse, v3 cmdlets, structure, detection contract, manifest, log name, driver trust …) → GREEN/RED | `Invoke-PsadtPreflight.ps1` |
 | **6** SYSTEM test | the whole loop in a throwaway Windows Sandbox, every action as **SYSTEM** like the IME does - no elevation, host untouched. **Binding before any upload** | `Invoke-PsadtSandboxTest.ps1` |
 | **7** Package | one command → verified `.intunewin`, named after the app | `Invoke-PsadtPackage.ps1` |
 | **8** Dossier | always, uploaded or not: bilingual self-contained HTML | `New-PsadtReport.ps1` |
@@ -103,7 +103,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **757 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **824 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -121,7 +121,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 757 Pester tests.
+verified against a live tenant. The helper scripts are covered by 824 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -170,11 +170,11 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.44.0 - A GREEN package that would have looped in production.** Google Chrome ships a new MSI
-ProductCode with every build and updates itself in place, so the MSI generator's ProductCode-keyed package
-passed every gate and would still have been re-installed by Intune every day once GoogleUpdater moved a
-device on. `New-MsiPackage.ps1 -SelfUpdatingBinary` now generates a version-floor detection, an install
-that skips an equal or newer build, and uninstall/repair by the registered ARP name - verified in the full
-sandbox gate on Chrome 154. Every other lesson of that run became a gate too: pre-flight stays RED while
-research is unanswered, packing and the sandbox refuse a RED or stale pre-flight, and the upload and the
-dossier take the description, logo and detection script from the manifest instead of asking again.
+Latest: **0.45.0 - Every number in the docs was written by hand, so every number was wrong.** The docs
+said eleven pre-flight checks while the script emitted fourteen, and quoted a test count two releases
+old. A new guard derives each figure from the repository, or from the CHANGELOG line that owns it, and
+requires every release to record what the suite counted. The control-plane budget guard was passing on
+an LF model of a CRLF file, 231 bytes over its own limit; it now weighs the stored bytes, and the room
+came from mechanics that Appendix N and Appendix J already document better. Phase 3 finally names every
+generator that ships, so an EXE installer is no longer routed to a hand-scaffold. Two messages that
+named a parameter and a requirement that do not exist are gone.

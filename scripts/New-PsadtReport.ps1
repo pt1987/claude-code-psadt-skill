@@ -217,7 +217,7 @@ if ($ManifestPath) {
         $scenarioText = if ($ranScenarios.Count) { $ranScenarios -join ', ' } else { 'unknown' }
         throw ("decisions.upload is true but the SYSTEM test verdict is '$sandboxVerdict', not GREEN " +
             "(scenarios that ran: $scenarioText). Only the full five-scenario gate counts for an upload - " +
-            "re-run: pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg> -FullGate")
+            "re-run: pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg> (the full gate is the default; -Scenarios and -Quick are what narrow it)")
     }
 
     # The Company-Portal description is the one field in this document an end user reads, and it is
