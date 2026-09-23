@@ -73,28 +73,44 @@ function Write-Warn2([string]$m) { Write-Host "    !   $m" -ForegroundColor Yell
 
 # ============================ WAM interactive sign-in (embedded, self-contained) ============================
 $script:MsalVersions  = @{ Client = '4.66.2'; Broker = '4.66.2'; Native = '0.16.2'; Abstractions = '6.35.0' }
+# SHA256 of each .nupkg, measured 2026-09-23 from api.nuget.org. TLS says who served the bytes; this says
+# WHICH bytes. These four are loaded in-process with Assembly::LoadFrom - two of them carry native code -
+# so an unverified package is arbitrary code in this session, running as the signed-in admin.
+$script:MsalSha256 = @{
+    Client       = 'c4001a4095ff46c3ae8e83c1b46f199f860868928e0f2c7b48eccf01e9710f92'
+    Broker       = 'b3381815d389d68cfcdf1580e177f8494fdf10875f8df0c9a05ef5f85f5d8b35'
+    Native       = '8652c52e9e9afaf9d04f5babb771a5228f781b70286b0733620a2868292f7cd5'
+    Abstractions = '6f1c98bbafd081a0384d0601af977e6f32022fe92d964772fed6ffd5f06ed344'
+}
 $script:MsalCacheRoot = Join-Path $env:LOCALAPPDATA 'PsadtIntune\msal'
 $script:MsalReady = $false
 
 function Save-NuGetPackage {
-    param([string]$Id, [string]$Version, [string]$DestDir)
+    param([string]$Id, [string]$Version, [string]$DestDir, [string]$Sha256)
     $idl = $Id.ToLower(); $verl = $Version.ToLower()
     $url = "https://api.nuget.org/v3-flatcontainer/$idl/$verl/$idl.$verl.nupkg"
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "$idl.$verl.nupkg"
     Write-Info "downloading $Id $Version ..."
     Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -ErrorAction Stop
+    if ($Sha256) {
+        $actual = (Get-FileHash -LiteralPath $tmp -Algorithm SHA256).Hash
+        if ($actual -ne $Sha256.ToUpperInvariant()) {
+            Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+            throw "SHA256 mismatch for $Id $Version - expected $($Sha256.ToUpperInvariant()), got $actual. Nothing was extracted."
+        }
+    }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     if (Test-Path $DestDir) { Remove-Item $DestDir -Recurse -Force }
     [System.IO.Compression.ZipFile]::ExtractToDirectory($tmp, $DestDir)
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
 }
 function Get-PackageDir {
-    param([string]$Id, [string]$Version, [string]$LocalRoot)
+    param([string]$Id, [string]$Version, [string]$LocalRoot, [string]$Sha256)
     $global = Join-Path $env:USERPROFILE ".nuget\packages\$Id\$Version"
     if (Test-Path $global) { return $global }
     $local = Join-Path $LocalRoot "$Id\$Version"
     if ((Test-Path $local) -and (Get-ChildItem $local -ErrorAction SilentlyContinue)) { return $local }
-    Save-NuGetPackage -Id $Id -Version $Version -DestDir $local
+    Save-NuGetPackage -Id $Id -Version $Version -DestDir $local -Sha256 $Sha256
     return $local
 }
 function Initialize-MsalBroker {
@@ -110,18 +126,13 @@ function Initialize-MsalBroker {
     $arch = switch ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture) {
         'Arm64' { 'win-arm64' } 'X86' { 'win-x86' } default { 'win-x64' }
     }
+    # A cached 4.66.x used to be preferred over the pinned version to save a download. That silently
+    # defeats the hash: whatever sits in the profile cache is what gets loaded. The pin decides now.
     $clientVer = $Versions.Client
-    $cb = Join-Path $env:USERPROFILE ".nuget\packages\microsoft.identity.client"
-    if (-not (Test-Path (Join-Path $cb $clientVer)) -and (Test-Path $cb)) {
-        $newer = Get-ChildItem $cb -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -like '4.66.*' -and (Test-Path (Join-Path $_.FullName "lib\$clientTfm\Microsoft.Identity.Client.dll")) } |
-            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
-        if ($newer) { $clientVer = $newer.Name }
-    }
-    $abstrDll  = Join-Path (Get-PackageDir 'microsoft.identitymodel.abstractions'    $Versions.Abstractions $CacheRoot) "lib\$clientTfm\Microsoft.IdentityModel.Abstractions.dll"
-    $clientDll = Join-Path (Get-PackageDir 'microsoft.identity.client'              $clientVer        $CacheRoot) "lib\$clientTfm\Microsoft.Identity.Client.dll"
-    $brokerDll = Join-Path (Get-PackageDir 'microsoft.identity.client.broker'       $Versions.Broker  $CacheRoot) "lib\$brokerTfm\Microsoft.Identity.Client.Broker.dll"
-    $nativePkg =           (Get-PackageDir 'microsoft.identity.client.nativeinterop' $Versions.Native  $CacheRoot)
+    $abstrDll  = Join-Path (Get-PackageDir 'microsoft.identitymodel.abstractions'    $Versions.Abstractions $CacheRoot $script:MsalSha256.Abstractions) "lib\$clientTfm\Microsoft.IdentityModel.Abstractions.dll"
+    $clientDll = Join-Path (Get-PackageDir 'microsoft.identity.client'              $clientVer        $CacheRoot $script:MsalSha256.Client) "lib\$clientTfm\Microsoft.Identity.Client.dll"
+    $brokerDll = Join-Path (Get-PackageDir 'microsoft.identity.client.broker'       $Versions.Broker  $CacheRoot $script:MsalSha256.Broker) "lib\$brokerTfm\Microsoft.Identity.Client.Broker.dll"
+    $nativePkg =           (Get-PackageDir 'microsoft.identity.client.nativeinterop' $Versions.Native  $CacheRoot $script:MsalSha256.Native)
     $nativeMgr = Join-Path $nativePkg "lib\$nativeTfm\Microsoft.Identity.Client.NativeInterop.dll"
     $nativeRun = Join-Path $nativePkg "runtimes\$arch\native"
     foreach ($f in @($abstrDll, $clientDll, $brokerDll, $nativeMgr)) {

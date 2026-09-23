@@ -86,3 +86,51 @@ Describe 'Set-PsadtPackageManifest' {
         finally { Remove-Item $empty -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
+
+Describe 'the stores survive an interrupted write (0.46.0)' {
+    # 2026-09-21 audit B14: all three JSON stores were read-modify-write with a plain Set-Content, no
+    # temp+rename and no lock - while SKILL.md Phase 6 tells the agent to run Phase 7 in the SAME turn, so
+    # the sandbox harness and the packaging step write this very file concurrently. A crash between
+    # truncate and flush leaves a file that Get-PsadtConfig reports as "malformed" and every script then
+    # treats as unconfigured.
+    It 'writes each store through a temporary file and renames it into place' {
+        $root = Split-Path $PSScriptRoot -Parent
+        foreach ($s in 'Set-PsadtPackageManifest.ps1', 'Set-PsadtConfig.ps1', 'Set-PsadtVerifiedSwitch.ps1') {
+            $text = Get-Content -LiteralPath (Join-Path $root "scripts/$s") -Raw
+            $text | Should -Match 'Write-JsonAtomic' -Because "$s replaces a file the next phase reads"
+        }
+        $helper = Get-Content -LiteralPath (Join-Path $root 'scripts/_JsonStore.ps1') -Raw
+        $helper | Should -Match 'Move-Item' -Because 'the rename is what makes the replacement atomic'
+    }
+}
+
+Describe 'the manifest writer refuses a path it cannot write back (0.46.0)' {
+    # Found on 2026-09-23 by the benchmark re-run: a caller built the dotted path from a property that did
+    # not exist, so the key was 'research.answers.' with an EMPTY leaf. The writer accepted it and produced
+    # {"answers": {"": "..."}} - valid to write, and ConvertFrom-Json then refuses the whole file, so the
+    # manifest that is the single source of truth per app became unreadable to every later phase. The
+    # pre-flight caught it as "malformed", which is the right place to fail but the wrong place to notice.
+    BeforeEach {
+        $script:mwDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item $script:mwDir -ItemType Directory -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:mwDir 'Invoke-AppDeployToolkit.ps1') -Value '# fixture' -Encoding UTF8
+        $script:mwScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Set-PsadtPackageManifest.ps1'
+    }
+
+    It 'refuses an empty leaf segment' {
+        { & $script:mwScript -PackagePath $script:mwDir -Updates @{ 'research.answers.' = 'x' } -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*empty*'
+    }
+
+    It 'refuses an empty segment in the middle' {
+        { & $script:mwScript -PackagePath $script:mwDir -Updates @{ 'research..answers' = 'x' } -ErrorAction Stop } |
+            Should -Throw -ExpectedMessage '*empty*'
+    }
+
+    It 'still writes a normal dotted path, and the result parses' {
+        & $script:mwScript -PackagePath $script:mwDir -Updates @{ 'research.answers.intune-pitfalls' = 'ok' } | Out-Null
+        $raw = Get-Content -LiteralPath (Join-Path $script:mwDir 'psadt-package.json') -Raw
+        { $raw | ConvertFrom-Json } | Should -Not -Throw
+        ($raw | ConvertFrom-Json).research.answers.'intune-pitfalls' | Should -Be 'ok'
+    }
+}

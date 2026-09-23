@@ -163,9 +163,13 @@ foreach ($app in @($roster.apps | Sort-Object no))
 
 $md = [System.Collections.Generic.List[string]]::new()
 
-$md.Add('# Ten applications, measured end to end')
+# The count is DERIVED. It said "Ten applications" while a five-application run rendered under it -
+# the same prose-versus-data drift the 2026-09-21 audit found in the README.
+$appWord = switch ($rows.Count) { 1 { 'One application' } 2 { 'Two applications' } 3 { 'Three applications' }
+    4 { 'Four applications' } 5 { 'Five applications' } 10 { 'Ten applications' } default { "$($rows.Count) applications" } }
+$md.Add("# $appWord, measured end to end")
 $md.Add('')
-$md.Add('A run of ' + $roster.run.startedIso + ' that packaged ten applications with this skill and timed every')
+$md.Add('A run of ' + $roster.run.startedIso + " that packaged $($appWord.ToLower()) with this skill and timed every")
 $md.Add('phase, from the first research call to the finished output files. The applications were packaged **one')
 $md.Add('after another**, never in parallel, so the numbers stay comparable. Inside one application phase 6 runs')
 $md.Add('alongside phases 7 and 8, which is what the skill prescribes: packaging and the dossier do not need the')
@@ -226,8 +230,9 @@ if ($rows.Count -gt 0)
     $md.Add("attempt. Median $median per application, $(Format-Duration $wallAll) for the whole run.")
     $md.Add('')
     $md.Add('**Gate runs is the column to read first.** It counts how often phase 6 had to execute. Two runs means')
-    $md.Add('the gate rejected a package and the fix was tested again. The LibreOffice rejection was the serious')
-    $md.Add('one and it is written up in `benchmark/FINDINGS.md`.')
+    $repeats = @($rows | Where-Object { $_.Per['P6'].Count -gt 1 } | ForEach-Object { $_.App.name })
+    if ($repeats.Count) { $md.Add('The package(s) the gate sent back here: ' + ($repeats -join ', ') + '. What each rejection was is in `benchmark/FINDINGS.md`.') }
+    else { $md.Add('No package needed a second gate run in this set.') }
 }
 
 $md.Add('')

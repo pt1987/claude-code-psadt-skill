@@ -2,6 +2,93 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.46.0 - 2026-09-23 - Sixteen findings, and the two the live run had already proved
+
+The deep analysis of 0.42.0 left sixteen findings after 0.43.0 and 0.45.0 took the first nine. This
+release closes the rest. Two of them had stopped being theory: a full 7-Zip run on 0.45.0 produced
+`Intune-Dossier.html` on disk while the manifest's `artifacts.dossier` stayed empty, and finished with no
+logo and no warning that one was missing.
+
+**The manifest now records what was produced.** `New-PsadtReport.ps1` writes `artifacts.dossier` and
+`results.report` back, so `rule:dossier-always` is something a later phase can assert instead of a
+sentence nobody can check. Phase 7 says when it found no logo in `Assets\` - the detection script already
+got a warning for the same situation, the deliverable that `rule:real-logo-only` calls binding did not.
+
+**Three JSON stores stopped being a torn write waiting to happen.** The manifest, `config.json` and the
+verified-switch store were read-modify-write with a plain `Set-Content` - a truncate followed by a write -
+while `SKILL.md` tells the agent to run Phase 7 during the Phase 6 gate, and both write the same manifest.
+`scripts/_JsonStore.ps1` replaces each one through a temp file and a rename, under a per-path named mutex.
+A reader now sees the old file or the new one, never half of either.
+
+**Two downloads that end up executing stopped being taken on trust.** `IntuneWinAppUtil.exe` was accepted
+on a two-byte `MZ` header and then run on the packaging host; it is Microsoft-signed, so it is now checked
+and deleted if the signature does not hold. The four MSAL packages behind interactive sign-in were fetched
+over TLS and loaded in-process with `Assembly::LoadFrom`, two of them carrying native code, and any
+locally cached `4.66.*` was preferred over the pinned version - defeating the pin entirely. All four carry
+a recorded SHA256 now, measured from nuget.org, and the cache shortcut is gone.
+
+**The host no longer takes the guest's word for the verdict.** `result.json` is written inside the sandbox,
+into the read-write mapped folder, after vendor code has run there as SYSTEM with networking on - and its
+`verdict` field went straight into the manifest, the verified-switch store and the upload gate.
+`Assert-GuestVerdict` recomputes it from the assertions the same run recorded: a GREEN with a failed
+assertion, or with no assertions at all, is RED with the reason attached.
+
+**A generator no longer discards a package without being asked.** Every one of the five opened with
+`Remove-Item $pkg -Recurse -Force`. Phase 4 is where the three hooks are filled by hand, so a re-run with
+the same `-Name` threw that away silently, along with the Extensions module, `Assets\` and the results
+recorded in the manifest. `-Force` is how you say you meant it, and a `-PackageRoot` that is a drive root
+is refused outright.
+
+**Names, paths and quoting.** An `&` in a package path produced a `.wsb` that does not parse, and Windows
+Sandbox then starts with no mapped folders looking like a slow boot - the 0.28.0 symptom, reproduced.
+`Notepad++` and `Notepad` collapsed onto one artifact stem, as did `C#` and `C`; `++`, `#` and `&` are
+spelled out before the sanitiser runs. `bin/install.mjs` interpolated the ref and two paths into
+`-Command` strings wrapped in single quotes - a Windows user name with an apostrophe was enough to break
+out - and now passes them through the environment.
+
+**Things that said what is not so.** The skill's `description` named neither browser extensions nor Windows
+features, so two eval cases scored 0 of 3 for package types that ship with a generator and an appendix
+each; it names them now. The doctor gained a `WindowsSandbox` check, because the first sign that Phase 6
+cannot run at all used to arrive after intake, research, scaffolding and pre-flight. `language.dossier`
+decides the dossier's opening language, which is what `SKILL.md` always claimed it did. The driver
+generator emitted PSADT `4.1.0` where its four siblings emitted `4.1.8`. A researcher is told its scope in
+the prompt - read-only, no shell, no writes - and a vendor URL is offered over https.
+
+Room for the wider description came out of the control plane the same way as in 0.45.0: the certificate
+CSP mechanics are Appendix N's subject, the logo verification Appendix J's, the DPAPI lifetime
+`app-registration.md`'s. Every rule and every anchor stayed.
+
+`BENCHMARK.md` now says on its first screen that its numbers were measured once, on 2026-09-18, against
+0.35.0, and that three releases since have changed the phases it times.
+
+Suite 824 -> 859.
+
+**Three things this release found by running instead of reading.** B11 asked for the eval suite to be
+executed - it never had been in full. The first complete run (21 cases, 3 runs each, 15.18 USD) showed
+all nine trigger cases at 1.0, including the two that scored 0 of 3 before the description named browser
+extensions and Windows features, and all eight near-miss cases still at 1.0 - the property that widening
+the description could have broken, measured rather than assumed. It also showed why four cases had never
+run at all: their graders carry `criteria`, `focus` and `target`, which the current schema rejects, so the
+case does not load. And it caught a regression inside this very release: the widened description put a
+colon-space inside an unquoted YAML scalar, which ends the value, stops the frontmatter parsing and stops
+the skill loading ENTIRELY. Every trigger case scored 0 while every near-miss passed, because nothing
+fired. `tests/SKILL.Tests.ps1` now refuses a colon-space in an unquoted frontmatter value - the suite
+checked what the file says and never that it still loads.
+
+**B20 re-measured five applications end to end** (7-Zip, PuTTY, Notepad++, VLC as MSI, Git for Windows as
+Inno Setup), serial, full gate, on 0.46.0: 5 of 5 GREEN, median 3:44 min. `BENCHMARK.md` is regenerated
+from those runs and says how old it is; the 2026-09-18 ten-application run is kept as a dated section,
+with its roster and markers beside it. The markers now carry the skill version, the model and a token
+count, so a number can no longer outlive the tree that produced it - and the report derives its own title
+and its rejection sentence from the data, having claimed "Ten applications" over a five-application run.
+
+**The benchmark also found a defect the tests did not.** A caller built a dotted manifest path from a
+property that did not exist, so the key was `research.answers.` with an empty leaf.
+`Set-PsadtPackageManifest.ps1` wrote it, and the resulting `{"answers": {"": ...}}` made the whole manifest
+unreadable to `ConvertFrom-Json` - the single source of truth per app, lost to one bad key. It now refuses
+an empty segment. The first guard for it did nothing, because an array holding exactly one empty string is
+false in a PowerShell condition; it counts now.
+
 ## 0.45.0 - 2026-09-23 - Every number in the docs was written by hand, so every number was wrong
 
 The 0.42.0 audit counted eleven pre-flight checks in three documents against thirteen in the script. Two

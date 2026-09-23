@@ -24,6 +24,11 @@ Describe 'Initialize-PsadtSkill' {
         # Never reach PSGallery or GitHub.
         Mock -CommandName Find-Module      -MockWith { [pscustomobject]@{ Version = [version]'4.1.8' } }
         Mock -CommandName Install-Module   -MockWith { }
+        # Since 0.46.0 Get-IntuneWinAppUtil.ps1 also checks WHO signed the download - the fixture below
+        # writes a stub file, so the verdict is stated here the same way the tool test states it.
+        Mock -CommandName Get-AuthenticodeSignature -MockWith {
+            [pscustomobject]@{ Status = 'Valid'; SignerCertificate = [pscustomobject]@{ Subject = 'CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US' } }
+        }
         Mock -CommandName Invoke-RestMethod -MockWith { @{ tag_name = 'v1.8.7' } }
         Mock -CommandName Invoke-WebRequest -MockWith {
             New-Item (Split-Path $OutFile -Parent) -ItemType Directory -Force | Out-Null
@@ -195,5 +200,20 @@ Describe 'the elevation warning describes the route the skill actually takes' {
         $line | Should -Not -BeNullOrEmpty
         $line | Should -Not -Match 'Phase 6 SYSTEM test needs an elevated session'
         $line | Should -Match 'sandbox|DEV VM|per-action' -Because 'it must say which route needs elevation instead'
+    }
+}
+
+Describe 'the doctor reports whether Phase 6 can run at all (0.46.0)' {
+    # 2026-09-21 audit B17: no check covered Windows Sandbox, so a Home edition or a VM without nested
+    # virtualisation only found out at Phase 6 - after intake, research, scaffolding and pre-flight.
+    BeforeAll {
+        $script:docSrc = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Initialize-PsadtSkill.ps1') -Raw
+    }
+    It 'checks the Windows Sandbox optional feature' {
+        $script:docSrc | Should -Match 'Containers-DisposableClientVM'
+        $script:docSrc | Should -Match 'Add-Check 'WindowsSandbox''
+    }
+    It 'documents the new check in its own header list' {
+        $script:docSrc | Should -Match 'WindowsSandbox\s+'
     }
 }

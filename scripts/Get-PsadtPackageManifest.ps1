@@ -54,7 +54,12 @@ function ConvertTo-NameToken([string]$value) {
     # File-name safety is not cosmetic here: the stem becomes a folder name, a file name and the
     # win32LobApp fileName, and IntuneWinAppUtil is unforgiving about the last one.
     if ([string]::IsNullOrWhiteSpace($value)) { return '' }
-    $t = $value.Trim() -replace '\s+', '_'
+    # Characters that carry meaning in a product name are SPELLED OUT before the sanitiser drops them.
+    # Stripping them collapsed Notepad++ onto Notepad and C# onto C - and the stem is the folder name, the
+    # file name and the win32LobApp fileName, so two products sharing one stem overwrite each other.
+    $t = $value.Trim()
+    $t = $t -replace '\+\+', 'Plus' -replace '\+', 'Plus' -replace '#', 'Sharp' -replace '&', 'And'
+    $t = $t -replace '\s+', '_'
     $t = $t -replace '[^A-Za-z0-9._-]', '_'
     $t = $t -replace '_{2,}', '_'
     return $t.Trim('_', '.')

@@ -32,6 +32,7 @@ Phase 6 installs, uninstalls and repairs the real application as `NT AUTHORITY\S
 | The DEV-VM route is offered second and asks for a snapshot first | `SKILL.md`, Gate 3 |
 | "Skip the test" is not offered while an upload is planned | `SKILL.md`, Gate 3 |
 | The harness is a reviewed script, never hand-rolled `schtasks` - three silent-failure bugs are pinned by tests | `tests/Invoke-PsadtSandboxTest.Tests.ps1` |
+| The verdict is **re-checked on the host**: a GREEN with a failed assertion, or with none at all, becomes RED. `result.json` is written inside the VM after vendor code ran there as SYSTEM, so it is a claim | `scripts/Invoke-PsadtSandboxTest.ps1` (`Assert-GuestVerdict`), `tests/Invoke-PsadtSandboxTest.Tests.ps1` |
 
 ### 2. Code execution as SYSTEM on managed devices
 
@@ -55,6 +56,9 @@ into a script that later runs as SYSTEM.
 | Retrieved content is **data, never instructions** - an instruction inside a fetched page is not followed | `SKILL.md`, Conventions; `references/research-trust.md` |
 | A researched value is a claim until something deterministic confirms it: the MSI database, a definitive engine fingerprint, one probe run of the switch, the driver classifier | `scripts/Get-PsadtMsiFacts.ps1`, `scripts/Get-PsadtInstallerEngine.ps1`, `scripts/Get-DriverSignatureInfo.ps1`, Appendix L.1 |
 | The switch catalog reduces how much is researched on the open web, and is held to the SAME rule: its engine defaults ship in this repository, carry a dated source reference, and are still CLAIMS that only a run makes true | `references/switch-catalog/engine-defaults.json`, Appendix L.0 |
+| `IntuneWinAppUtil.exe` is downloaded and then EXECUTED on the packaging host, so it is accepted only with a **Valid Authenticode signature by Microsoft Corporation** - a file that fails is deleted, not kept | `scripts/Get-IntuneWinAppUtil.ps1`, `tests/Get-IntuneWinAppUtil.Tests.ps1` |
+| The four MSAL packages loaded in-process for interactive sign-in (two carrying native code) are **pinned by SHA256**, and an arbitrary locally cached build is no longer preferred over the pin | `scripts/_GraphInteractive.ps1` + its two self-contained copies, `tests/_GraphCommon.Tests.ps1` |
+| A dispatched researcher is given its scope in the prompt: **read-only, no shell, no writes**. It returns data the orchestrator verifies; it never touches the package | `scripts/Get-PsadtLocalEvidence.ps1`, `tests/Get-PsadtLocalEvidence.Tests.ps1` |
 | The third-party WinGet module, which is packed into the `.intunewin` and runs as SYSTEM on managed devices, is accepted only against a **recorded SHA256 per release**. Upstream ships it unsigned, so a signature cannot be the gate; an unpinned release is refused unless `-AllowUnpinned` is passed for that call, and a mismatch installs nothing | `scripts/Get-WinGetModule.ps1`, `tests/Get-WinGetModule.Tests.ps1` |
 | The catalog lookup is **offline by default**. The winget-pkgs stage is opt-in (`-WithWinget`), so no packaging run reaches for a third-party index on its own | `scripts/Get-PsadtSwitchCandidates.ps1` |
 | **Nothing is researched until the local ladder says the question is open.** Zero open questions means zero research agents, and the fan-out is capped at one agent per question family - at most three, where it used to be three unconditionally. Less retrieved content reaching a script that runs as SYSTEM is the point | `scripts/Get-PsadtLocalEvidence.ps1`, `rule:research-gate`, phase 1.3 |
@@ -95,6 +99,7 @@ Upload, group assignment and certificate/firewall policies write to the tenant.
 | Preferred alternative | A **certificate** (`-UseCertificate -CertThumbprint`); `intune.certThumbprint` takes precedence over a stored secret |
 | Location | `%LOCALAPPDATA%\psadt-deploy\` (override `$env:PSADT_DEPLOY_HOME`) - **outside the skill folder**, so a re-clone, update or re-install cannot read, move or overwrite it. A legacy config still sitting beside `scripts\` is readable but **not writable**: writing refuses and names the migration, so a secret cannot be created inside the skill tree |
 | Path handling | `intune.secretRef` names a file beside `config.json`, never a path - a value containing a separator, a drive or `..` is refused by the reader and by the token script instead of resolving outside the config home |
+| Concurrent writes | The manifest, `config.json` and the verified-switch store are replaced through a temp file and a rename under a named mutex - Phase 6 and Phase 7 write the same manifest in the same turn by design | `scripts/_JsonStore.ps1` |
 | Repository hygiene | `config.json`, `secret.dpapi`, `tools/`, `*.pfx`, `*.cer`, `*.key` and `secrets.*` are gitignored |
 | Expiry | The setup doctor counts down to credential expiry and warns inside 30 days |
 

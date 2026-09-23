@@ -1,8 +1,8 @@
 {
   "key": "putty",
   "name": "PuTTY",
-  "packagePath": "C:\\PSADT\\Packages\\PuTTY",
-  "outputFolder": "C:\\PSADT\\Output\\Simon_Tatham_PuTTY_0.85_x64",
+  "packagePath": "C:\\Users\\PatrickTaubert\\AppData\\Local\\Temp\\psadt-bench046\\Packages\\PuTTY",
+  "outputFolder": "C:\\Users\\PatrickTaubert\\AppData\\Local\\Temp\\psadt-bench046\\Output\\Simon_Tatham_PuTTY_0.85_x64",
   "verdict": "GREEN",
   "scenarios": [
     "Install",
@@ -11,7 +11,9 @@
     "Repair",
     "FinalUninstall"
   ],
-  "unencryptedSize": 13399567,
+  "unencryptedSize": 13400341,
   "version": "0.85",
-  "productCode": null
+  "productCode": "{3B0346D3-155D-43E5-9561-B9BE51CF2EB6}",
+  "agentBudget": 1,
+  "skillVersion": "0.46.0"
 }

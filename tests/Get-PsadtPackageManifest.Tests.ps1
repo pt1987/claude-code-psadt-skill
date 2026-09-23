@@ -89,3 +89,19 @@ Describe 'Get-PsadtPackageManifest' {
         finally { Remove-Item $empty -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
+
+Describe 'the artifact stem keeps products apart (0.46.0)' {
+    # 2026-09-21 audit B22 / benchmark FINDINGS #1: ConvertTo-NameToken stripped every character outside
+    # [A-Za-z0-9._-], so Notepad++ became Notepad and C# became C. The stem is the folder name, the file
+    # name and the win32LobApp fileName - two products sharing one stem overwrite each other's artefacts.
+    BeforeAll {
+        $script:mfScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Get-PsadtPackageManifest.ps1'
+    }
+    It 'spells out ++ and # instead of dropping them' {
+        $a = & $script:mfScript -Identity @{ vendor = 'Notepad Team'; name = 'Notepad++'; version = '8.9.8'; arch = 'x64' }
+        $b = & $script:mfScript -Identity @{ vendor = 'Notepad Team'; name = 'Notepad';   version = '8.9.8'; arch = 'x64' }
+        $a.Stem | Should -Not -Be $b.Stem
+        $a.Stem | Should -Match 'Plus'
+        (& $script:mfScript -Identity @{ vendor = 'MS'; name = 'C#'; version = '1'; arch = 'x64' }).Stem | Should -Match 'Sharp'
+    }
+}

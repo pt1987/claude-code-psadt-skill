@@ -1506,11 +1506,11 @@ $wsb = @"
   <Networking>Default</Networking>
   <MappedFolders>
     <MappedFolder>
-      <HostFolder>$PackagePath</HostFolder>
+      <HostFolder>$([System.Security.SecurityElement]::Escape($PackagePath))</HostFolder>
       <ReadOnly>true</ReadOnly>
     </MappedFolder>
     <MappedFolder>
-      <HostFolder>$workFolder</HostFolder>
+      <HostFolder>$([System.Security.SecurityElement]::Escape($workFolder))</HostFolder>
       <ReadOnly>false</ReadOnly>
     </MappedFolder>
   </MappedFolders>
@@ -1677,6 +1677,28 @@ if (-not $KeepSandboxOpen) {
         Write-Warning "The Windows Sandbox VM worker did not exit within $sandboxStopTimeoutSeconds seconds. It holds '$workRoot' open until it does; the folder is wiped at the start of the next run for this package."
     }
 }
+# The guest wrote result.json into the read-write mapped folder AFTER vendor code ran there as SYSTEM
+# with networking on. Its verdict field is therefore a claim by the environment under test. The host
+# recomputes it from the assertions the same run recorded: a GREEN must have assertions, and all of them
+# must have passed. Anything else is RED with the reason attached.
+function Assert-GuestVerdict {
+    param([Parameter(Mandatory)]$Result)
+    $claimed = [string]$Result.verdict
+    $asserts = @($Result.assertions)
+    $failed  = @($asserts | Where-Object { -not $_.ok })
+    if ($claimed -notmatch '^GREEN') {
+        return [pscustomobject]@{ Verdict = $claimed; Note = $null }
+    }
+    if ($asserts.Count -eq 0) {
+        return [pscustomobject]@{ Verdict = 'RED'; Note = 'the guest reported GREEN with no assertions at all - nothing was actually checked' }
+    }
+    if ($failed.Count) {
+        $names = ($failed | ForEach-Object { [string]$_.name }) -join ', '
+        return [pscustomobject]@{ Verdict = 'RED'; Note = "the guest reported $claimed while $($failed.Count) assertion(s) failed: $names" }
+    }
+    return [pscustomobject]@{ Verdict = $claimed; Note = $null }
+}
+
 $result = $null
 if (Test-Path -LiteralPath $resultPath) {
     $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
@@ -1699,6 +1721,12 @@ if (-not $result) {
         ResultPath = $null; LogFolder = (Join-Path $resultsFolder 'psadt-logs')
         SandboxWorkFolder = $workFolder; DurationMinutes = [math]::Round(((Get-Date) - $startedAt).TotalMinutes, 1)
     }
+}
+
+$checked = Assert-GuestVerdict -Result $result
+if ($checked.Verdict -ne [string]$result.verdict) {
+    Write-Warning "Host check overrode the guest verdict: $($checked.Note)"
+    $result.verdict = $checked.Verdict
 }
 
 # --- 7a. Move the evidence next to the package's other artefacts ------------------------------------

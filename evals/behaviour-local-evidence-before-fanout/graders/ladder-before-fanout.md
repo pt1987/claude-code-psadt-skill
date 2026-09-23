@@ -1,9 +1,10 @@
 ---
 type: llm
-criteria: "The plan runs the local-evidence ladder before any research sub-agent, and caps the fan-out at the open questions it reports"
-focus: "whether the research fan-out is gated or unconditional"
-target: last_message
+weight: 1
 ---
+
+The plan runs the local-evidence ladder before any research sub-agent, and caps the fan-out at the open questions it reports.
+What decides it: whether the research fan-out is gated or unconditional.
 
 PASS if BOTH hold:
 

@@ -167,6 +167,11 @@ try {
         $logoDest = Join-Path $outputFolder $logoSrc.Name
         Copy-Item -LiteralPath $logoSrc.FullName -Destination $logoDest -Force
         $logoCopied = $logoDest
+    } else {
+        # rule:real-logo-only makes the real logo binding, and this is the step that would notice it is
+        # missing: Phase 7 copies it out of Assets\ while SKILL.md puts the acquisition in Phase 8. Silence
+        # here produced a finished Output folder whose dossier fell back to an initials tile.
+        Add-Warning ('No app logo in ' + (Join-Path $PackagePath 'Assets') + " - Intune's App-information tab needs one. Get it with Get-PsadtAppLogo.ps1 (App. J), then re-run this step.")
     }
 
     # --- 7. Record it -----------------------------------------------------------------------------

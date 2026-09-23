@@ -45,7 +45,10 @@ param(
     [string]$AppArch = 'x64',
     [string]$Author,
     [string]$PackageRoot,
-    [string]$Changelog = ''
+    [string]$Changelog = '',
+    # A re-run used to wipe the folder outright. Phase 4 fills the three hooks BY HAND, so that threw away
+    # work nothing else holds - along with the Extensions module, Assets\ and the recorded results.
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
@@ -119,8 +122,17 @@ $driverLines = foreach ($d in $infRel) {
 $driverLiteral = "@(`r`n" + ($driverLines -join "`r`n") + "`r`n)"
 
 # 1) Scaffold
+# A package root that is a drive root would turn the delete below into a top-level system folder.
+if ([string]::IsNullOrWhiteSpace($PackageRoot) -or $PackageRoot -eq [System.IO.Path]::GetPathRoot($PackageRoot)) {
+    throw "PackageRoot must be a real folder, not a drive root: '$PackageRoot'. Set paths.packageRoot, or pass -PackageRoot."
+}
 $pkg = Join-Path $PackageRoot $Name
-if (Test-Path $pkg) { Remove-Item $pkg -Recurse -Force }
+if (Test-Path $pkg) {
+    if (-not $Force) {
+        throw "Package folder already exists: $pkg. Re-running the generator REPLACES it, including hand-filled hooks, the Extensions module, Assets\ and the results recorded in psadt-package.json. Pass -Force if that is what you want, or use a different -Name."
+    }
+    Remove-Item $pkg -Recurse -Force
+}
 New-ADTTemplate -Destination $PackageRoot -Name $Name -Force | Out-Null
 
 # 2) Driver payload
@@ -314,7 +326,7 @@ try
 {
     $moduleName = if ([System.IO.File]::Exists("$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1")) { "$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1" } else { 'PSAppDeployToolkit' }
     Remove-Module -Name PSAppDeployToolkit* -Force
-    Import-Module -FullyQualifiedName @{ ModuleName = $moduleName; Guid = '8c3c366b-8606-4576-9f2d-4051144f7ca2'; ModuleVersion = '4.1.0' } -Force
+    Import-Module -FullyQualifiedName @{ ModuleName = $moduleName; Guid = '8c3c366b-8606-4576-9f2d-4051144f7ca2'; ModuleVersion = '4.1.8' } -Force
     try
     {
         $iadtParams = Get-ADTBoundParametersAndDefaultValues -Invocation $MyInvocation

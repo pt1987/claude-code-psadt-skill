@@ -222,8 +222,12 @@ async function main() {
         // The ref is recorded next to the sha because Update-PsadtSkill.ps1 cannot otherwise tell a
         // release-pinned installation from one tracking main, and would report a pinned machine as
         // permanently "behind" every time main moved.
-        // -Command, not -File: -File passes every argument as a string and -Updates wants a hashtable.
-        run(psExe, [...psBase, '-Command', `& '${setCfg}' -Updates @{'tooling.skillCommit'='${sha}'; 'tooling.skillRef'='${ref}'}`]);
+        // -Command, not -File: -File stringifies every argument and -Updates wants a hashtable. The
+        // VALUES travel as environment variables, never interpolated into the source: a ref or a home
+        // directory containing an apostrophe would otherwise close the literal and run what follows.
+        run(psExe, [...psBase, '-Command',
+          "& $env:PSADT_SETCFG -Updates @{'tooling.skillCommit'=$env:PSADT_SHA; 'tooling.skillRef'=$env:PSADT_REF}"],
+          { env: { ...process.env, PSADT_SETCFG: setCfg, PSADT_SHA: sha, PSADT_REF: ref } });
         console.log(`  OK  recorded commit ${sha.slice(0, 7)} at ref ${ref}`);
       }
     } else if (res.status === 404) {
@@ -254,7 +258,8 @@ async function main() {
   // -Command with Out-Null rather than -File: the doctor also RETURNS its result object, and with inherited
   // stdout that object gets dumped underneath its own table. Out-Null drops the object; Write-Host output
   // (the table) is unaffected.
-  const d = run(psExe, [...psBase, '-Command', `& '${doctor}' -Fix -JsonPath '${jsonPath}' | Out-Null`]);
+  const d = run(psExe, [...psBase, '-Command', '& $env:PSADT_DOCTOR -Fix -JsonPath $env:PSADT_JSON | Out-Null'],
+    { env: { ...process.env, PSADT_DOCTOR: doctor, PSADT_JSON: jsonPath } });
 
   let verdict = null;
   try {

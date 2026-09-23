@@ -1,216 +1,96 @@
-{"app":"7zip","phase":"P1","event":"start","ts":1789726849.279,"iso":"2026-09-18T10:20:49.2794226+00:00","note":""}
-{"app":"7zip","phase":"P1","event":"end","ts":1789726849.405,"iso":"2026-09-18T10:20:49.4055870+00:00","note":"MSI x64, system context, uninstall keeps user data, reboot never forced"}
-{"app":"7zip","phase":"P2","event":"start","ts":1789726849.417,"iso":"2026-09-18T10:20:49.4177646+00:00","note":""}
-{"app":"7zip","phase":"P2D","event":"start","ts":1789726866.588,"iso":"2026-09-18T10:21:06.5880531+00:00","note":""}
-{"app":"7zip","phase":"P2D","event":"end","ts":1789726867.083,"iso":"2026-09-18T10:21:07.0834065+00:00","note":"7z2603-x64.msi"}
-{"app":"7zip","phase":"P2","event":"end","ts":1789727047.433,"iso":"2026-09-18T10:24:07.4335869+00:00","note":"2 agents (49s/175s) plus ladder; 7 of 10 questions closed locally"}
-{"app":"7zip","phase":"P3","event":"start","ts":1789727047.57,"iso":"2026-09-18T10:24:07.5701760+00:00","note":""}
-{"app":"7zip","phase":"P3","event":"end","ts":1789727063.385,"iso":"2026-09-18T10:24:23.3858423+00:00","note":""}
-{"app":"7zip","phase":"P4","event":"start","ts":1789727063.396,"iso":"2026-09-18T10:24:23.3967322+00:00","note":""}
-{"app":"7zip","phase":"P4","event":"end","ts":1789727201.708,"iso":"2026-09-18T10:26:41.7083845+00:00","note":"extension Remove-ADTLegacySevenZipExeInstall plus its pre-install call"}
-{"app":"7zip","phase":"P5","event":"start","ts":1789727201.908,"iso":"2026-09-18T10:26:41.9088476+00:00","note":""}
-{"app":"7zip","phase":"P5","event":"end","ts":1789727202.41,"iso":"2026-09-18T10:26:42.4109091+00:00","note":"Overall=GREEN"}
-{"app":"7zip","phase":"P6","event":"start","ts":1789727221.121,"iso":"2026-09-18T10:27:01.1219313+00:00","note":""}
-{"app":"7zip","phase":"P7","event":"start","ts":1789727237.0,"iso":"2026-09-18T10:27:17.0000422+00:00","note":""}
-{"app":"7zip","phase":"P7","event":"end","ts":1789727243.232,"iso":"2026-09-18T10:27:23.2327473+00:00","note":""}
-{"app":"7zip","phase":"P8","event":"start","ts":1789727243.246,"iso":"2026-09-18T10:27:23.2464902+00:00","note":""}
-{"app":"7zip","phase":"P8","event":"end","ts":1789727381.329,"iso":"2026-09-18T10:29:41.3298603+00:00","note":"logo: Wikimedia wordmark, vendor ICO only 48px, MSI carries no icon table; squared to 1280x1280"}
-{"app":"7zip","phase":"P6","event":"end","ts":1789727436.891,"iso":"2026-09-18T10:30:36.8916573+00:00","note":"Verdict=GREEN"}
-{"app":"7zip","phase":"P8","event":"start","ts":1789727475.969,"iso":"2026-09-18T10:31:15.9693825+00:00","note":""}
-{"app":"7zip","phase":"P8","event":"end","ts":1789727477.471,"iso":"2026-09-18T10:31:17.4717419+00:00","note":"dossier written"}
-{"app":"notepadpp","phase":"P1","event":"start","ts":1789727612.581,"iso":"2026-09-18T10:33:32.5814472+00:00","note":""}
-{"app":"notepadpp","phase":"P1","event":"end","ts":1789727629.482,"iso":"2026-09-18T10:33:49.4824974+00:00","note":"engine still open: the corpus reports an official x64 MSI"}
-{"app":"notepadpp","phase":"P2","event":"start","ts":1789727629.604,"iso":"2026-09-18T10:33:49.6049760+00:00","note":""}
-{"app":"notepadpp","phase":"P2D","event":"start","ts":1789727721.274,"iso":"2026-09-18T10:35:21.2748177+00:00","note":""}
-{"app":"notepadpp","phase":"P2D","event":"end","ts":1789727721.717,"iso":"2026-09-18T10:35:21.7175582+00:00","note":"npp.8.9.8.Installer.x64.msi"}
-{"app":"notepadpp","phase":"P2","event":"end","ts":1789727872.305,"iso":"2026-09-18T10:37:52.3050057+00:00","note":"2 agents plus ladder plus MSI feature table; 10 sourced pitfalls"}
-{"app":"notepadpp","phase":"P3","event":"start","ts":1789727872.431,"iso":"2026-09-18T10:37:52.4312988+00:00","note":""}
-{"app":"notepadpp","phase":"P3","event":"end","ts":1789727882.277,"iso":"2026-09-18T10:38:02.2778122+00:00","note":""}
-{"app":"notepadpp","phase":"P4","event":"start","ts":1789727882.291,"iso":"2026-09-18T10:38:02.2919333+00:00","note":""}
-{"app":"notepadpp","phase":"P4","event":"end","ts":1789727940.825,"iso":"2026-09-18T10:39:00.8253607+00:00","note":"ADDLOCAL=MainApplication plus Remove-ADTLegacyExeInstall"}
-{"app":"notepadpp","phase":"P5","event":"start","ts":1789727941.028,"iso":"2026-09-18T10:39:01.0286831+00:00","note":""}
-{"app":"notepadpp","phase":"P5","event":"end","ts":1789727941.326,"iso":"2026-09-18T10:39:01.3261158+00:00","note":"Overall=GREEN"}
-{"app":"notepadpp","phase":"P6","event":"start","ts":1789727952.02,"iso":"2026-09-18T10:39:12.0207994+00:00","note":""}
-{"app":"notepadpp","phase":"P7","event":"start","ts":1789727962.234,"iso":"2026-09-18T10:39:22.2340178+00:00","note":""}
-{"app":"notepadpp","phase":"P7","event":"end","ts":1789727969.415,"iso":"2026-09-18T10:39:29.4153361+00:00","note":""}
-{"app":"notepadpp","phase":"P8","event":"start","ts":1789727969.444,"iso":"2026-09-18T10:39:29.4447066+00:00","note":""}
-{"app":"notepadpp","phase":"P8","event":"end","ts":1789728006.468,"iso":"2026-09-18T10:40:06.4688393+00:00","note":"logo from Wikimedia, transparent, squared"}
-{"app":"notepadpp","phase":"P6","event":"end","ts":1789728162.744,"iso":"2026-09-18T10:42:42.7445839+00:00","note":"Verdict=GREEN"}
-{"app":"notepadpp","phase":"P8","event":"start","ts":1789728183.865,"iso":"2026-09-18T10:43:03.8650561+00:00","note":""}
-{"app":"notepadpp","phase":"P8","event":"end","ts":1789728184.86,"iso":"2026-09-18T10:43:04.8609974+00:00","note":"dossier written"}
-{"app":"putty","phase":"P1","event":"start","ts":1789728199.381,"iso":"2026-09-18T10:43:19.3816744+00:00","note":""}
-{"app":"putty","phase":"P1","event":"end","ts":1789728211.242,"iso":"2026-09-18T10:43:31.2420739+00:00","note":"MSI x64, system context"}
-{"app":"putty","phase":"P2","event":"start","ts":1789728211.381,"iso":"2026-09-18T10:43:31.3817699+00:00","note":""}
-{"app":"putty","phase":"P2D","event":"start","ts":1789728290.223,"iso":"2026-09-18T10:44:50.2238604+00:00","note":""}
-{"app":"putty","phase":"P2D","event":"end","ts":1789728290.574,"iso":"2026-09-18T10:44:50.5740633+00:00","note":"putty-64bit-0.85-installer.msi"}
-{"app":"putty","phase":"P2","event":"end","ts":1789728477.88,"iso":"2026-09-18T10:47:57.8801549+00:00","note":"2 agents plus ladder plus MSI feature and upgrade tables"}
-{"app":"putty","phase":"P3","event":"start","ts":1789728478.018,"iso":"2026-09-18T10:47:58.0186575+00:00","note":""}
-{"app":"putty","phase":"P3","event":"end","ts":1789728487.94,"iso":"2026-09-18T10:48:07.9400847+00:00","note":""}
-{"app":"putty","phase":"P4","event":"start","ts":1789728487.953,"iso":"2026-09-18T10:48:07.9531609+00:00","note":""}
-{"app":"putty","phase":"P4","event":"end","ts":1789728518.391,"iso":"2026-09-18T10:48:38.3915788+00:00","note":"explicit ADDLOCAL with DesktopFeature excluded, plus post-uninstall directory cleanup"}
-{"app":"putty","phase":"P5","event":"start","ts":1789728518.588,"iso":"2026-09-18T10:48:38.5887870+00:00","note":""}
-{"app":"putty","phase":"P5","event":"end","ts":1789728518.892,"iso":"2026-09-18T10:48:38.8923747+00:00","note":"Overall=GREEN"}
-{"app":"putty","phase":"P6","event":"start","ts":1789728526.863,"iso":"2026-09-18T10:48:46.8638484+00:00","note":""}
-{"app":"putty","phase":"P7","event":"start","ts":1789728538.121,"iso":"2026-09-18T10:48:58.1212490+00:00","note":""}
-{"app":"putty","phase":"P7","event":"end","ts":1789728544.973,"iso":"2026-09-18T10:49:04.9739805+00:00","note":""}
-{"app":"putty","phase":"P8","event":"start","ts":1789728544.992,"iso":"2026-09-18T10:49:04.9922675+00:00","note":""}
-{"app":"putty","phase":"P8","event":"end","ts":1789728560.666,"iso":"2026-09-18T10:49:20.6664349+00:00","note":"logo from the file name the corpus already recorded, square and transparent as is"}
-{"app":"putty","phase":"P6","event":"end","ts":1789728729.823,"iso":"2026-09-18T10:52:09.8234030+00:00","note":"Verdict=GREEN"}
-{"app":"putty","phase":"P8","event":"start","ts":1789728749.785,"iso":"2026-09-18T10:52:29.7853691+00:00","note":""}
-{"app":"putty","phase":"P8","event":"end","ts":1789728750.839,"iso":"2026-09-18T10:52:30.8397160+00:00","note":"dossier written"}
-{"app":"vlc","phase":"P1","event":"start","ts":1789728767.187,"iso":"2026-09-18T10:52:47.1875937+00:00","note":""}
-{"app":"vlc","phase":"P1","event":"end","ts":1789728789.231,"iso":"2026-09-18T10:53:09.2319658+00:00","note":"NSIS expected, x64, system context"}
-{"app":"vlc","phase":"P2","event":"start","ts":1789728789.355,"iso":"2026-09-18T10:53:09.3558149+00:00","note":""}
-{"app":"vlc","phase":"P2D","event":"start","ts":1789728890.711,"iso":"2026-09-18T10:54:50.7115931+00:00","note":""}
-{"app":"vlc","phase":"P2D","event":"end","ts":1789728893.531,"iso":"2026-09-18T10:54:53.5316117+00:00","note":"vlc-3.0.23-win64.msi (60.6 MB)"}
-{"app":"vlc","phase":"P2","event":"end","ts":1789729200.123,"iso":"2026-09-18T11:00:00.1239539+00:00","note":"2 agents plus ladder plus MSI feature hierarchy, parent fetched by direct query"}
-{"app":"vlc","phase":"P3","event":"start","ts":1789729200.249,"iso":"2026-09-18T11:00:00.2499145+00:00","note":""}
-{"app":"vlc","phase":"P3","event":"end","ts":1789729215.762,"iso":"2026-09-18T11:00:15.7628630+00:00","note":""}
-{"app":"vlc","phase":"P4","event":"start","ts":1789729215.784,"iso":"2026-09-18T11:00:15.7846953+00:00","note":""}
-{"app":"vlc","phase":"P4","event":"end","ts":1789729301.412,"iso":"2026-09-18T11:01:41.4126265+00:00","note":"ADDLOCAL without WEBPLUGINS, ACTIVEX and MOZILLA, plus NSIS predecessor cleanup"}
-{"app":"vlc","phase":"P5","event":"start","ts":1789729301.863,"iso":"2026-09-18T11:01:41.8636261+00:00","note":""}
-{"app":"vlc","phase":"P5","event":"end","ts":1789729302.445,"iso":"2026-09-18T11:01:42.4457726+00:00","note":"Overall=GREEN"}
-{"app":"vlc","phase":"P6","event":"start","ts":1789729312.382,"iso":"2026-09-18T11:01:52.3821374+00:00","note":""}
-{"app":"vlc","phase":"P7","event":"start","ts":1789729324.844,"iso":"2026-09-18T11:02:04.8441167+00:00","note":""}
-{"app":"vlc","phase":"P7","event":"end","ts":1789729354.406,"iso":"2026-09-18T11:02:34.4063865+00:00","note":""}
-{"app":"vlc","phase":"P8","event":"start","ts":1789729354.471,"iso":"2026-09-18T11:02:34.4715149+00:00","note":""}
-{"app":"vlc","phase":"P8","event":"end","ts":1789729386.159,"iso":"2026-09-18T11:03:06.1599524+00:00","note":"logo from Wikimedia, 1280x1280 transparent"}
-{"app":"vlc","phase":"P6","event":"end","ts":1789729681.535,"iso":"2026-09-18T11:08:01.5356216+00:00","note":"Verdict=GREEN"}
-{"app":"vlc","phase":"P8","event":"start","ts":1789729708.338,"iso":"2026-09-18T11:08:28.3384606+00:00","note":""}
-{"app":"vlc","phase":"P8","event":"end","ts":1789729713.472,"iso":"2026-09-18T11:08:33.4726945+00:00","note":"dossier written"}
-{"app":"git","phase":"P1","event":"start","ts":1789729728.055,"iso":"2026-09-18T11:08:48.0553718+00:00","note":""}
-{"app":"git","phase":"P1","event":"end","ts":1789729740.159,"iso":"2026-09-18T11:09:00.1594713+00:00","note":"Inno Setup EXE, x64, system context; New-ExePackage needs InstallArgs and VerifyRelativePath"}
-{"app":"git","phase":"P2","event":"start","ts":1789729740.38,"iso":"2026-09-18T11:09:00.3807959+00:00","note":""}
-{"app":"git","phase":"P2D","event":"start","ts":1789729883.387,"iso":"2026-09-18T11:11:23.3879916+00:00","note":""}
-{"app":"git","phase":"P2D","event":"end","ts":1789729885.66,"iso":"2026-09-18T11:11:25.6601090+00:00","note":"Git-2.55.0.5-64-bit.exe (65 MB)"}
-{"app":"git","phase":"P2","event":"end","ts":1789729991.822,"iso":"2026-09-18T11:13:11.8224886+00:00","note":"2 agents plus engine probe (inno, high); hash verified against the vendor"}
-{"app":"git","phase":"P3","event":"start","ts":1789729992.031,"iso":"2026-09-18T11:13:12.0310432+00:00","note":""}
-{"app":"git","phase":"P3","event":"end","ts":1789730019.327,"iso":"2026-09-18T11:13:39.3276782+00:00","note":""}
-{"app":"git","phase":"P4","event":"start","ts":1789730019.348,"iso":"2026-09-18T11:13:39.3484294+00:00","note":""}
-{"app":"git","phase":"P4","event":"end","ts":1789730109.576,"iso":"2026-09-18T11:15:09.5766039+00:00","note":"RESTARTEXITCODE=3010 declared in both lists; keyboxd and gpg-agent added to CloseProcesses"}
-{"app":"git","phase":"P5","event":"start","ts":1789730109.989,"iso":"2026-09-18T11:15:09.9892673+00:00","note":""}
-{"app":"git","phase":"P5","event":"end","ts":1789730110.954,"iso":"2026-09-18T11:15:10.9541915+00:00","note":"Overall=GREEN"}
-{"app":"git","phase":"P6","event":"start","ts":1789730153.683,"iso":"2026-09-18T11:15:53.6834081+00:00","note":""}
-{"app":"git","phase":"P7","event":"start","ts":1789730190.038,"iso":"2026-09-18T11:16:30.0381736+00:00","note":""}
-{"app":"git","phase":"P7","event":"end","ts":1789730207.745,"iso":"2026-09-18T11:16:47.7455271+00:00","note":""}
-{"app":"git","phase":"P8","event":"start","ts":1789730207.771,"iso":"2026-09-18T11:16:47.7712793+00:00","note":""}
-{"app":"git","phase":"P8","event":"end","ts":1789730236.896,"iso":"2026-09-18T11:17:16.8969547+00:00","note":"logo from Wikimedia (Git-logo.svg), squared to 1280x1280 transparent"}
-{"app":"git","phase":"P6","event":"end","ts":1789730627.678,"iso":"2026-09-18T11:23:47.6783481+00:00","note":"Verdict=GREEN"}
-{"app":"git","phase":"P8","event":"start","ts":1789730700.982,"iso":"2026-09-18T11:25:00.9825815+00:00","note":""}
-{"app":"git","phase":"P8","event":"end","ts":1789730705.42,"iso":"2026-09-18T11:25:05.4202995+00:00","note":"dossier written"}
-{"app":"chrome","phase":"P1","event":"start","ts":1789730729.299,"iso":"2026-09-18T11:25:29.2990673+00:00","note":""}
-{"app":"chrome","phase":"P1","event":"end","ts":1789730744.657,"iso":"2026-09-18T11:25:44.6577769+00:00","note":"MSI x64 enterprise, system context"}
-{"app":"chrome","phase":"P2","event":"start","ts":1789730744.885,"iso":"2026-09-18T11:25:44.8855286+00:00","note":""}
-{"app":"chrome","phase":"P2D","event":"start","ts":1789730946.979,"iso":"2026-09-18T11:29:06.9791857+00:00","note":""}
-{"app":"chrome","phase":"P2D","event":"end","ts":1789730952.378,"iso":"2026-09-18T11:29:12.3789684+00:00","note":"GoogleChromeStandaloneEnterprise64.msi (167 MB)"}
-{"app":"chrome","phase":"P2","event":"end","ts":1789731056.35,"iso":"2026-09-18T11:30:56.3507880+00:00","note":"2 agents plus ladder; version confirmed deterministically from the MSI"}
-{"app":"chrome","phase":"P3","event":"start","ts":1789731056.812,"iso":"2026-09-18T11:30:56.8120037+00:00","note":""}
-{"app":"chrome","phase":"P3","event":"end","ts":1789731091.71,"iso":"2026-09-18T11:31:31.7103327+00:00","note":""}
-{"app":"chrome","phase":"P4","event":"start","ts":1789731091.736,"iso":"2026-09-18T11:31:31.7362028+00:00","note":""}
-{"app":"chrome","phase":"P4","event":"end","ts":1789731112.063,"iso":"2026-09-18T11:31:52.0631385+00:00","note":"no extra hooks needed; the updater is kept on purpose because other products share it"}
-{"app":"chrome","phase":"P5","event":"start","ts":1789731112.419,"iso":"2026-09-18T11:31:52.4197938+00:00","note":""}
-{"app":"chrome","phase":"P5","event":"end","ts":1789731113.331,"iso":"2026-09-18T11:31:53.3317064+00:00","note":"Overall=GREEN"}
-{"app":"chrome","phase":"P6","event":"start","ts":1789731123.877,"iso":"2026-09-18T11:32:03.8770095+00:00","note":""}
-{"app":"chrome","phase":"P7","event":"start","ts":1789731136.631,"iso":"2026-09-18T11:32:16.6310590+00:00","note":""}
-{"app":"chrome","phase":"P7","event":"end","ts":1789731163.788,"iso":"2026-09-18T11:32:43.7884244+00:00","note":""}
-{"app":"chrome","phase":"P8","event":"start","ts":1789731163.837,"iso":"2026-09-18T11:32:43.8374404+00:00","note":""}
-{"app":"chrome","phase":"P8","event":"end","ts":1789731190.288,"iso":"2026-09-18T11:33:10.2884323+00:00","note":"logo from Wikimedia, 1280x1280 transparent"}
-{"app":"chrome","phase":"P6","event":"end","ts":1789731529.305,"iso":"2026-09-18T11:38:49.3052496+00:00","note":"Verdict=GREEN"}
-{"app":"chrome","phase":"P8","event":"start","ts":1789731549.918,"iso":"2026-09-18T11:39:09.9181543+00:00","note":""}
-{"app":"chrome","phase":"P8","event":"end","ts":1789731553.7,"iso":"2026-09-18T11:39:13.7006309+00:00","note":"dossier written"}
-{"app":"temurin","phase":"P1","event":"start","ts":1789731564.672,"iso":"2026-09-18T11:39:24.6729484+00:00","note":""}
-{"app":"temurin","phase":"P1","event":"end","ts":1789731577.783,"iso":"2026-09-18T11:39:37.7832297+00:00","note":"MSI x64 with ADDLOCAL features, system context; nothing in the corpus"}
-{"app":"temurin","phase":"P2","event":"start","ts":1789731578.043,"iso":"2026-09-18T11:39:38.0435300+00:00","note":""}
-{"app":"temurin","phase":"P2D","event":"start","ts":1789731752.663,"iso":"2026-09-18T11:42:32.6632860+00:00","note":""}
-{"app":"temurin","phase":"P2D","event":"end","ts":1789731758.599,"iso":"2026-09-18T11:42:38.5997453+00:00","note":"OpenJDK21U MSI (171 MB)"}
-{"app":"temurin","phase":"P2","event":"end","ts":1789731807.212,"iso":"2026-09-18T11:43:27.2128823+00:00","note":"2 agents plus ladder plus feature table; SHA256 verified against the vendor"}
-{"app":"temurin","phase":"P3","event":"start","ts":1789731807.671,"iso":"2026-09-18T11:43:27.6718657+00:00","note":""}
-{"app":"temurin","phase":"P3","event":"end","ts":1789731834.352,"iso":"2026-09-18T11:43:54.3528347+00:00","note":""}
-{"app":"temurin","phase":"P4","event":"start","ts":1789731834.371,"iso":"2026-09-18T11:43:54.3717439+00:00","note":""}
-{"app":"temurin","phase":"P4","event":"end","ts":1789731849.33,"iso":"2026-09-18T11:44:09.3306821+00:00","note":"ADDLOCAL with FeatureEnvironment and FeatureJavaHome, without FeatureOracleJavaSoft"}
-{"app":"temurin","phase":"P5","event":"start","ts":1789731849.775,"iso":"2026-09-18T11:44:09.7750124+00:00","note":""}
-{"app":"temurin","phase":"P5","event":"end","ts":1789731850.49,"iso":"2026-09-18T11:44:10.4901876+00:00","note":"Overall=GREEN"}
-{"app":"temurin","phase":"P6","event":"start","ts":1789731863.042,"iso":"2026-09-18T11:44:23.0426659+00:00","note":""}
-{"app":"temurin","phase":"P7","event":"start","ts":1789731884.259,"iso":"2026-09-18T11:44:44.2598418+00:00","note":""}
-{"app":"temurin","phase":"P7","event":"end","ts":1789731932.938,"iso":"2026-09-18T11:45:32.9384425+00:00","note":""}
-{"app":"temurin","phase":"P8","event":"start","ts":1789731932.991,"iso":"2026-09-18T11:45:32.9915618+00:00","note":""}
-{"app":"temurin","phase":"P8","event":"end","ts":1789732089.587,"iso":"2026-09-18T11:48:09.5877430+00:00","note":"logo from the MSI icon table (256px, the vendor maximum); no Wikimedia hit"}
-{"app":"temurin","phase":"P6","event":"end","ts":1789732273.892,"iso":"2026-09-18T11:51:13.8929656+00:00","note":"Verdict=GREEN"}
-{"app":"temurin","phase":"P8","event":"start","ts":1789732302.645,"iso":"2026-09-18T11:51:42.6457720+00:00","note":""}
-{"app":"temurin","phase":"P8","event":"end","ts":1789732304.357,"iso":"2026-09-18T11:51:44.3572184+00:00","note":"dossier written"}
-{"app":"gimp","phase":"P1","event":"start","ts":1789732317.007,"iso":"2026-09-18T11:51:57.0078465+00:00","note":""}
-{"app":"gimp","phase":"P1","event":"end","ts":1789732327.432,"iso":"2026-09-18T11:52:07.4325645+00:00","note":"Inno Setup EXE expected, x64, system context; nothing in the corpus"}
-{"app":"gimp","phase":"P2","event":"start","ts":1789732327.627,"iso":"2026-09-18T11:52:07.6271584+00:00","note":""}
-{"app":"gimp","phase":"P2D","event":"start","ts":1789732585.762,"iso":"2026-09-18T11:56:25.7623974+00:00","note":""}
-{"app":"gimp","phase":"P2D","event":"end","ts":1789732594.586,"iso":"2026-09-18T11:56:34.5869025+00:00","note":"gimp-3.2.6-setup.exe (181 MiB)"}
-{"app":"gimp","phase":"P2","event":"end","ts":1789732746.51,"iso":"2026-09-18T11:59:06.5107178+00:00","note":"2 agents, one corrected the other, plus engine probe; size matched exactly"}
-{"app":"gimp","phase":"P3","event":"start","ts":1789732746.84,"iso":"2026-09-18T11:59:06.8402033+00:00","note":""}
-{"app":"gimp","phase":"P3","event":"end","ts":1789732780.558,"iso":"2026-09-18T11:59:40.5589365+00:00","note":""}
-{"app":"gimp","phase":"P4","event":"start","ts":1789732780.582,"iso":"2026-09-18T11:59:40.5825504+00:00","note":""}
-{"app":"gimp","phase":"P4","event":"end","ts":1789732810.785,"iso":"2026-09-18T12:00:10.7859813+00:00","note":"/ALLUSERS set, 3010 in both lists; no /COMPONENTS, the core components are fixed"}
-{"app":"gimp","phase":"P5","event":"start","ts":1789732811.044,"iso":"2026-09-18T12:00:11.0443172+00:00","note":""}
-{"app":"gimp","phase":"P5","event":"end","ts":1789732811.787,"iso":"2026-09-18T12:00:11.7879522+00:00","note":"Overall=GREEN"}
-{"app":"gimp","phase":"P6","event":"start","ts":1789732845.109,"iso":"2026-09-18T12:00:45.1099426+00:00","note":""}
-{"app":"gimp","phase":"P7","event":"start","ts":1789732856.117,"iso":"2026-09-18T12:00:56.1176067+00:00","note":""}
-{"app":"gimp","phase":"P7","event":"end","ts":1789732908.238,"iso":"2026-09-18T12:01:48.2382135+00:00","note":""}
-{"app":"gimp","phase":"P8","event":"start","ts":1789732908.275,"iso":"2026-09-18T12:01:48.2752981+00:00","note":""}
-{"app":"gimp","phase":"P8","event":"end","ts":1789732939.463,"iso":"2026-09-18T12:02:19.4638662+00:00","note":"logo from Wikimedia (GIMP 3.0 icon), 1280x1280 transparent"}
-{"app":"gimp","phase":"P6","event":"end","ts":1789733401.366,"iso":"2026-09-18T12:10:01.3660326+00:00","note":"Verdict=GREEN"}
-{"app":"gimp","phase":"P8","event":"start","ts":1789733450.688,"iso":"2026-09-18T12:10:50.6883365+00:00","note":""}
-{"app":"gimp","phase":"P8","event":"end","ts":1789733453.737,"iso":"2026-09-18T12:10:53.7377321+00:00","note":"dossier written"}
-{"app":"libreoffice","phase":"P1","event":"start","ts":1789733463.514,"iso":"2026-09-18T12:11:03.5146044+00:00","note":""}
-{"app":"libreoffice","phase":"P1","event":"end","ts":1789733474.604,"iso":"2026-09-18T12:11:14.6047626+00:00","note":"MSI x64 with properties, system context; nothing in the corpus"}
-{"app":"libreoffice","phase":"P2","event":"start","ts":1789733474.793,"iso":"2026-09-18T12:11:14.7935141+00:00","note":""}
-{"app":"libreoffice","phase":"P2D","event":"start","ts":1789733731.6,"iso":"2026-09-18T12:15:31.6001440+00:00","note":""}
-{"app":"libreoffice","phase":"P2D","event":"end","ts":1789733743.782,"iso":"2026-09-18T12:15:43.7826717+00:00","note":"LibreOffice_26.2.6_Win_x86-64.msi (356 MiB)"}
-{"app":"libreoffice","phase":"P2","event":"end","ts":1789733863.444,"iso":"2026-09-18T12:17:43.4446254+00:00","note":"2 agents plus ladder plus the feature table (1680 features) read from the MSI"}
-{"app":"libreoffice","phase":"P3","event":"start","ts":1789733863.586,"iso":"2026-09-18T12:17:43.5860798+00:00","note":""}
-{"app":"libreoffice","phase":"P3","event":"end","ts":1789733879.266,"iso":"2026-09-18T12:17:59.2667432+00:00","note":""}
-{"app":"libreoffice","phase":"P4","event":"start","ts":1789733879.279,"iso":"2026-09-18T12:17:59.2795744+00:00","note":""}
-{"app":"libreoffice","phase":"P4","event":"end","ts":1789733896.116,"iso":"2026-09-18T12:18:16.1164815+00:00","note":"no ADDLOCAL=ALL, it would defeat UI_LANGS; online update and quickstarter dropped via REMOVE"}
-{"app":"libreoffice","phase":"P5","event":"start","ts":1789733896.319,"iso":"2026-09-18T12:18:16.3193873+00:00","note":""}
-{"app":"libreoffice","phase":"P5","event":"end","ts":1789733896.825,"iso":"2026-09-18T12:18:16.8254683+00:00","note":"Overall=GREEN"}
-{"app":"libreoffice","phase":"P6","event":"start","ts":1789733907.324,"iso":"2026-09-18T12:18:27.3246822+00:00","note":""}
-{"app":"libreoffice","phase":"P7","event":"start","ts":1789733918.672,"iso":"2026-09-18T12:18:38.6728126+00:00","note":""}
-{"app":"libreoffice","phase":"P7","event":"end","ts":1789733945.18,"iso":"2026-09-18T12:19:05.1802184+00:00","note":""}
-{"app":"libreoffice","phase":"P8","event":"start","ts":1789733945.193,"iso":"2026-09-18T12:19:05.1938356+00:00","note":""}
-{"app":"libreoffice","phase":"P8","event":"end","ts":1789734011.113,"iso":"2026-09-18T12:20:11.1130518+00:00","note":"logo: wordmark first, unusable as a tile, then the LibreOffice main icon at 1280x1280"}
-{"app":"libreoffice","phase":"P6","event":"end","ts":1789734102.745,"iso":"2026-09-18T12:21:42.7459567+00:00","note":"Verdict=RED"}
-{"app":"libreoffice","phase":"P4","event":"start","ts":1789734172.615,"iso":"2026-09-18T12:22:52.6152377+00:00","note":""}
-{"app":"libreoffice","phase":"P4","event":"end","ts":1789734172.826,"iso":"2026-09-18T12:22:52.8266552+00:00","note":"fix after the red gate: REMOVE dropped"}
-{"app":"libreoffice","phase":"P5","event":"start","ts":1789734172.837,"iso":"2026-09-18T12:22:52.8373038+00:00","note":""}
-{"app":"libreoffice","phase":"P5","event":"end","ts":1789734173.149,"iso":"2026-09-18T12:22:53.1498230+00:00","note":"Overall=GREEN"}
-{"app":"libreoffice","phase":"P6","event":"start","ts":1789734184.245,"iso":"2026-09-18T12:23:04.2455139+00:00","note":""}
-{"app":"libreoffice","phase":"P6","event":"end","ts":1789734832.57,"iso":"2026-09-18T12:33:52.5705083+00:00","note":"Verdict=GREEN (second run)"}
-{"app":"libreoffice","phase":"P7","event":"start","ts":1789734862.774,"iso":"2026-09-18T12:34:22.7743822+00:00","note":""}
-{"app":"libreoffice","phase":"P7","event":"end","ts":1789734891.341,"iso":"2026-09-18T12:34:51.3419532+00:00","note":"repackaged after the launcher fix"}
-{"app":"libreoffice","phase":"P8","event":"start","ts":1789734891.361,"iso":"2026-09-18T12:34:51.3615726+00:00","note":""}
-{"app":"libreoffice","phase":"P8","event":"end","ts":1789734894.548,"iso":"2026-09-18T12:34:54.5485974+00:00","note":"dossier written"}
-{"app":"citrix","phase":"P1","event":"start","ts":1789734903.183,"iso":"2026-09-18T12:35:03.1831623+00:00","note":""}
-{"app":"citrix","phase":"P1","event":"end","ts":1789734917.446,"iso":"2026-09-18T12:35:17.4463346+00:00","note":"EXE installer, x64, system context; the corpus knows 40032 and a 30 minute timeout"}
-{"app":"citrix","phase":"P2","event":"start","ts":1789734917.591,"iso":"2026-09-18T12:35:17.5917976+00:00","note":""}
-{"app":"citrix","phase":"P2D","event":"start","ts":1789735290.159,"iso":"2026-09-18T12:41:30.1596424+00:00","note":""}
-{"app":"citrix","phase":"P2D","event":"end","ts":1789735312.341,"iso":"2026-09-18T12:41:52.3414324+00:00","note":"CitrixWorkspaceApp_x64_26.7.0.269.exe (463 MB)"}
-{"app":"citrix","phase":"P2","event":"end","ts":1789735361.001,"iso":"2026-09-18T12:42:41.0013146+00:00","note":"2 agents plus corpus plus probe; engine unknown, no default invented"}
-{"app":"citrix","phase":"P3","event":"start","ts":1789735361.118,"iso":"2026-09-18T12:42:41.1181924+00:00","note":""}
-{"app":"citrix","phase":"P3","event":"end","ts":1789735376.928,"iso":"2026-09-18T12:42:56.9289322+00:00","note":""}
-{"app":"citrix","phase":"P4","event":"start","ts":1789735376.948,"iso":"2026-09-18T12:42:56.9483466+00:00","note":""}
-{"app":"citrix","phase":"P4","event":"end","ts":1789735411.059,"iso":"2026-09-18T12:43:31.0598563+00:00","note":"40032 and 40037 as success, 3010 and 40026 as reboot, in the launcher AND the harness"}
-{"app":"citrix","phase":"P5","event":"start","ts":1789735411.271,"iso":"2026-09-18T12:43:31.2717604+00:00","note":""}
-{"app":"citrix","phase":"P5","event":"end","ts":1789735411.669,"iso":"2026-09-18T12:43:31.6691230+00:00","note":"Overall=GREEN"}
-{"app":"citrix","phase":"P6","event":"start","ts":1789735427.987,"iso":"2026-09-18T12:43:47.9874675+00:00","note":""}
-{"app":"citrix","phase":"P7","event":"start","ts":1789735439.466,"iso":"2026-09-18T12:43:59.4660943+00:00","note":""}
-{"app":"citrix","phase":"P7","event":"end","ts":1789735485.879,"iso":"2026-09-18T12:44:45.8799010+00:00","note":""}
-{"app":"citrix","phase":"P8","event":"start","ts":1789735485.902,"iso":"2026-09-18T12:44:45.9027378+00:00","note":""}
-{"app":"citrix","phase":"P8","event":"end","ts":1789735515.467,"iso":"2026-09-18T12:45:15.4677519+00:00","note":"logo from Wikimedia (Citrix Systems), squared to 1280x1280"}
-{"app":"citrix","phase":"P6","event":"end","ts":1789736000.242,"iso":"2026-09-18T12:53:20.2429713+00:00","note":"Verdict=RED"}
-{"app":"citrix","phase":"P4","event":"start","ts":1789736105.335,"iso":"2026-09-18T12:55:05.3359569+00:00","note":""}
-{"app":"citrix","phase":"P4","event":"end","ts":1789736105.539,"iso":"2026-09-18T12:55:05.5393017+00:00","note":"path corrected after the red gate: ICA Client\\wfica32.exe relative to C:\\Program Files\\Citrix"}
-{"app":"citrix","phase":"P5","event":"start","ts":1789736105.549,"iso":"2026-09-18T12:55:05.5495030+00:00","note":""}
-{"app":"citrix","phase":"P5","event":"end","ts":1789736106.217,"iso":"2026-09-18T12:55:06.2174739+00:00","note":"Overall=GREEN"}
-{"app":"citrix","phase":"P6","event":"start","ts":1789736116.986,"iso":"2026-09-18T12:55:16.9861984+00:00","note":""}
-{"app":"citrix","phase":"P6","event":"end","ts":1789736749.046,"iso":"2026-09-18T13:05:49.0469280+00:00","note":"Verdict=GREEN (second run)"}
-{"app":"citrix","phase":"P7","event":"start","ts":1789736779.065,"iso":"2026-09-18T13:06:19.0656486+00:00","note":""}
-{"app":"citrix","phase":"P7","event":"end","ts":1789736822.725,"iso":"2026-09-18T13:07:02.7250738+00:00","note":"repackaged after the detection fix"}
-{"app":"citrix","phase":"P8","event":"start","ts":1789736822.75,"iso":"2026-09-18T13:07:02.7509258+00:00","note":""}
-{"app":"citrix","phase":"P8","event":"end","ts":1789736827.323,"iso":"2026-09-18T13:07:07.3230779+00:00","note":"dossier written"}
+{"app":"putty","phase":"P2D","event":"start","ts":1790187801.494,"iso":"2026-09-23T18:23:21.4940357+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P2D","event":"end","ts":1790187801.556,"iso":"2026-09-23T18:23:21.5568577+00:00","note":"3846144 bytes (local)","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P2","event":"start","ts":1790187801.571,"iso":"2026-09-23T18:23:21.5716230+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P2","event":"end","ts":1790187803.957,"iso":"2026-09-23T18:23:23.9576667+00:00","note":"AgentBudget=1","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P3","event":"start","ts":1790187803.976,"iso":"2026-09-23T18:23:23.9769765+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P3","event":"end","ts":1790187816.004,"iso":"2026-09-23T18:23:36.0042931+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P4","event":"start","ts":1790187816.024,"iso":"2026-09-23T18:23:36.0248243+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P4","event":"end","ts":1790187816.091,"iso":"2026-09-23T18:23:36.0911926+00:00","note":"recorded 2 answer(s)","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P5","event":"start","ts":1790187816.104,"iso":"2026-09-23T18:23:36.1044801+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P5","event":"end","ts":1790187816.49,"iso":"2026-09-23T18:23:36.4907880+00:00","note":"GREEN","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P6","event":"start","ts":1790187816.516,"iso":"2026-09-23T18:23:36.5162076+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P6","event":"end","ts":1790188023.138,"iso":"2026-09-23T18:27:03.1385187+00:00","note":"GREEN","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P7","event":"start","ts":1790188023.155,"iso":"2026-09-23T18:27:03.1553508+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P7","event":"end","ts":1790188024.971,"iso":"2026-09-23T18:27:04.9712002+00:00","note":"13400341 bytes","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P8","event":"start","ts":1790188024.986,"iso":"2026-09-23T18:27:04.9865843+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"putty","phase":"P8","event":"end","ts":1790188026.229,"iso":"2026-09-23T18:27:06.2293289+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P2D","event":"start","ts":1790188026.308,"iso":"2026-09-23T18:27:06.3082354+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P2D","event":"end","ts":1790188026.333,"iso":"2026-09-23T18:27:06.3334257+00:00","note":"7806976 bytes (local)","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P2","event":"start","ts":1790188026.349,"iso":"2026-09-23T18:27:06.3490558+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P2","event":"end","ts":1790188027.858,"iso":"2026-09-23T18:27:07.8587224+00:00","note":"AgentBudget=1","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P3","event":"start","ts":1790188027.872,"iso":"2026-09-23T18:27:07.8721744+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P3","event":"end","ts":1790188035.974,"iso":"2026-09-23T18:27:15.9745853+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P4","event":"start","ts":1790188035.991,"iso":"2026-09-23T18:27:15.9914701+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P4","event":"end","ts":1790188036.052,"iso":"2026-09-23T18:27:16.0527635+00:00","note":"recorded 2 answer(s)","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P5","event":"start","ts":1790188036.067,"iso":"2026-09-23T18:27:16.0679223+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P5","event":"end","ts":1790188036.269,"iso":"2026-09-23T18:27:16.2694674+00:00","note":"GREEN","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P6","event":"start","ts":1790188036.289,"iso":"2026-09-23T18:27:16.2898646+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P6","event":"end","ts":1790188243.996,"iso":"2026-09-23T18:30:43.9962429+00:00","note":"GREEN","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P7","event":"start","ts":1790188244.009,"iso":"2026-09-23T18:30:44.0099768+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P7","event":"end","ts":1790188245.426,"iso":"2026-09-23T18:30:45.4264824+00:00","note":"17469496 bytes","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P8","event":"start","ts":1790188245.439,"iso":"2026-09-23T18:30:45.4395137+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"notepadpp","phase":"P8","event":"end","ts":1790188245.769,"iso":"2026-09-23T18:30:45.7693343+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P2D","event":"start","ts":1790188245.815,"iso":"2026-09-23T18:30:45.8150694+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P2D","event":"end","ts":1790188245.864,"iso":"2026-09-23T18:30:45.8646469+00:00","note":"60608512 bytes (local)","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P2","event":"start","ts":1790188245.88,"iso":"2026-09-23T18:30:45.8800263+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P2","event":"end","ts":1790188250.232,"iso":"2026-09-23T18:30:50.2322845+00:00","note":"AgentBudget=1","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P3","event":"start","ts":1790188250.255,"iso":"2026-09-23T18:30:50.2554720+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P3","event":"end","ts":1790188259.94,"iso":"2026-09-23T18:30:59.9404032+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P4","event":"start","ts":1790188259.957,"iso":"2026-09-23T18:30:59.9574740+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P4","event":"end","ts":1790188260.128,"iso":"2026-09-23T18:31:00.1288319+00:00","note":"recorded 2 answer(s)","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P5","event":"start","ts":1790188260.144,"iso":"2026-09-23T18:31:00.1441203+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P5","event":"end","ts":1790188260.466,"iso":"2026-09-23T18:31:00.4663589+00:00","note":"GREEN","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P6","event":"start","ts":1790188260.487,"iso":"2026-09-23T18:31:00.4876559+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P6","event":"end","ts":1790188495.372,"iso":"2026-09-23T18:34:55.3723888+00:00","note":"GREEN","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P7","event":"start","ts":1790188495.385,"iso":"2026-09-23T18:34:55.3850875+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P7","event":"end","ts":1790188498.568,"iso":"2026-09-23T18:34:58.5683363+00:00","note":"70025873 bytes","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P8","event":"start","ts":1790188498.583,"iso":"2026-09-23T18:34:58.5833486+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"vlc","phase":"P8","event":"end","ts":1790188498.893,"iso":"2026-09-23T18:34:58.8937392+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P2D","event":"start","ts":1790188498.931,"iso":"2026-09-23T18:34:58.9315212+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P2D","event":"end","ts":1790188498.979,"iso":"2026-09-23T18:34:58.9791011+00:00","note":"65343712 bytes (local)","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P2","event":"start","ts":1790188498.992,"iso":"2026-09-23T18:34:58.9921695+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P2","event":"end","ts":1790188500.985,"iso":"2026-09-23T18:35:00.9852057+00:00","note":"AgentBudget=2","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P3","event":"start","ts":1790188501.0,"iso":"2026-09-23T18:35:01.0001859+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P3","event":"end","ts":1790188508.427,"iso":"2026-09-23T18:35:08.4274188+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P4","event":"start","ts":1790188508.442,"iso":"2026-09-23T18:35:08.4427626+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P4","event":"end","ts":1790188508.589,"iso":"2026-09-23T18:35:08.5897121+00:00","note":"recorded 3 answer(s)","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P5","event":"start","ts":1790188508.603,"iso":"2026-09-23T18:35:08.6038365+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P5","event":"end","ts":1790188509.157,"iso":"2026-09-23T18:35:09.1576163+00:00","note":"GREEN","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P6","event":"start","ts":1790188509.182,"iso":"2026-09-23T18:35:09.1820175+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P6","event":"end","ts":1790189245.803,"iso":"2026-09-23T18:47:25.8035834+00:00","note":"RED","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P7","event":"start","ts":1790189245.854,"iso":"2026-09-23T18:47:25.8542168+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P7","event":"end","ts":1790189250.83,"iso":"2026-09-23T18:47:30.8302665+00:00","note":"74881625 bytes","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P8","event":"start","ts":1790189250.844,"iso":"2026-09-23T18:47:30.8442398+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P8","event":"end","ts":1790189252.319,"iso":"2026-09-23T18:47:32.3191174+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P2D","event":"start","ts":1790189340.595,"iso":"2026-09-23T18:49:00.5954540+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P2D","event":"end","ts":1790189341.315,"iso":"2026-09-23T18:49:01.3158873+00:00","note":"2007040 bytes","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P2","event":"start","ts":1790189341.328,"iso":"2026-09-23T18:49:01.3286191+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P2","event":"end","ts":1790189345.43,"iso":"2026-09-23T18:49:05.4306125+00:00","note":"AgentBudget=1","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P3","event":"start","ts":1790189345.458,"iso":"2026-09-23T18:49:05.4589298+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P3","event":"end","ts":1790189360.589,"iso":"2026-09-23T18:49:20.5896167+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P4","event":"start","ts":1790189360.616,"iso":"2026-09-23T18:49:20.6162065+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P4","event":"end","ts":1790189360.686,"iso":"2026-09-23T18:49:20.6867539+00:00","note":"recorded 2 answer(s)","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P5","event":"start","ts":1790189360.699,"iso":"2026-09-23T18:49:20.6999444+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P5","event":"end","ts":1790189361.21,"iso":"2026-09-23T18:49:21.2100783+00:00","note":"GREEN","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P6","event":"start","ts":1790189361.224,"iso":"2026-09-23T18:49:21.2244439+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P6","event":"end","ts":1790189557.305,"iso":"2026-09-23T18:52:37.3053550+00:00","note":"GREEN","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P7","event":"start","ts":1790189557.323,"iso":"2026-09-23T18:52:37.3233831+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P7","event":"end","ts":1790189558.616,"iso":"2026-09-23T18:52:38.6165807+00:00","note":"11961204 bytes","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P8","event":"start","ts":1790189558.63,"iso":"2026-09-23T18:52:38.6303087+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"7zip","phase":"P8","event":"end","ts":1790189559.562,"iso":"2026-09-23T18:52:39.5627600+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P2D","event":"start","ts":1790189559.622,"iso":"2026-09-23T18:52:39.6229003+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P2D","event":"end","ts":1790189559.884,"iso":"2026-09-23T18:52:39.8847936+00:00","note":"65343712 bytes (local)","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P2","event":"start","ts":1790189559.899,"iso":"2026-09-23T18:52:39.8998801+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P2","event":"end","ts":1790189561.839,"iso":"2026-09-23T18:52:41.8395170+00:00","note":"AgentBudget=2","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P3","event":"start","ts":1790189561.859,"iso":"2026-09-23T18:52:41.8599328+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P3","event":"end","ts":1790189568.97,"iso":"2026-09-23T18:52:48.9709082+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P4","event":"start","ts":1790189568.985,"iso":"2026-09-23T18:52:48.9857041+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P4","event":"end","ts":1790189569.133,"iso":"2026-09-23T18:52:49.1333848+00:00","note":"recorded 3 answer(s)","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P5","event":"start","ts":1790189569.152,"iso":"2026-09-23T18:52:49.1520614+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P5","event":"end","ts":1790189569.764,"iso":"2026-09-23T18:52:49.7648328+00:00","note":"GREEN","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P6","event":"start","ts":1790189569.788,"iso":"2026-09-23T18:52:49.7881263+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P6","event":"end","ts":1790189827.649,"iso":"2026-09-23T18:57:07.6492230+00:00","note":"GREEN","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P7","event":"start","ts":1790189827.662,"iso":"2026-09-23T18:57:07.6620702+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P7","event":"end","ts":1790189830.971,"iso":"2026-09-23T18:57:10.9712772+00:00","note":"74881709 bytes","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P8","event":"start","ts":1790189830.985,"iso":"2026-09-23T18:57:10.9857847+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}
+{"app":"git","phase":"P8","event":"end","ts":1790189831.301,"iso":"2026-09-23T18:57:11.3013715+00:00","note":"","skillVersion":"0.46.0","model":"","tokens":0}

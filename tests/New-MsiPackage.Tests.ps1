@@ -269,3 +269,19 @@ Describe 'New-MsiPackage: self-updating mode (0.44.0)' -Skip:(-not $script:hasPs
         { & $script:gen -Name 'Bad' -SelfUpdatingBinary 'C:\Program Files\x.exe' @script:common } | Should -Throw '*RELATIVE*'
     }
 }
+
+Describe 'a generator run does not silently discard an existing package (0.46.0)' {
+    # 2026-09-21 audit B06: every generator opened with Remove-Item $pkg -Recurse -Force. Phase 4 is where
+    # the operator fills the three hooks by hand, so a re-run with the same -Name threw that work away,
+    # along with the Extensions module, Assets\ and the manifest's recorded results - no prompt, no warning.
+    It 'requires -Force before replacing a package folder that already exists' {
+        $pb = $script:ast.ParamBlock
+        @($pb.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath }) | Should -Contain 'Force'
+        $script:text = Get-Content -LiteralPath $script:src -Raw
+        $script:text | Should -Match 'if \(Test-Path \$pkg\)'
+        $script:text | Should -Match 'already exists'
+    }
+    It 'refuses a PackageRoot that is a drive root' {
+        $script:text | Should -Match 'GetPathRoot'
+    }
+}

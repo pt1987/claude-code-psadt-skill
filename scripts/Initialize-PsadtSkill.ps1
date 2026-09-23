@@ -10,7 +10,8 @@
     Checks (Status PASS | WARN | FAIL | SKIP; only FAIL turns the verdict RED):
       PowerShell7          host is PowerShell 7+                                         FAIL
       WindowsPowerShell51  powershell.exe 5.1 present (the SYSTEM test re-execs into it)  WARN
-      Elevation            session is elevated (required by the Phase 6 SYSTEM test)      WARN
+      Elevation            session is elevated (only the per-action Phase 6 route needs it)  WARN
+      WindowsSandbox       Windows Sandbox available (the DEFAULT Phase 6 route)         WARN
       Git                  git on PATH (else Update-PsadtSkill uses the zip route)        WARN
       PsadtModule          PSAppDeployToolkit installed               -Fix: PSGallery     FAIL
       IntuneWinAppUtil     packaging tool present                    -Fix: download      FAIL
@@ -165,6 +166,21 @@ else { Add-Check 'WindowsPowerShell51' 'WARN' 'powershell.exe (5.1) not found - 
 $isElevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if ($isElevated) { Add-Check 'Elevation' 'PASS' 'session is elevated' $null }
 else { Add-Check 'Elevation' 'WARN' 'not elevated - the sandbox route needs no elevation; the per-action DEV VM route does' 'only if you take the per-action route at Phase 6: reopen as administrator' }
+
+# Without this the first sign that Phase 6 cannot run at all arrives AFTER intake, research, scaffolding
+# and pre-flight. WARN, not FAIL: the per-action DEV-VM route still works, and so does everything up to
+# Phase 5 - but the operator should know before investing the time.
+$sandboxFeature = $null
+try { $sandboxFeature = Get-CimInstance -ClassName Win32_OptionalFeature -Filter "Name='Containers-DisposableClientVM'" -ErrorAction Stop } catch { }
+if (-not $sandboxFeature) {
+    Add-Check 'WindowsSandbox' 'WARN' 'Windows Sandbox is not available on this edition - Phase 6 needs the per-action DEV VM route' 'use Invoke-PsadtSystemTest.ps1 on a DEV VM, or package on a Pro/Enterprise host'
+}
+elseif ($sandboxFeature.InstallState -eq 1) {
+    Add-Check 'WindowsSandbox' 'PASS' 'Containers-DisposableClientVM enabled' $null
+}
+else {
+    Add-Check 'WindowsSandbox' 'WARN' "Windows Sandbox present but not enabled (InstallState $($sandboxFeature.InstallState))" 'Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM (elevated, needs a reboot)'
+}
 
 if (Get-Command git -ErrorAction SilentlyContinue) { Add-Check 'Git' 'PASS' 'git on PATH' $null }
 else { Add-Check 'Git' 'WARN' 'git missing - skill updates fall back to the branch-zip route' 'winget install Git.Git' }

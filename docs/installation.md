@@ -69,6 +69,12 @@ a folder containing `Invoke-AppDeployToolkit.ps1`.
   fallback). Check what is actually in place with `scripts/Test-PsadtIntuneAccess.ps1`. Full permission
   matrix and the manual portal route: [`references/app-registration.md`](../references/app-registration.md).
 - For **Pester tests**: Pester 5+ (`Install-Module Pester -MinimumVersion 5.0 -Scope CurrentUser`)
+- For **Phase 6, the default route**: Windows Sandbox (`Containers-DisposableClientVM`). Home editions
+  and VMs without nested virtualisation take the per-action DEV-VM route instead - the setup doctor says
+  so as its `WindowsSandbox` check, rather than letting Phase 6 discover it after four phases of work.
+- For **logo acquisition from an SVG source**: Microsoft Edge, which ships with Windows and is driven
+  headless to rasterise. Without it `Get-PsadtAppLogo.ps1` refuses that route and names the manual one.
+- For the **opt-in WinGet package type**: WinGet 1.7.10582 or newer on the target devices.
 - **Optional (recommended): the [superpowers](https://github.com/obra/superpowers) plugin** - if installed,
   the gated research fan-out and the reviewer gate use it. Not required: without it the skill falls back to the
   native Agent tool and `/code-review`, and nothing in the workflow depends on the plugin.

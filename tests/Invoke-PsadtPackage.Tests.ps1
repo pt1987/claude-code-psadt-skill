@@ -170,3 +170,15 @@ Describe 'Invoke-PsadtPackage' {
             Should -Throw -ExpectedMessage '*Setup file not found*'
     }
 }
+
+Describe 'packaging says when it found no logo (0.46.0)' {
+    # 2026-09-21 audit B16, re-measured live on 0.45.0: Phase 7 copies the logo out of Assets\ and records
+    # artifacts.logo = null when there is none - silently. The detection script gets a warning for the same
+    # situation. rule:real-logo-only calls the real logo binding, so the one step that would notice it is
+    # missing has to say so.
+    It 'warns when the package carries no logo' {
+        $src = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Invoke-PsadtPackage.ps1') -Raw
+        $src | Should -Match 'Add-Warning[^
+]*logo'
+    }
+}

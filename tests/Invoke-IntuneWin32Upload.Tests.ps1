@@ -211,3 +211,20 @@ Describe '-ManifestPath alone (0.43.0): the .intunewin comes from artifacts.intu
         $out | Should -Match 'Invoke-PsadtPackage'
     }
 }
+
+Describe 'the upload dry-runs unless -Execute (0.46.0)' {
+    # 2026-09-21 audit B13: SECURITY.md states "every write path dry-runs first", and that was enforced by
+    # tests for the firewall and certificate scripts but for neither of the two that touch app content.
+    It 'names -Execute as the switch that turns the dry run into a write' {
+        $src = Get-Content -LiteralPath $script:Upload -Raw
+        $src | Should -Match '\[switch\]\$Execute'
+        $src | Should -Match 'if \(-not \$Execute\)'
+    }
+    It 'returns Executed=false and performs no write without -Execute' {
+        $mf = Join-Path $TestDrive ([guid]::NewGuid().ToString('N') + '.json')
+        @{ schema = 1; app = @{ vendor = 'V'; name = 'N'; version = '1.0'; arch = 'x64' } } |
+            ConvertTo-Json -Depth 8 | Set-Content $mf -Encoding UTF8
+        $src = Get-Content -LiteralPath $script:Upload -Raw
+        $src | Should -Match 'Executed\s*=' -Because 'the caller has to be able to tell a dry run from a write'
+    }
+}

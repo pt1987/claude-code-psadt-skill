@@ -163,3 +163,16 @@ Describe 'Update-PsadtSkill tracks everything an installation needs' {
         }
     }
 }
+
+Describe 'the installer passes paths as arguments, not as PowerShell source (0.46.0)' {
+    # 2026-09-21 audit B25: bin/install.mjs interpolated --ref, homedir() and tmpdir() into -Command
+    # strings wrapped in single quotes. A Windows user name containing an apostrophe breaks the quoting,
+    # and what follows is executed. -File with real arguments has no such seam.
+    It 'never interpolates a value into the PowerShell it runs' {
+        # The payload of every -Command must be a literal: no ${...} from a path, a ref or a user name.
+        $src = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'bin/install.mjs') -Raw
+        $bad = @([regex]::Matches($src, "'-Command',[^;]{0,400}") | Where-Object { $_.Value -match [regex]::Escape('${') })
+        $bad.Count | Should -Be 0 -Because 'a value inside -Command is PowerShell source; pass it through the environment instead'
+        $src | Should -Match 'PSADT_SETCFG' -Because 'the values travel as environment variables'
+    }
+}

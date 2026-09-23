@@ -87,3 +87,13 @@ Describe 'Intents parameter binding' {
         $script:AssignCode | Should -Match '\.Trim\(\)\.ToLowerInvariant\(\)'
     }
 }
+
+Describe 'the assignment dry-runs unless -Execute (0.46.0)' {
+    # 2026-09-21 audit B13, same gap as the upload: claimed in SECURITY.md, asserted nowhere.
+    It 'names -Execute and reports what it would do' {
+        $src = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Invoke-IntuneAppAssignment.ps1') -Raw
+        $src | Should -Match '\[switch\]\$Execute'
+        $src | Should -Match 'if \(-not \$Execute\)'
+        $src | Should -Match 'Executed\s*='
+    }
+}

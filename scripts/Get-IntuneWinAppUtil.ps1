@@ -31,6 +31,19 @@ try {
         Remove-Item $exe -Force -ErrorAction SilentlyContinue
         throw "Downloaded file is not a valid executable (missing MZ header)."
     }
+
+    # An MZ header says "this is a PE file", not "this is Microsoft's packaging tool". The binary is then
+    # EXECUTED on the packaging host by Invoke-PsadtPackage.ps1, so identity has to be established before
+    # that happens. Microsoft signs this one - unlike the third-party WinGet module, where no signature
+    # exists and a recorded SHA256 is the only available gate.
+    $sig = Get-AuthenticodeSignature -LiteralPath $exe
+    $signer = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { '' }
+    if ($sig.Status -ne 'Valid' -or $signer -notmatch 'O=Microsoft Corporation') {
+        Remove-Item $exe -Force -ErrorAction SilentlyContinue
+        throw ("IntuneWinAppUtil.exe failed signature verification (status $($sig.Status), signer '$signer'). " +
+               "It was NOT kept. Download it yourself from github.com/microsoft/Microsoft-Win32-Content-Prep-Tool, " +
+               "verify the signature, and point paths.intuneWinAppUtil at it.")
+    }
     & (Join-Path $PSScriptRoot 'Set-PsadtConfig.ps1') -SkillRoot $SkillRoot -Updates @{ 'tooling.intuneWinAppUtilVersion' = $tag }
     return [pscustomobject]@{ Action='Downloaded'; Version=$tag; Path=$exe }
 } catch {
