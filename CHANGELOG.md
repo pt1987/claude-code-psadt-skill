@@ -9,10 +9,18 @@ Supersedence was not a missing feature. `Invoke-IntuneWin32Upload.ps1` has POSTe
 release found is that the whole path had three defects, and that no test touched any of them - `grep -i
 supersed tests/*.ps1` returned nothing across 33 upload test cases.
 
-**The route is probably wrong.** The write went to `POST .../mobileApps/{id}/relationships`. Microsoft
-documents that path, but it is reported to answer *"No OData route exists that match template
-~/singleton/navigation/key/navigation with http verb POST"*, and the admin center uses the
-`updateRelationships` action instead. The failure was caught and printed as a yellow line - "Configure it
+**The route was wrong, and this is measured, not inferred.** The write went to
+`POST .../mobileApps/{id}/relationships`. Microsoft documents that path. Against a live tenant on
+2026-09-25 it answers:
+
+```
+No OData route exists that match template ~/singleton/navigation/key/navigation with http verb POST
+for request /AppLifecycle_2609/StatelessAppMetadataFEService/deviceAppManagement/mobileApps('...')/relationships
+```
+
+The admin center uses the `updateRelationships` action instead, which accepted the same edge on the same
+app seconds earlier and survived a read-back. Every supersedence this skill has offered to wire since
+0.8.x therefore failed. The failure was caught and printed as a yellow line - "Configure it
 manually in the portal" - so a supersedence that never took looked exactly like a normal run. Both write
 paths now use the action, and neither trusts the 204: the chain is read back, and a missing edge throws
 instead of warning. Two versions installing side by side on every device is a wrong deployment, not a

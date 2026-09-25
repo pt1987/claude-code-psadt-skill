@@ -57,9 +57,9 @@ Describe 'the ids are GUIDs, and never the same GUID' {
 
 Describe 'the write path' {
     It 'uses updateRelationships, not POST .../relationships' {
-        # POST to the relationships collection is documented but reported to answer
-        # "No OData route exists that match template ~/singleton/navigation/key/navigation with http
-        # verb POST". The admin center uses updateRelationships; so do we.
+        # POST to the relationships collection is documented but MEASURED (live tenant, 2026-09-25) to
+        # answer "No OData route exists that match template ~/singleton/navigation/key/navigation with
+        # http verb POST". The admin center uses updateRelationships; so do we.
         $script:Src | Should -Match 'updateRelationships'
         $script:Src | Should -Not -Match 'Invoke-Graph\s+POST\s+"\$GraphBase/deviceAppManagement/mobileApps/\$[A-Za-z]+/relationships"'
     }

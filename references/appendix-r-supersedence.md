@@ -114,10 +114,10 @@ Or in one pass at upload time: `Invoke-IntuneWin32Upload.ps1 ... -SupersedesAppI
 
 Three mechanics worth knowing, because they explain the script's shape:
 
-- **The route is `updateRelationships`, not `POST .../relationships`.** The documented POST is reported to
-  answer *"No OData route exists that match template ~/singleton/navigation/key/navigation with http verb
-  POST"*; the admin center uses the action. [Community-reported error text; the action itself is
-  documented.]
+- **The route is `updateRelationships`, not `POST .../relationships`.** The documented POST answers
+  `No OData route exists that match template ~/singleton/navigation/key/navigation with http verb POST`
+  - measured against a live tenant on 2026-09-25, on the same app where the action had succeeded moments
+  before. Use the action.
 - **That action REPLACES the app's entire relationship set.** The current relationships are read and
   merged first. Sending only the new edge silently deletes every other relationship the app had -
   including dependencies this skill never created.
