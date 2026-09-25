@@ -634,7 +634,7 @@ textarea.input { min-height: 90px; resize: vertical; }
     <div style="position: absolute; inset: -140px 40% 40% -220px; background: radial-gradient(circle at 30% 40%, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent 62%); filter: blur(30px); pointer-events: none; opacity: 0.9"></div>
     <div data-col="" style="position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 64px; align-items: end">
       <div>
-        <p style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-300); margin: 0 0 20px">Claude Code skill · <a class="release-link" href="https://github.com/pt1987/claude-code-psadt-skill/blob/main/CHANGELOG.md" rel="noopener" title="Changelog">v0.46.0 · 2026-09-23</a></p>
+        <p style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-300); margin: 0 0 20px">Claude Code skill · <a class="release-link" href="https://github.com/pt1987/claude-code-psadt-skill/blob/main/CHANGELOG.md" rel="noopener" title="Changelog">v0.47.0 · 2026-09-25</a></p>
         <h1 data-hero-title="" style="font-size: 64px; line-height: 1.02; letter-spacing: -0.03em; margin: 0 0 24px; text-wrap: balance">PSADT v4 to Intune,<br>in verified phases.</h1>
         <p style="font-size: 19px; line-height: 1.5; color: var(--color-neutral-300); max-width: 46ch; margin: 0 0 32px">Thirteen phases, each owned by a script rather than by prose. A step either passed or it did not - and the thing that decides is the same every time.</p>
         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
@@ -819,13 +819,13 @@ textarea.input { min-height: 90px; resize: vertical; }
         <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 16px; flex: 1; min-width: 0"><span style="color: var(--color-neutral-600)">$ </span>{{ installCmd }}</span>
         <button class="btn btn-primary" type="button" sc-camel-on-click="{{ copy }}">{{ copyLabel }}</button>
       </div>
-      <p style="font-size: 12.5px; color: var(--color-neutral-500); margin: 16px 0 0">Figures as of v0.46.0 and verified against the repository at that version - the linked source is authoritative, not this page. Not affiliated with or endorsed by Microsoft.</p>
+      <p style="font-size: 12.5px; color: var(--color-neutral-500); margin: 16px 0 0">Figures as of v0.47.0 and verified against the repository at that version - the linked source is authoritative, not this page. Not affiliated with or endorsed by Microsoft.</p>
     </div>
   </section>
 
   <footer style="border-top: 1px solid var(--color-divider)">
     <div data-wrap="" style="max-width: 1160px; margin: 0 auto; padding: 32px 28px; display: flex; gap: 24px; flex-wrap: wrap; align-items: center; justify-content: space-between">
-      <p style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: var(--color-neutral-500); margin: 0">psadt-deploy v0.46.0 (2026-09-23) · MIT · Patrick Taubert · PHAT Consulting GmbH</p>
+      <p style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: var(--color-neutral-500); margin: 0">psadt-deploy v0.47.0 (2026-09-25) · MIT · Patrick Taubert · PHAT Consulting GmbH</p>
       <nav style="display: flex; gap: 20px; font-size: 13px">
         <a href="https://github.com/pt1987/claude-code-psadt-skill" rel="noopener">GitHub</a>
         <a href="https://www.npmjs.com/package/psadt-deploy-skill" rel="noopener">npm</a>
@@ -840,7 +840,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 const PHASES = [
   { num: '0', name: 'Setup', owner: 'Initialize-PsadtSkill.ps1', blurb: 'Thirteen prerequisite checks, each GREEN, YELLOW or RED.', verdict: { label: 'GREEN', green: true, text: '-Fix provisions everything that needs no human decision. What is left is a decision, not a chore.' }, items: [ { label: 'PowerShell 5.1+ or 7+', meta: 'required' }, { label: 'PSADT v4 toolkit', meta: 'fetched' }, { label: 'IntuneWinAppUtil', meta: '%LOCALAPPDATA%' }, { label: 'Windows Sandbox feature', meta: 'enabled' }, { label: '13 prerequisite checks', meta: 'GREEN' } ] },
   { num: '1', name: 'Intake', owner: 'agent · gate 1', blurb: 'The application is named and scoped. Blockers arrive as clickable options, not as a questionnaire.', gate: 'Gate 1 - scope. What is being packaged, for which architecture, and what counts as done.', verdict: { label: 'SCOPED', text: 'Identity is fixed here: vendor, application, version, architecture. Everything downstream is named after it.' }, items: [ { label: 'Vendor · app · version · arch', meta: 'identity' }, { label: 'Gate 1 - scope', meta: 'decision' }, { label: 'Blockers as options', meta: 'clickable' } ] },
-  { num: '2', name: 'Research', owner: 'agent · gate 2', blurb: 'Version, silent switches and known Intune pitfalls are researched in parallel, not asked.', gate: 'Gate 2 - deployment semantics. Per-machine or per-user, and what a repair should actually do.', verdict: { label: 'RESEARCHED, NOT ASKED', text: "Findings are stated as assumptions you can correct - and the 17 reference appendices are consulted before any web search." }, items: [ { label: 'Current version', meta: 'researched' }, { label: 'Silent switches', meta: 'researched' }, { label: 'Known Intune pitfalls', meta: 'researched' }, { label: 'Installer engine', meta: '1 of 19' }, { label: 'Gate 2 - semantics', meta: 'decision' } ] },
+  { num: '2', name: 'Research', owner: 'agent · gate 2', blurb: 'Version, silent switches and known Intune pitfalls are researched in parallel, not asked.', gate: 'Gate 2 - deployment semantics. Per-machine or per-user, and what a repair should actually do.', verdict: { label: 'RESEARCHED, NOT ASKED', text: "Findings are stated as assumptions you can correct - and the 18 reference appendices are consulted before any web search." }, items: [ { label: 'Current version', meta: 'researched' }, { label: 'Silent switches', meta: 'researched' }, { label: 'Known Intune pitfalls', meta: 'researched' }, { label: 'Installer engine', meta: '1 of 19' }, { label: 'Gate 2 - semantics', meta: 'decision' } ] },
   { num: '3', name: 'Scaffold', owner: 'New-MsiPackage · New-DriverPackage · …', blurb: 'A generator writes the package in one pass - not four separate handoffs.', verdict: { label: 'ONE PASS', text: 'Launcher, detection, log name and manifest are written together, so they cannot disagree with each other.' }, items: [ { label: 'Launcher', meta: 'generated' }, { label: 'Detection script', meta: 'exit-code contract' }, { label: 'Per-run log name', meta: '_Install_<ts>.log' }, { label: 'psadt-package.json', meta: 'one truth' } ] },
   { num: '4', name: 'Customize', owner: 'agent', blurb: 'All three hooks filled from the research; custom helpers go in the Extensions module, never in the main script.', verdict: { label: 'ALL THREE TYPES', text: 'Install, Uninstall and Repair are filled together even when only install is needed today - a Company Portal uninstall needs a real hook, not a placeholder.' }, items: [ { label: 'Install hook', meta: 'filled' }, { label: 'Uninstall hook', meta: 'filled' }, { label: 'Repair hook', meta: 'filled' }, { label: 'Extensions module', meta: 'custom helpers' } ] },
   { num: '5', name: 'Pre-flight', owner: 'Invoke-PsadtPreflight.ps1', blurb: 'Ten check categories. A gate, not a report.', verdict: { label: 'GREEN', green: true, text: 'The verdict is GREEN or RED - and RED tells you which file failed, by name.' }, items: [ { label: 'Encoding · BOM · AST parse', meta: 'PASS' }, { label: 'v3 cmdlets · hook structure', meta: 'PASS' }, { label: 'ProductCode · top-level code', meta: 'PASS' }, { label: 'Detection contract · manifest', meta: 'PASS' }, { label: 'Log name · driver trust', meta: 'PASS' } ] },
@@ -856,9 +856,9 @@ const PHASES = [
 const STATS = [
   { value: '13', label: 'phases', note: 'Phase 0 through 12, each owned by a script' },
   { value: '4', label: 'decision gates', note: 'at most four, plus situational follow-ups' },
-  { value: '39', label: 'PowerShell scripts', note: '35 invocable, plus 4 shared includes' },
-  { value: '859', label: 'Pester tests', note: 'full suite green as of v0.46.0' },
-  { value: '23', label: 'reference files', note: 'A through Q plus the phases, before any web search' },
+  { value: '41', label: 'PowerShell scripts', note: '37 invocable, plus 4 shared includes' },
+  { value: '906', label: 'Pester tests', note: 'full suite green as of v0.47.0' },
+  { value: '24', label: 'reference files', note: 'A through R plus the phases, before any web search' },
   { value: '19', label: 'installer engines', note: 'fingerprinted from the binary and switch-mapped' },
 ]
 
