@@ -68,10 +68,10 @@ Describe 'every appendix label resolves to a file' {
         @($bad | Sort-Object -Unique) -join '; ' | Should -BeNullOrEmpty
     }
 
-    It 'covers A through Q with one file each' {
+    It 'covers A through R with one file each' {
         # Q was the live drift this catches: SKILL.md said "Appendix A-P" while Q existed and was
         # referenced three times.
-        $expected = 65..81 | ForEach-Object { [char]$_ }   # A..Q
+        $expected = 65..82 | ForEach-Object { [char]$_ }   # A..R
         ($script:appendixLetters -join '') | Should -Be ($expected -join '')
     }
 }

@@ -109,6 +109,26 @@ if ($ManifestPath) {
         Set-FromManifest 'DescMdEn' $mf.app.description.en
     }
 
+    # Supersedence, from what was actually wired rather than from what was typed. The field existed only
+    # as a -Metadata value, so App. F.8 asked the dossier to document a relationship the dossier had no
+    # way to see - and the upload recorded it nowhere either until 0.47.0. results.supersedence (written
+    # by Set-IntuneAppSupersedence.ps1) wins over results.upload: it is the later and more deliberate act.
+    $supRec = if ($mf.results.supersedence -and $mf.results.supersedence.supersedes) { $mf.results.supersedence }
+    elseif ($mf.results.upload -and $mf.results.upload.supersedes) { $mf.results.upload }
+    else { $null }
+    if ($supRec) {
+        $supIds  = @($supRec.supersedes) -join ', '
+        $supMode = if ($supRec.supersedenceType) { [string]$supRec.supersedenceType } else { 'update' }
+        Set-FromManifest 'Supersedence' $supIds
+        if ($supMode -eq 'replace') {
+            Set-FromManifest 'SupersedenceNoteDe' 'Modus "replace": die Vorversion wird vor der Installation DEINSTALLIERT. Sie bleibt in Intune erhalten (Rollback-Ziel), wird aber nicht mehr angeboten.'
+            Set-FromManifest 'SupersedenceNoteEn' 'Mode "replace": the previous version is UNINSTALLED before the new one installs. It stays in Intune as a rollback target but is no longer offered.'
+        } else {
+            Set-FromManifest 'SupersedenceNoteDe' 'Modus "update": das Installationsprogramm aktualisiert die Vorversion selbst; es wird kein Deinstallationsbefehl gesendet. Die Vorversion bleibt in Intune erhalten (Rollback-Ziel).'
+            Set-FromManifest 'SupersedenceNoteEn' 'Mode "update": the installer upgrades the previous version itself; no uninstall command is sent. The previous version stays in Intune as a rollback target.'
+        }
+    }
+
     # The sandbox harness already measures every action and writes its verdict, exit codes, durations and
     # detection results into result.json, recording the path in the manifest. Until 0.32.0 this document
     # ignored all of it: without a hand-built -Metadata SystemTest it printed "the SYSTEM test was not run

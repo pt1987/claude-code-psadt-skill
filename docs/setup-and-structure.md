@@ -55,7 +55,7 @@ psadt-deploy/
 ├─ SKILL.md · README.md · CHANGELOG.md · SECURITY.md · LICENSE
 ├─ package.json · bin/install.mjs        the npx installer (Node 18+, zero dependencies)
 ├─ docs/                                 this documentation set
-├─ scripts/                              39 files: 35 invocable, 4 shared includes
+├─ scripts/                              41 files: 37 invocable, 4 shared includes
 │  │  setup + config
 │  ├─ Initialize-PsadtSkill.ps1          setup doctor (Phase 0, GREEN/YELLOW/RED, -Fix/-Set)
 │  ├─ Get-PsadtConfig.ps1                config read + config-home resolver
@@ -98,16 +98,16 @@ psadt-deploy/
 │  ├─ _GraphCommon.ps1                   shared Graph helpers (retry, errors, token roles)
 │  ├─ _GraphInteractive.ps1              shared WAM sign-in
 │  └─ _SandboxProgressUi.ps1 / .xaml     the in-VM progress window
-├─ references/                           23 files, the agent-facing depth
+├─ references/                           24 files, the agent-facing depth
 │  ├─ README.md                          the reference map (label -> file)
 │  ├─ phases-0-6.md · phases-7-12.md     phases 0 through 12
-│  ├─ appendix-a-errors.md … -q-drivers.md  one file per appendix
+│  ├─ appendix-a-errors.md … -r-supersedence.md  one file per appendix
 │  ├─ switch-catalog/                    engine defaults + JSON schema (App. L.0)
 │  ├─ Report-Template.html               the fixed dossier template
 │  ├─ conventions.md · research-trust.md the binding conventions, and why fetched text is data
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
 ├─ evals/                                trigger + behaviour eval suite
-└─ tests/                                Pester suite, 859 tests
+└─ tests/                                Pester suite, 906 tests
 ```
 
 Machine-local state lives outside the skill folder:

@@ -2,6 +2,77 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.47.0 - 2026-09-25 - The supersedence this skill has been wiring may never have been wired
+
+Supersedence was not a missing feature. `Invoke-IntuneWin32Upload.ps1` has POSTed the relationship since
+0.8.x, App. H.7 documents the body, and the dossier has a section for it. What the research for this
+release found is that the whole path had three defects, and that no test touched any of them - `grep -i
+supersed tests/*.ps1` returned nothing across 33 upload test cases.
+
+**The route is probably wrong.** The write went to `POST .../mobileApps/{id}/relationships`. Microsoft
+documents that path, but it is reported to answer *"No OData route exists that match template
+~/singleton/navigation/key/navigation with http verb POST"*, and the admin center uses the
+`updateRelationships` action instead. The failure was caught and printed as a yellow line - "Configure it
+manually in the portal" - so a supersedence that never took looked exactly like a normal run. Both write
+paths now use the action, and neither trusts the 204: the chain is read back, and a missing edge throws
+instead of warning. Two versions installing side by side on every device is a wrong deployment, not a
+cosmetic miss.
+
+**The mode was hardcoded to the destructive one.** `supersedenceType = 'replace'` was a literal, and
+`'update'` appeared nowhere in the repository. Microsoft's two scenarios are distinct: `update` is "the
+child app should be updated by the internal logic of the parent app", `replace` is "the child app should
+be uninstalled before installing the parent app". For the ordinary case this skill produces - a newer
+version of the same product - `replace` uninstalls working software from every device first. `update` is
+now the default, and App. R.2 derives the choice from evidence the skill already collected: an MSI
+removes its own predecessor when its `Upgrade` table carries a row matching the predecessor's
+`UpgradeCode`, covering its version, without `OnlyDetect`. `Get-PsadtMsiFacts.ps1` has returned exactly
+that since 0.30.
+
+**The action replaces the whole relationship set.** `updateRelationships` is not additive. Sending the
+one new edge deletes every other relationship the app had, silently. `Merge-AppRelationships` in
+`_GraphCommon.ps1` reads the current set, drops the parent-direction rows that belong to the other app,
+strips the read-only properties Graph refuses on the way back in, and merges - with ten unit tests
+against real payload shapes, because a regex over a script cannot prove that a dependency survived.
+
+**Two scripts, because the id was printed and then thrown away.** The upload already finds the older
+version during its idempotency check and prints `found: id=...`; nothing could consume it in the same
+run, so wiring supersedence meant aborting, copying a GUID out of the console and re-invoking.
+`Get-IntuneAppVersions.ps1` asks the question properly - every version of one app with its
+`displayVersion`, publishing state, assignment state and existing relationships, direction read from
+`targetType` rather than guessed. `Set-IntuneAppSupersedence.ps1` wires the chain on its own, dry-run
+first like every other write path. Neither needs a new Graph permission.
+
+**Direction is ours to check.** Intune never compares versions - supersedence is an admin-declared edge,
+`displayVersion` is cosmetic and is not an input to any enforcement decision. A backwards chain is
+accepted without complaint and rolls devices back. The script refuses one unless `-Force`.
+
+**A number in the reference was wrong.** App. F.8 said "a maximum of 10 apps as superseded; at most 2
+levels deep (Intune limit)". Microsoft documents a total node count for the connected graph - "a maximum
+of 11 nodes in a single supersedence graph", 10 related plus the root - and documents **no maximum
+depth** at all. The depth claim was never in any Microsoft document. It is gone, and the node ceiling is
+enforced in code.
+
+**Appendix R** covers the rest: why an unassigned superseding app is ignored by the agent entirely while
+a dependency needs no assignment, why the new app's detection rule must be version-aware or the whole
+mechanism becomes a no-op, what auto-update of superseded apps does and why it is Available-intent only,
+and retirement - for which Intune has no retire state and Microsoft publishes no retention guidance, so
+the recommendation here is labelled as this skill's own.
+
+`results.upload` now records `supersedes`, `supersedenceType` and `coexistsWith`; all three were on the
+return object and none reached the manifest, so the dossier could not report the relationship it has a
+section for. It now reads it from the manifest.
+
+Two Graph traps the live probe turned up, both now documented in App. R.6 and both guarded by a test.
+`isAssigned` disagrees with itself: for one and the same app, `GET .../mobileApps/{id}` answered
+`false` while `GET .../mobileApps?$filter=...` answered `true`. The single-entity value is wrong, and the
+first version of the assignment precondition believed it - warning that an app with two live assignments
+had none, on exactly the check that decides whether supersedence does anything. It counts
+`.../mobileApps/{id}/assignments` now. And `$select=displayVersion` against the `mobileApps` collection
+fails outright, because `displayVersion` belongs to `win32LobApp` and the collection is typed as
+`mobileApp`.
+
+Suite 859 -> 906.
+
 ## 0.46.0 - 2026-09-23 - Sixteen findings, and the two the live run had already proved
 
 The deep analysis of 0.42.0 left sixteen findings after 0.43.0 and 0.45.0 took the first nine. This

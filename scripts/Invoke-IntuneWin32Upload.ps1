@@ -116,11 +116,23 @@ param(
     # the content of -UpdateAppId (keeps its id/assignments). The script NEVER deletes an app under any mode.
     [ValidateSet('CreateNewCoexist','UpdateInPlace','Abort')][string]$OnExisting = 'CreateNewCoexist',
     [string]$UpdateAppId,
-    [string]$SupersedesAppId,   # optional: wire 'new supersedes old' (replace) after the new app is created
+    [string]$SupersedesAppId,   # optional: wire 'new supersedes old' after the new app is created
+    # Intune's two documented modes. 'update' = "the child app should be updated by the internal logic of
+    # the parent app" (the portal's Uninstall previous version = No) and is right for a newer version of
+    # the same product. 'replace' = "the child app should be uninstalled before installing the parent app"
+    # and is right for a different product. This was hardcoded to 'replace' until 0.47.0, so every version
+    # bump uninstalled the previous version from every device before installing the new one.
+    [ValidateSet('update', 'replace')][string]$SupersedenceType = 'update',
     [string]$SkillRoot
 )
 
 $ErrorActionPreference = 'Stop'
+
+# -UpdateAppId replaces one app's content in place, so there is no new app to hang a relationship on and
+# -SupersedesAppId is ignored. It used to be ignored silently, which reads as "supersedence was wired".
+if ($UpdateAppId -and $SupersedesAppId) {
+    Write-Warning "-SupersedesAppId is ignored together with -UpdateAppId: an in-place update keeps one app, so there is no new app to supersede the old one. Wire it separately with Set-IntuneAppSupersedence.ps1 if that is what you meant."
+}
 
 # --- Identity from the package manifest (0.21.0) ---------------------------------------------------
 # So the app in Intune carries the same name/version as the artifact and the dossier, instead of whatever
@@ -375,7 +387,10 @@ if (-not $Execute) {
               elseif ($existing) { "CREATE NEW coexisting app (existing version(s) left INTACT - never deleted)" }
               else { "CREATE NEW app" }
     Write-Host "  On -Execute : $action" -ForegroundColor White
-    if ($SupersedesAppId) { Write-Host "  Supersedes  : will mark new app as replacing $SupersedesAppId (old app retained)" }
+    if ($SupersedesAppId -and -not $UpdateAppId) {
+        $modeNote = if ($SupersedenceType -eq 'replace') { 'the old version is UNINSTALLED first' } else { 'the installer upgrades in place' }
+        Write-Host "  Supersedes  : $SupersedesAppId - mode '$SupersedenceType' ($modeNote); old app retained, never deleted"
+    }
     return [pscustomobject]@{ Executed=$false; Existing=@($existing); PlannedAction=$action; PlannedBody=$body; EncSize=$encSize; UnencSize=$unencSize }
 }
 
@@ -517,18 +532,32 @@ if ($Categories.Count -gt 0) {
 
 # 10. Supersedence (optional) - wire 'new app supersedes old app'. NEVER deletes the old app; Intune
 #     stops offering the old one to NEW installs while keeping it for rollback/coexistence.
+#
+#     Route: updateRelationships, not POST .../relationships. The latter is documented but is reported to
+#     answer "No OData route exists that match template ~/singleton/navigation/key/navigation with http
+#     verb POST"; the admin center uses the action. Because the action REPLACES the whole relationship
+#     set, the current relationships are read and merged first - sending the one new edge alone would
+#     silently delete every other relationship this app had.
 $supersededWired = $null
 if ($SupersedesAppId -and -not $UpdateAppId) {
     Write-Step "Configure supersedence (new supersedes old)"
-    try {
-        $null = Invoke-Graph POST "$GraphBase/deviceAppManagement/mobileApps/$appId/relationships" -Headers $H -Body ([ordered]@{
-            '@odata.type'    = '#microsoft.graph.mobileAppSupersedence'
-            supersedenceType = 'replace'
-            targetId         = $SupersedesAppId
-        })
+    $before = @()
+    try { $before = @((Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps/$appId/relationships" -Headers $H).value) } catch { $before = @() }
+    $merged = Merge-AppRelationships -Existing $before -SupersedeTargetIds @($SupersedesAppId) -SupersedenceType $SupersedenceType
+    $null = Invoke-Graph POST "$GraphBase/deviceAppManagement/mobileApps/$appId/updateRelationships" -Headers $H -Body @{ relationships = @($merged) }
+
+    # A 204 is an acknowledgement, not evidence. Read the chain back before claiming it.
+    $after = @((Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps/$appId/relationships" -Headers $H).value)
+    $wired = @($after | Where-Object { $_.'@odata.type' -match 'mobileAppSupersedence' -and $_.targetType -eq 'child' } | ForEach-Object { [string]$_.targetId })
+    if ($wired -contains $SupersedesAppId) {
         $supersededWired = $SupersedesAppId
-        Write-Ok "Supersedence set: $appId replaces $SupersedesAppId (old app retained, not deleted)."
-    } catch { $e = Get-GraphErr $_; Write-Host "    !   Supersedence not set automatically: $($e.message). Configure it manually in the portal." -ForegroundColor Yellow }
+        Write-Ok "Supersedence verified: $appId supersedes $SupersedesAppId ($SupersedenceType; old app retained, not deleted)."
+    } else {
+        # Deliberately not a yellow line. The app is live and the operator believes the old version will
+        # be replaced; if it will not be, two versions install side by side on every device. That is a
+        # wrong deployment, and it has to stop the run.
+        throw "The app uploaded successfully as $appId, but supersedence over $SupersedesAppId is NOT in place after the write. Devices would receive the new version alongside the old one. Wire it with Set-IntuneAppSupersedence.ps1 or in the portal before assigning."
+    }
 }
 
 Write-Host "`nDone. App is in Intune (NOT assigned to groups - assign to Entra groups manually)." -ForegroundColor Green
@@ -552,6 +581,12 @@ if ($manifestPackagePath) {
                 displayName    = $DisplayName
                 fileName       = $fileName
                 tenantId       = $tok.TenantId
+                # What was actually wired, and what was deliberately left in place. Both were on the
+                # return object and neither reached the manifest, so the dossier could not report the
+                # supersedence it claims to document.
+                supersedes     = $supersededWired
+                supersedenceType = $(if ($supersededWired) { $SupersedenceType } else { $null })
+                coexistsWith   = @($existing | ForEach-Object { $_.id })
                 at             = (Get-Date).ToUniversalTime().ToString('o')
             }
         } | Out-Null

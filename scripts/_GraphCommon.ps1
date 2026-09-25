@@ -189,3 +189,75 @@ function Get-GraphAuthErrorHint([string]$Message) {
     if ($Message -match 'AADSTS53003')   { return 'Blocked by a Conditional Access policy - the app or this sign-in needs an exclusion.' }
     return $null
 }
+
+function Merge-AppRelationships {
+    <#
+        Builds the FULL relationship collection to hand to POST .../mobileApps/{id}/updateRelationships.
+
+        That action has REPLACE semantics: whatever is sent becomes the app's entire relationship set.
+        Sending only the edge being added therefore deletes every other relationship the app had, silently
+        and without an error. Every caller must read the current relationships first and merge - this
+        function is that merge, kept here so it can be tested against real payloads instead of asserted
+        with a regex over a script.
+
+        Two rules that are easy to get wrong:
+
+        1. Only the CHILD direction belongs to this app. A relationship whose targetType is 'parent'
+           describes the OTHER app superseding this one, and it is stored on that other app. Re-sending it
+           here would be a claim this app is not entitled to make, so parent rows are dropped.
+        2. Graph returns read-only companions on every row - id, targetDisplayName, targetDisplayVersion,
+           sourceId, supersededAppCount and so on. Sending them back is rejected. Only @odata.type,
+           targetId and the one type-specific field survive the round trip.
+    #>
+    param(
+        # The relationships collection as Graph returned it (may be empty or $null).
+        [array]$Existing = @(),
+        # Target app ids this app should supersede. An id already present is UPDATED, never duplicated.
+        [string[]]$SupersedeTargetIds = @(),
+        [ValidateSet('update', 'replace')][string]$SupersedenceType = 'update'
+    )
+
+    $out = [System.Collections.Generic.List[object]]::new()
+    $seen = New-Object System.Collections.Generic.HashSet[string]
+
+    foreach ($r in @($Existing)) {
+        if (-not $r) { continue }
+        $type = [string]$r.'@odata.type'
+        $target = [string]$r.targetId
+        if (-not $target) { continue }
+        # Rule 1: a parent row is the other app's relationship, not ours.
+        if ([string]$r.targetType -eq 'parent') { continue }
+
+        if ($type -match 'mobileAppSupersedence') {
+            $row = [ordered]@{ '@odata.type' = '#microsoft.graph.mobileAppSupersedence'; targetId = $target }
+            $row['supersedenceType'] = if ($r.supersedenceType) { [string]$r.supersedenceType } else { 'update' }
+        }
+        elseif ($type -match 'mobileAppDependency') {
+            # Dependencies are not wired by this skill, but an app may already have them and dropping
+            # them here would uninstall-order a fleet by accident.
+            $row = [ordered]@{ '@odata.type' = '#microsoft.graph.mobileAppDependency'; targetId = $target }
+            $row['dependencyType'] = if ($r.dependencyType) { [string]$r.dependencyType } else { 'detect' }
+        }
+        else { continue }
+
+        if ($seen.Add($target)) { $out.Add([pscustomobject]$row) }
+    }
+
+    foreach ($id in @($SupersedeTargetIds)) {
+        if ([string]::IsNullOrWhiteSpace($id)) { continue }
+        $existingRow = $out | Where-Object { $_.targetId -eq $id } | Select-Object -First 1
+        if ($existingRow) {
+            # Already related. Re-declaring it as a supersedence of the requested mode is an update, not a
+            # second edge: Intune counts nodes, and a duplicate would burn one for nothing.
+            $out.Remove($existingRow) | Out-Null
+        }
+        $out.Add([pscustomobject]([ordered]@{
+                    '@odata.type'    = '#microsoft.graph.mobileAppSupersedence'
+                    targetId         = [string]$id
+                    supersedenceType = $SupersedenceType
+                }))
+        [void]$seen.Add([string]$id)
+    }
+
+    return @($out)
+}

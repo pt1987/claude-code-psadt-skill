@@ -34,6 +34,7 @@ Work the phases in order. Do not skip any.
 | [appendix-o-browser-extensions.md](appendix-o-browser-extensions.md) | Appendix O: Browser extension force-install packages (opt-in) |
 | [appendix-p-windows-features.md](appendix-p-windows-features.md) | Appendix P: Windows-feature packages (optional features + capabilities, opt-in) |
 | [appendix-q-drivers.md](appendix-q-drivers.md) | Appendix Q: Third-party drivers (classification, pnputil staging, trust) |
+| [appendix-r-supersedence.md](appendix-r-supersedence.md) | Appendix R: Supersedence and app lifecycle (what happens to the version already in the tenant) |
 
 ## Not part of the guide
 

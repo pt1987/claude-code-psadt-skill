@@ -103,7 +103,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **859 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **906 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -115,13 +115,13 @@ the same app from disagreeing about their own version.
 | [`docs/features.md`](docs/features.md) | the complete feature list, package type by package type |
 | [`docs/setup-and-structure.md`](docs/setup-and-structure.md) | first-run setup, config home, full project structure |
 | [`SKILL.md`](SKILL.md) | the control plane the agent actually reads |
-| [`references/README.md`](references/README.md) | the reference map: phases 0-12 and appendices A-Q |
+| [`references/README.md`](references/README.md) | the reference map: phases 0-12 and appendices A-R |
 | [`SECURITY.md`](SECURITY.md) | the risk surface and the control covering each part of it |
 
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 859 Pester tests.
+verified against a live tenant. The helper scripts are covered by 906 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -170,7 +170,17 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.46.0 - Sixteen findings, and the two the live run had already proved.** The last sixteen
+Latest: **0.47.0 - The supersedence this skill has been wiring may never have been wired.** The upload has
+POSTed a supersedence relationship since 0.8.x, on a route that is reported not to exist, catching the
+failure and printing a yellow line - so a chain that never took looked like a normal run. No test touched
+any of it. The write now uses the `updateRelationships` action the admin center uses, merges onto the
+existing relationships instead of replacing them, and reads the chain back before claiming it. The mode is
+no longer hardcoded to `replace`, which uninstalled the previous version from every device first; `update`
+is the default and the MSI's own Upgrade table decides. Two new scripts make the predecessor's id
+something you can read rather than retype, and Appendix R covers the lifecycle - including that Intune has
+no retire state at all.
+
+Previously: **0.46.0 - Sixteen findings, and the two the live run had already proved.** The last sixteen
 findings from the deep analysis. A full run on 0.45.0 had shown two of them for real: the dossier
 existed on disk while the manifest said nothing about it, and the package finished with no logo and no
 warning. The manifest now records what was produced, the three JSON stores are replaced atomically, the
