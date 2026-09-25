@@ -228,3 +228,43 @@ Describe 'the upload dry-runs unless -Execute (0.46.0)' {
         $src | Should -Match 'Executed\s*=' -Because 'the caller has to be able to tell a dry run from a write'
     }
 }
+
+Describe 'supersedence is chosen, wired on the working route, and recorded (0.47.0)' {
+    BeforeAll { $script:us = Get-Content -LiteralPath $script:Upload -Raw }
+
+    # Until 0.47.0 this script hardcoded supersedenceType='replace', which tells Intune to UNINSTALL the
+    # previous version before installing the new one. For the ordinary case this skill produces - a newer
+    # version of the same product, whose installer upgrades in place - that is the wrong and the more
+    # destructive of the two documented modes.
+    It 'no longer hardcodes the supersedence mode' {
+        $script:us | Should -Not -Match "(?<!\`$)supersedenceType\s*=\s*'replace'"
+    }
+    It 'takes the mode as a parameter, restricted to the two Intune defines' {
+        $script:us | Should -Match "ValidateSet\('update',\s*'replace'\)\]\[string\]\`$SupersedenceType"
+    }
+
+    # The documented POST to the relationships collection is reported to answer "No OData route exists
+    # ... with http verb POST"; the failure here was caught and downgraded to a yellow line, so a
+    # permanently broken supersedence looked exactly like a normal run.
+    It 'wires the relationship through updateRelationships' {
+        $script:us | Should -Match 'updateRelationships'
+    }
+    It 'no longer POSTs to the relationships collection' {
+        $script:us | Should -Not -Match 'Invoke-Graph POST "\$GraphBase/deviceAppManagement/mobileApps/\$appId/relationships"'
+    }
+    It 'merges onto the existing relationships instead of replacing the whole set with one edge' {
+        $script:us | Should -Match 'Merge-AppRelationships'
+    }
+    It 'does not swallow a supersedence failure - a chain that did not take is a wrong deployment' {
+        $script:us | Should -Not -Match "Supersedence not set automatically"
+    }
+
+    # The return object carried Supersedes and CoexistsWith; the manifest hashtable dropped both, so
+    # nothing downstream - the dossier included - could report what was actually wired.
+    It 'records the wired supersedence in results.upload' {
+        $script:us | Should -Match "supersedes\s*=\s*\`$supersededWired"
+    }
+    It 'records the coexisting versions it deliberately left intact' {
+        $script:us | Should -Match 'coexistsWith\s*='
+    }
+}

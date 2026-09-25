@@ -194,3 +194,103 @@ Describe 'the MSAL packages are pinned by hash (0.46.0)' {
         $script:gi | Should -Not -Match "4\.66\.\*"
     }
 }
+
+Describe 'Merge-AppRelationships (0.47.0)' {
+    BeforeAll {
+        # A relationships collection exactly as /beta/.../mobileApps/{id}/relationships returns it:
+        # read-only companions included, and one row in each direction.
+        $script:oldSup = [pscustomobject]@{
+            '@odata.type'        = '#microsoft.graph.mobileAppSupersedence'
+            id                   = 'rel-1'
+            targetId             = 'aaaaaaaa-0000-0000-0000-000000000001'
+            targetDisplayName    = 'Google LLC Google Chrome'
+            targetDisplayVersion = '152.0.0.0'
+            targetType           = 'child'
+            supersedenceType     = 'update'
+            supersededAppCount   = 1
+            sourceId             = 'self'
+        }
+        $script:dep = [pscustomobject]@{
+            '@odata.type'   = '#microsoft.graph.mobileAppDependency'
+            id              = 'rel-2'
+            targetId        = 'bbbbbbbb-0000-0000-0000-000000000002'
+            targetType      = 'child'
+            dependencyType  = 'autoInstall'
+        }
+        $script:parentRow = [pscustomobject]@{
+            '@odata.type'    = '#microsoft.graph.mobileAppSupersedence'
+            id               = 'rel-3'
+            targetId         = 'cccccccc-0000-0000-0000-000000000003'
+            targetType       = 'parent'
+            supersedenceType = 'replace'
+        }
+        $script:newId = 'dddddddd-0000-0000-0000-000000000004'
+    }
+
+    It 'adds the new edge to an app that had none' {
+        $m = Merge-AppRelationships -Existing @() -SupersedeTargetIds $script:newId -SupersedenceType 'update'
+        @($m).Count | Should -Be 1
+        $m[0].targetId | Should -Be $script:newId
+        $m[0].supersedenceType | Should -Be 'update'
+        $m[0].'@odata.type' | Should -Be '#microsoft.graph.mobileAppSupersedence'
+    }
+
+    It 'KEEPS the existing relationships - updateRelationships replaces the whole set' {
+        # The defect this guards: sending only the new edge silently deletes every other relationship.
+        $m = Merge-AppRelationships -Existing @($script:oldSup, $script:dep) -SupersedeTargetIds $script:newId
+        @($m).Count | Should -Be 3
+        @($m.targetId) | Should -Contain $script:oldSup.targetId
+        @($m.targetId) | Should -Contain $script:dep.targetId
+        @($m.targetId) | Should -Contain $script:newId
+    }
+
+    It 'keeps a dependency as a dependency, with its own type field' {
+        $m = Merge-AppRelationships -Existing @($script:dep) -SupersedeTargetIds $script:newId
+        $kept = $m | Where-Object { $_.targetId -eq $script:dep.targetId }
+        $kept.'@odata.type' | Should -Be '#microsoft.graph.mobileAppDependency'
+        $kept.dependencyType | Should -Be 'autoInstall'
+        $kept.PSObject.Properties.Name | Should -Not -Contain 'supersedenceType'
+    }
+
+    It 'drops the parent direction - that relationship belongs to the other app' {
+        $m = Merge-AppRelationships -Existing @($script:oldSup, $script:parentRow) -SupersedeTargetIds @()
+        @($m.targetId) | Should -Not -Contain $script:parentRow.targetId
+        @($m).Count | Should -Be 1
+    }
+
+    It 'strips every read-only property Graph sent back' {
+        $m = Merge-AppRelationships -Existing @($script:oldSup) -SupersedeTargetIds @()
+        $names = $m[0].PSObject.Properties.Name
+        foreach ($ro in 'id', 'targetDisplayName', 'targetDisplayVersion', 'targetType', 'supersededAppCount', 'sourceId') {
+            $names | Should -Not -Contain $ro
+        }
+        $names | Should -Be @('@odata.type', 'targetId', 'supersedenceType')
+    }
+
+    It 'updates an existing edge in place instead of duplicating it - a duplicate burns a node' {
+        $m = Merge-AppRelationships -Existing @($script:oldSup) -SupersedeTargetIds $script:oldSup.targetId -SupersedenceType 'replace'
+        @($m).Count | Should -Be 1
+        $m[0].supersedenceType | Should -Be 'replace'
+    }
+
+    It 'carries the requested mode onto the new edge, and never assumes replace' {
+        $m = Merge-AppRelationships -Existing @() -SupersedeTargetIds $script:newId -SupersedenceType 'replace'
+        $m[0].supersedenceType | Should -Be 'replace'
+        $u = Merge-AppRelationships -Existing @() -SupersedeTargetIds $script:newId -SupersedenceType 'update'
+        $u[0].supersedenceType | Should -Be 'update'
+    }
+
+    It 'accepts several targets at once' {
+        $m = Merge-AppRelationships -Existing @() -SupersedeTargetIds @($script:newId, $script:oldSup.targetId)
+        @($m).Count | Should -Be 2
+    }
+
+    It 'ignores an empty or whitespace target id rather than sending a malformed row' {
+        $m = Merge-AppRelationships -Existing @() -SupersedeTargetIds @('', '   ', $script:newId)
+        @($m).Count | Should -Be 1
+    }
+
+    It 'rejects a supersedence mode Intune does not define' {
+        { Merge-AppRelationships -Existing @() -SupersedeTargetIds 'x' -SupersedenceType 'uninstall' } | Should -Throw
+    }
+}

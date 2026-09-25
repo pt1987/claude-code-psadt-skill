@@ -242,9 +242,12 @@ Does this app replace a previous version or another product?
 | Field | Value |
 |---|---|
 | **Superseded app** | the previous version (separate Intune entry) |
-| **Uninstall previous version** | Yes/No (Yes for a true replace, No when parallel is possible) |
+| **Uninstall previous version** | Yes = Graph `replace` (the old version is uninstalled first), No = `update` (the installer upgrades in place). App. R.2 |
 
-A maximum of **10 apps** as superseded; **at most 2 levels** deep (Intune limit).
+Intune allows a maximum of **10 related nodes** in one supersedence graph (11 including the app itself),
+counted over the whole CONNECTED graph - a node shared with another graph merges the two. Microsoft
+documents **no maximum depth**; an earlier revision of this appendix claimed "at most 2 levels", which
+was never in the documentation. Choosing the mode and verifying the chain: App. R.
 
 ### F.9 Assignments
 

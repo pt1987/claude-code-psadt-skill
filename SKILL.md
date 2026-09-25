@@ -259,9 +259,28 @@ additions (WinGet >= 1.7.10582 requirement, registry/file detection note): App. 
 `ruleType, enforceSignatureCheck, runAs32Bit, scriptContent`; the detect script writes stdout + `exit 0` when
 installed, nothing when not). Fill every objective field; impose no category/notes/featured (group assignment
 is the separate opt-in Phase 10); never DELETE (`-OnExisting CreateNewCoexist`, `-UpdateAppId` only for
-explicit in-place, optional `-SupersedesAppId` = supersedence only, not dependencies). `-MinWindowsRelease`
+explicit in-place, optional `-SupersedesAppId` + `-SupersedenceType update|replace` = supersedence only, not
+dependencies; `update` is the default, `replace` UNINSTALLS the old version first - App. R.2 derives it from
+the MSI Upgrade table). Get the predecessor's id from `Get-IntuneAppVersions.ps1` (read-only) instead of
+retyping it, or wire the chain on its own with `Set-IntuneAppSupersedence.ps1` (dry-run, then `-Execute`). An
+unassigned superseding app is ignored by the agent, so Phase 10 is a precondition here, not a follow-up.
+`-MinWindowsRelease`
 takes backend IDs `1607..2004` only. The script refuses the PSADT default logo unless `-AllowDefaultLogo`.
 Uses `/beta`. Details + Graph gotchas: guide Phase 9 / Appendix H.
+
+<!-- rule:supersedence-recorded -->
+**A supersedence is not done when the relationship is written.** Three things travel together, and each
+one alone is a trap. (1) The NEW app must be assigned - "superseding apps that aren't targeted are
+ignored by the agent", so an unassigned superseding app changes nothing. (2) The OLD app's **required**
+assignment must be narrowed or removed in the same breath: while it stands, every device in that group -
+a freshly enrolled client included - installs the old version, and supersedence cannot reach it because
+it only reaches devices the new app targets. An app declared superseded and left required is a
+contradiction, and no portal screen shows both facts at once. (3) The OLD app's `notes` must record what
+happened to it, with the date, the superseding version and its id, and what became of the groups - the
+relationship is visible only on the NEW app's blade, so the version that quietly stopped installing
+explains itself nowhere else. `Set-IntuneAppSupersedence.ps1` writes (3) by default, reports (1) and (2),
+and never touches another app's assignments itself. Full sequence and the retirement that follows:
+App. R.6 / R.7.
 
 <!-- rule:assignment-dry-run-first -->
 **Phase 10 - Group assignment (opt-in).** Only when the user chose it at Gate 2 and `intune.groups.enabled`.
@@ -287,7 +306,7 @@ phase 11, App. E.
 
 **Phase 12 - Rollout.** All three green → pilot 24-48h → staged production. **Rollback** = re-point the
 assignment (and supersedence) at the retained prior version - it was never deleted (`CreateNewCoexist`).
-Guide Phase 12.
+Guide Phase 12. Retiring the old version - Intune has no retire state, and Microsoft publishes no retention guidance: App. R.7.
 
 ## Sub-agent architecture (roles + handoffs)
 
@@ -370,3 +389,4 @@ unchanged, so "App. L.1" or "Phase 6.2" still resolves.
 | App. O - **browser-extension force-install** (Edge/Chrome/Firefox policy keys, Firefox `REG_MULTI_SZ` trap, merge/selective-remove; `New-BrowserExtensionPackage.ps1`) | `references/appendix-o-browser-extensions.md` |
 | App. P - **windows-features** (Enable-WindowsOptionalFeature + Add-WindowsCapability, 3010 reboot, WU/WSUS-bypass content source, EnablePending detection; `New-WindowsFeaturePackage.ps1`) | `references/appendix-p-windows-features.md` |
 | App. Q - **third-party drivers** (classification matrix, PnP install vs. Code Integrity, pnputil 0/259/3010 + the two 0xE... failures, oemNN.inf resolution; `Get-DriverSignatureInfo.ps1`, `New-DriverPackage.ps1`) | `references/appendix-q-drivers.md` |
+| App. R - **supersedence & app lifecycle** (update vs replace and how the MSI Upgrade table decides it, finding the predecessor, the 10-node ceiling, the version-aware detection rule it depends on, retirement; `Get-IntuneAppVersions.ps1`, `Set-IntuneAppSupersedence.ps1`) | `references/appendix-r-supersedence.md` |
