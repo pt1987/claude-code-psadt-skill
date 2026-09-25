@@ -38,3 +38,4 @@ phase6-system-test           The SYSTEM test loop, sandbox route by default, and
 upload-dry-run-first         Dry-run, show the summary, confirm, only then -Execute; never delete, CreateNewCoexist
 assignment-dry-run-first     Dry-run and confirm before assigning; idempotent, never deletes, ambiguous names skipped
 runtime-prerequisite        An unbundled runtime the app needs is researched in Phase 2 and decided at Gate 1; a GREEN loop proves the package, not the app
+supersedence-recorded       Assign the new app, drop the old app's required assignment, and record the supersedence in the old app's notes with a date

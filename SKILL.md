@@ -268,6 +268,20 @@ unassigned superseding app is ignored by the agent, so Phase 10 is a preconditio
 takes backend IDs `1607..2004` only. The script refuses the PSADT default logo unless `-AllowDefaultLogo`.
 Uses `/beta`. Details + Graph gotchas: guide Phase 9 / Appendix H.
 
+<!-- rule:supersedence-recorded -->
+**A supersedence is not done when the relationship is written.** Three things travel together, and each
+one alone is a trap. (1) The NEW app must be assigned - "superseding apps that aren't targeted are
+ignored by the agent", so an unassigned superseding app changes nothing. (2) The OLD app's **required**
+assignment must be narrowed or removed in the same breath: while it stands, every device in that group -
+a freshly enrolled client included - installs the old version, and supersedence cannot reach it because
+it only reaches devices the new app targets. An app declared superseded and left required is a
+contradiction, and no portal screen shows both facts at once. (3) The OLD app's `notes` must record what
+happened to it, with the date, the superseding version and its id, and what became of the groups - the
+relationship is visible only on the NEW app's blade, so the version that quietly stopped installing
+explains itself nowhere else. `Set-IntuneAppSupersedence.ps1` writes (3) by default, reports (1) and (2),
+and never touches another app's assignments itself. Full sequence and the retirement that follows:
+App. R.6 / R.7.
+
 <!-- rule:assignment-dry-run-first -->
 **Phase 10 - Group assignment (opt-in).** Only when the user chose it at Gate 2 and `intune.groups.enabled`.
 ALWAYS dry-run first (read-only) → show the planned group names + actions → confirm → `-Execute`.

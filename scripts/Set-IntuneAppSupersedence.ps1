@@ -69,6 +69,10 @@ param(
     [ValidateSet('update', 'replace')][string]$SupersedenceType = 'update',
     [ValidateRange(1, 10)][int]$MaxGraphNodes = 10,
     [switch]$Force,
+    # The note on the superseded app is written by default. It is the only trace of the supersedence that
+    # is visible to someone who opens the OLD app in the portal - the relationship itself shows on the
+    # superseding app's blade, so the version that stopped installing explains itself nowhere.
+    [switch]$NoAnnotate,
     [string]$ManifestPath,
     [switch]$Execute,
     [string]$GraphToken,
@@ -179,11 +183,41 @@ if ($assignmentCount -eq 0) {
     Write-Info "Superseding app has $assignmentCount assignment(s) - the precondition for supersedence to take effect."
 }
 
+# The other half of the same precondition, and the one nothing surfaces. Supersedence only reaches
+# devices targeted by the SUPERSEDING app. A device sitting in the SUPERSEDED app's Required group and
+# not in the superseding app's therefore installs the OLD version and is never moved forward - an app
+# declared superseded while still being Required is a contradiction, and it is invisible unless you open
+# both blades. Reported, not refused: during a staged rollout both are legitimately assigned for a while.
+function Get-AppIntents([string]$id) {
+    try {
+        $v = @((Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps/$id/assignments" -Headers $H).value | ForEach-Object { [string]$_.intent })
+        # The leading comma is load-bearing. PowerShell unwraps an EMPTY array on the way out of a
+        # function, so a bare `return @()` arrives at the caller as $null - indistinguishable from the
+        # catch below. That turned "this app targets nobody", which is the desired end state, into
+        # "assignment state could not be read", and wrote exactly that into the audit note on the app.
+        return , $v
+    }
+    catch { return $null }
+}
+$supersededStillRequired = @()
+foreach ($o in $oldApps) {
+    $intents = Get-AppIntents $o.id
+    if ($null -eq $intents) { Write-Warn2 "Could not read the assignments of the superseded app $($o.id)."; continue }
+    if ($intents -contains 'required') {
+        $supersededStillRequired += [pscustomobject]@{ id = [string]$o.id; displayName = [string]$o.displayName; displayVersion = [string]$o.displayVersion; intents = $intents }
+    }
+}
+foreach ($s in $supersededStillRequired) {
+    Write-Warn2 ("The superseded app '$($s.displayName) $($s.displayVersion)' is STILL assigned as required. A device in that group and not in the superseding app's group installs the OLD version, " +
+        "and supersedence will not move it forward - it only reaches devices targeted by the superseding app. Narrow or remove that required assignment (App. R.7); this script never touches another app's assignments.")
+}
+
 if (-not $Execute) {
     Write-Host "`nDRY RUN - nothing was changed. Re-run with -Execute to apply." -ForegroundColor Yellow
     return [pscustomobject]@{
         Executed = $false; AppId = $AppId; Supersedes = $targets; SupersedenceType = $SupersedenceType
-        RelationshipsBefore = $before.Count; RelationshipsAfter = $merged.Count; Verified = $null; DryRun = $true
+        RelationshipsBefore = $before.Count; RelationshipsAfter = $merged.Count; Verified = $null
+        SupersededStillRequired = @($supersededStillRequired); DryRun = $true
     }
 }
 
@@ -204,6 +238,41 @@ $verified = ($missing.Count -eq 0)
 
 if ($verified) { Write-Ok "Verified: $AppId supersedes $($targets -join ', ') ($SupersedenceType)." }
 else { Write-Fail "Read-back does not show: $($missing -join ', '). The call was accepted but the chain is not what was asked for." }
+
+# --- Annotate the superseded app, so the OLD version explains itself in the portal -------------------
+if (-not $NoAnnotate) {
+    Write-Step 'Record the supersedence in the superseded app notes'
+    $stamp = (Get-Date).ToString('yyyy-MM-dd')
+    foreach ($o in $oldApps) {
+        try {
+            # Read first: notes is a free-text field an admin may already be using, and a supersedence
+            # record is not worth destroying someone's operational note.
+            $cur = Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps/$($o.id)" -Headers $H
+            $existingNotes = [string]$cur.notes
+
+            $intentsNow = Get-AppIntents $o.id
+            $assignmentNote = if ($null -eq $intentsNow) { 'assignment state could not be read' }
+            elseif (@($intentsNow).Count -eq 0) { 'this version no longer targets any group; the superseding app carries the assignments' }
+            else { "this version is STILL assigned ($((@($intentsNow) | Sort-Object -Unique) -join ', ')) - devices in those groups keep receiving it" }
+
+            $line = "[psadt-deploy $stamp] Superseded by '$($newApp.displayName) $($newApp.displayVersion)' (app id $AppId), mode '$SupersedenceType'" +
+            $(if ($SupersedenceType -eq 'replace') { ' - the previous version is uninstalled before the new one installs' } else { ' - the installer upgrades in place, no uninstall command is sent' }) +
+            ". Groups: $assignmentNote. This app is retained as a rollback target and was not deleted."
+
+            if ($existingNotes -and $existingNotes.Contains($line)) { Write-Info "Note already present on $($o.id)."; continue }
+            $notes = if ([string]::IsNullOrWhiteSpace($existingNotes)) { $line } else { $existingNotes.TrimEnd() + "`n" + $line }
+
+            # Intune caps notes at 1024 characters; a refused PATCH would lose the record silently.
+            if ($notes.Length -gt 1024) { $notes = $notes.Substring($notes.Length - 1024) }
+
+            $null = Invoke-Graph PATCH "$GraphBase/deviceAppManagement/mobileApps/$($o.id)" -Headers $H -Body @{ '@odata.type' = [string]$cur.'@odata.type'; notes = $notes }
+            Write-Ok "Noted on '$($o.displayName) $($o.displayVersion)'."
+        } catch {
+            $e = Get-GraphErr $_
+            Write-Warn2 "Could not write the note on $($o.id): $($e.message). The supersedence itself is unaffected."
+        }
+    }
+}
 
 # --- Record it ------------------------------------------------------------------------------------------
 if ($ManifestPath) {
@@ -227,5 +296,6 @@ if (-not $verified) {
 
 [pscustomobject]@{
     Executed = $true; AppId = $AppId; Supersedes = $targets; SupersedenceType = $SupersedenceType
-    RelationshipsBefore = $before.Count; RelationshipsAfter = $after.Count; Verified = $verified; DryRun = $false
+    RelationshipsBefore = $before.Count; RelationshipsAfter = $after.Count; Verified = $verified
+    SupersededStillRequired = @($supersededStillRequired); DryRun = $false
 }

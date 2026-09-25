@@ -480,7 +480,12 @@ $sup = Get-Val 'Supersedence' $null
 $vSup = if ([string]::IsNullOrWhiteSpace([string]$sup)) {
     (Badge 'b-neut' 'keine' 'none') +
     (NoteHtml (Get-Val 'SupersedenceNoteDe' 'erste Version &ndash; neue Versionen koexistieren sp&auml;ter (kein L&ouml;schen)') (Get-Val 'SupersedenceNoteEn' 'first version &ndash; new versions coexist later (no deletion)'))
-} else { Esc $sup }
+} else {
+    # The note travels with the VALUE, not only with its absence. Rendering it only in the empty branch
+    # meant a populated supersedence printed a bare GUID: the reader could not tell whether the previous
+    # version gets uninstalled, which is the entire decision the field exists to record.
+    (Esc $sup) + (NoteHtml (Get-Val 'SupersedenceNoteDe' '') (Get-Val 'SupersedenceNoteEn' ''))
+}
 
 # ----------------------------------------------------------------------------- logo / intunewin
 $vLogoSource     = Bspan (Esc $logoSource) (Esc $logoSource)

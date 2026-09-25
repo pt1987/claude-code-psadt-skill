@@ -185,9 +185,24 @@ assignments had none. (A related `$select` trap on the same endpoint: `displayVe
 "Could not find a property named 'displayVersion' on type 'microsoft.graph.mobileApp'". Ask for the whole
 object, or cast the segment.)
 
-The old app's assignment can go. Keeping it costs nothing; removing it costs visibility, because "only
-apps that are targeted show install statuses in Microsoft Intune admin center" - you lose the ability to
-confirm the fleet has actually moved off the old version.
+**And take Required off the old app.** This is the half that is easy to miss, because both halves look
+correct in isolation. Supersedence reaches only devices targeted by the *superseding* app. A device that
+sits in the **superseded** app's Required group and not in the superseding app's therefore installs the
+OLD version - and supersedence never moves it forward, because it was never in scope. A freshly enrolled
+client hits exactly this. An app that is declared superseded and left Required is a contradiction, and
+nothing in the portal shows the two facts on one screen.
+
+So the moment the new version is assigned, the old one's **Required** assignment must be narrowed or
+removed. `Set-IntuneAppSupersedence.ps1` reads the superseded app's assignments and says so when it finds
+`required`; it reports rather than refuses, because during a staged rollout both are legitimately
+assigned for a while, and it never touches another app's assignments itself (`SECURITY.md`).
+
+*Available* on the old app is a different matter and can stay: "Only superseding apps are shown in the
+company portal and can be installed", so it stops being offered on its own.
+
+What removing the assignment costs is visibility: "only apps that are targeted show install statuses in
+Microsoft Intune admin center", so you lose the ability to confirm the fleet has actually moved off the
+old version. Narrow it before you remove it.
 
 Version-independent group naming (**App. M.3**) is what makes the hand-over painless: the new app
 resolves the *same* groups as the old one, so the audience transfers without anyone editing a group.
@@ -215,7 +230,9 @@ Retirement is therefore four deliberate steps, in this order:
 
 1. **Supersede** the old app, so it stops being offered - "Only superseding apps are shown in the company
    portal and can be installed."
-2. **Narrow the assignment** once the new version's install status covers the fleet. Keep the app.
+2. **Remove the old app's Required assignment immediately** - not later. While it stands, every device in
+   that group installs the old version, new clients included, and supersedence cannot reach them (R.6).
+   Then narrow the rest once the new version's install status covers the fleet. Keep the app itself.
 3. **Add an Uninstall assignment** only if the old version must actively come off devices that the
    supersedence will not reach.
 4. **Delete** last, and only when pruning is forced.

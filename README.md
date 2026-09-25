@@ -103,7 +103,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **906 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **921 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -121,7 +121,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 906 Pester tests.
+verified against a live tenant. The helper scripts are covered by 921 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them

@@ -653,3 +653,44 @@ Describe 'language.dossier decides the dossier language (0.46.0)' {
         $src | Should -Match 'language\.dossier'
     }
 }
+
+Describe 'the dossier reports the supersedence that was actually wired (0.47.0)' {
+    BeforeAll {
+        $script:pkgDir = Join-Path ([System.IO.Path]::GetTempPath()) ('supsedmf_' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:pkgDir -Force | Out-Null
+        function New-SupManifest {
+            param([string]$Mode)
+            $mf = Join-Path $script:pkgDir 'psadt-package.json'
+            @{
+                schema  = 1
+                app     = @{ vendor = 'Google LLC'; name = 'Google Chrome'; version = '153.0.8010.37'; arch = 'x64' }
+                package = @{ type = 'installer' }
+                results = @{ upload = @{ appId = 'aaaaaaaa-0000-0000-0000-00000000000a'
+                        supersedes = 'bbbbbbbb-0000-0000-0000-00000000000b'; supersedenceType = $Mode } }
+            } | ConvertTo-Json -Depth 8 | Set-Content $mf -Encoding UTF8
+            return $mf
+        }
+    }
+    AfterAll { if (Test-Path $script:pkgDir) { Remove-Item $script:pkgDir -Recurse -Force -ErrorAction SilentlyContinue } }
+    AfterEach { if (Test-Path $script:out) { Remove-Item $script:out -Force -ErrorAction SilentlyContinue } }
+
+    It 'names the superseded app instead of claiming this is the first version' {
+        & $script:gen -ManifestPath (New-SupManifest 'update') -OutputPath $script:out -Metadata @{ DescMdDe = 'x'; DescMdEn = 'x' } *> $null
+        $html = Get-Content $script:out -Raw
+        $html | Should -Match 'bbbbbbbb-0000-0000-0000-00000000000b'
+        $html | Should -Not -Match 'erste Version'
+    }
+
+    # The defect this catches: the template rendered the explanatory note ONLY when the field was empty,
+    # so a populated supersedence printed a bare GUID and the note set beside it was dead code. A reader
+    # could not tell whether the previous version gets uninstalled - which is the whole decision.
+    It 'explains the update mode, which decides whether the old version is uninstalled' {
+        & $script:gen -ManifestPath (New-SupManifest 'update') -OutputPath $script:out -Metadata @{ DescMdDe = 'x'; DescMdEn = 'x' } *> $null
+        Get-Content $script:out -Raw | Should -Match 'aktualisiert die Vorversion selbst'
+    }
+
+    It 'explains the replace mode, and says the previous version is uninstalled' {
+        & $script:gen -ManifestPath (New-SupManifest 'replace') -OutputPath $script:out -Metadata @{ DescMdDe = 'x'; DescMdEn = 'x' } *> $null
+        Get-Content $script:out -Raw | Should -Match 'DEINSTALLIERT'
+    }
+}

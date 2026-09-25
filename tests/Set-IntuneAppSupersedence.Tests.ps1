@@ -117,3 +117,70 @@ Describe 'the assignment precondition is checked against the assignments themsel
         $script:Src | Should -Match '/assignments'
     }
 }
+
+Describe 'a superseded app that is still Required is reported (0.47.0)' {
+    # The hole this closes. Supersedence only fires for devices targeted by the SUPERSEDING app
+    # ("Superseding apps that aren't targeted are ignored by the agent"). So a device that sits in the
+    # SUPERSEDED app's Required group and not in the superseding app's gets the OLD version installed,
+    # and no supersedence will ever move it forward. Declaring an app superseded while leaving it
+    # Required is a contradiction, and it is invisible in the portal unless you open both blades.
+    #
+    # This is reported, not refused: during a staged rollout both versions are legitimately assigned for
+    # a while. What must not happen is that it goes unnoticed.
+    It 'reads the assignments of each superseded app, not only of the superseding one' {
+        $script:Src | Should -Match 'supersededAssignments|oldAssignments|Get-AppIntents'
+    }
+    It 'names the required intent as the problem case' {
+        $script:Src | Should -Match "required"
+    }
+    It 'carries the finding out on the result object so a caller can gate on it' {
+        $script:Src | Should -Match 'SupersededStillRequired'
+    }
+}
+
+Describe 'the superseded app records what happened to it (0.47.0)' {
+    # The relationship is visible only on the superseding app's Supersedence blade. Someone opening the
+    # OLD app - to ask why it stopped installing, or whether it can be deleted - sees nothing at all.
+    # The note is the audit trail in the place they actually look, and it survives independently of this
+    # repository, the manifest and anyone's memory.
+    It 'declares a -NoAnnotate escape hatch, so the note is the default and not the opt-in' {
+        $script:Src | Should -Match '\[switch\]\$NoAnnotate'
+    }
+    It 'PATCHes the superseded app, not the superseding one' {
+        $below = ($script:Src -split 'WRITES BELOW THIS LINE')[1]
+        $below | Should -Match 'Invoke-Graph\s+PATCH\s+"\$GraphBase/deviceAppManagement/mobileApps/\$\(\$o\.id\)"'
+    }
+    It 'reads the existing notes first and appends - a note is never overwritten' {
+        $script:Src | Should -Match '\$existingNotes'
+        $script:Src | Should -Match 'notes\s*=.*\$existingNotes|\$existingNotes.*\+'
+    }
+    It 'records the date, the superseding version and its id' {
+        $script:Src | Should -Match "yyyy-MM-dd"
+        $script:Src | Should -Match '\$newApp\.displayVersion'
+        $script:Src | Should -Match '\$AppId'
+    }
+    It 'states the assignment situation it observed rather than claiming an action it did not take' {
+        $script:Src | Should -Match 'assignmentNote|no assignments|still assigned'
+    }
+    It 'is skipped on a dry run - the note is a write like any other' {
+        $above = ($script:Src -split 'WRITES BELOW THIS LINE')[0]
+        $above | Should -Not -Match 'Invoke-Graph\s+PATCH'
+    }
+}
+
+Describe 'no assignments is not the same as unknown assignments (0.47.0)' {
+    # Measured on the live tenant: after removing the superseded app's three assignments, the note read
+    # "Groups: assignment state could not be read". PowerShell unwraps an empty array returned from a
+    # function to $null, so the zero case collided with the error case - and the good end state was
+    # recorded in the tenant as a failure to determine it.
+    It 'returns the intent list through the comma operator so an empty result survives' {
+        $script:Src | Should -Match 'return\s*,\s*\$v'
+    }
+    It 'still has a distinct null path for a genuine read failure' {
+        $script:Src | Should -Match 'catch\s*\{\s*return\s+\$null\s*\}'
+    }
+    It 'distinguishes the two in the note text' {
+        $script:Src | Should -Match 'could not be read'
+        $script:Src | Should -Match 'no longer targets any group'
+    }
+}

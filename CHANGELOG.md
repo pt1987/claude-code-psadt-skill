@@ -79,7 +79,29 @@ had none, on exactly the check that decides whether supersedence does anything. 
 fails outright, because `displayVersion` belongs to `win32LobApp` and the collection is typed as
 `mobileApp`.
 
-Suite 859 -> 906.
+**Wiring the relationship is not finishing the job, and the missing half is the expensive one.**
+Supersedence reaches only devices the SUPERSEDING app targets. So a device in the SUPERSEDED app's
+required group and not in the new app's installs the OLD version - a freshly enrolled client included -
+and supersedence never moves it forward, because it was never in scope. An app declared superseded and
+left required is a contradiction, and no portal screen shows both facts at once. `rule:supersedence-recorded`
+names the three things that travel together: assign the new app, drop the old app's required assignment,
+record what happened. The script reports the first two - it never touches another app's assignments - and
+performs the third.
+
+**The old version now explains itself.** The relationship shows only on the superseding app's blade, so
+whoever opens the version that quietly stopped installing sees nothing. `Set-IntuneAppSupersedence.ps1`
+writes a line into the superseded app's `notes` by default (`-NoAnnotate` opts out): the date, the
+superseding version and its id, the mode and what it means for the device, and what became of the
+groups. Existing notes are read first and appended to, never overwritten, and the text is capped at the
+1024 characters Intune accepts so a refused PATCH cannot lose the record silently.
+
+That note also caught a bug of its own on the first live write. It read "assignment state could not be
+read" for an app whose assignments had just been removed - PowerShell unwraps an empty array returned
+from a function to `$null`, so "this app targets nobody", the desired end state, collided with the error
+path and was recorded in the tenant as a failure to determine it. The leading comma in `return , $v` is
+what separates them, and three tests hold it there.
+
+Suite 859 -> 921.
 
 ## 0.46.0 - 2026-09-23 - Sixteen findings, and the two the live run had already proved
 
