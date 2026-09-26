@@ -135,6 +135,37 @@ Describe 'what it carries forward' {
         $r.CarriedFrom | Should -Be '10.12.1'
     }
 
+    It 'carries the process list - the value that was retyped from memory every time' {
+        # Found by running it, not by reading it: package.processesToClose was recorded correctly by the
+        # generator and then left out of the Carry object, so the lookup knew it and never offered it.
+        # That is the one value this whole feature was supposed to stop people retyping.
+        $dir = Join-Path $script:root 'WithProcs'
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Set-Content (Join-Path $dir 'Invoke-AppDeployToolkit.ps1') -Value '# stub' -Encoding UTF8
+        @{
+            schema  = 1
+            app     = @{ vendor = 'Igor Pavlov'; name = '7-Zip'; version = '26.03'; arch = 'x64' }
+            package = @{ type = 'installer'; processesToClose = @('7zFM', '7zG'); installerSha256 = 'c0680064' }
+        } | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $dir 'psadt-package.json') -Encoding UTF8
+
+        $c = (& $script:Prior -Vendor 'Igor Pavlov' -Name '7-Zip' -Version '26.04' -PackageRoot $script:root).Carry
+        @($c.processesToClose) | Should -Contain '7zFM'
+        @($c.processesToClose) | Should -Contain '7zG'
+    }
+
+    It 'carries the previous installer hash, so the caller can tell a re-pack from a new build' {
+        $dir = Join-Path $script:root 'WithSha'
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Set-Content (Join-Path $dir 'Invoke-AppDeployToolkit.ps1') -Value '# stub' -Encoding UTF8
+        @{
+            schema  = 1
+            app     = @{ vendor = 'Acme'; name = 'Thing'; version = '1.0'; arch = 'x64' }
+            package = @{ type = 'installer'; installerSha256 = 'abc123' }
+        } | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $dir 'psadt-package.json') -Encoding UTF8
+        (& $script:Prior -Vendor 'Acme' -Name 'Thing' -Version '2.0' -PackageRoot $script:root).Carry.installerSha256 |
+            Should -Be 'abc123'
+    }
+
     It 'carries nothing at all when there is no prior package' {
         $r = & $script:Prior -Vendor 'Nobody' -Name 'Nothing' -PackageRoot $script:root
         $r.Carry | Should -BeNullOrEmpty

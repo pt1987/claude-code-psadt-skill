@@ -64,7 +64,7 @@ turn packages that pass today into failures. It is written down and left alone.
 scripts - open audit finding **B09**. Giving them a consumer is the first reason the skill has ever had to
 write them reliably; requiring them is a separate question.
 
-Suite 928 -> 966.
+Suite 928 -> 968.
 
 ## 0.48.0 - 2026-09-26 - The figure guards only ever read the figures
 

@@ -147,6 +147,13 @@ $carry = [pscustomobject]@{
     research    = $m.research
     decisions   = $m.decisions
     description = $m.app.description
+    # Recorded by the generator and, until a live run caught it, not offered back - which made it the
+    # one value this lookup exists to stop people retyping. It is a generator PARAMETER on the next run,
+    # so it has to leave here or it is lost again.
+    processesToClose = @($m.package.processesToClose)
+    # Lets the caller tell a genuine new build from a re-pack of the same bytes: identical hash means
+    # the switches proven last time apply exactly, not merely probably.
+    installerSha256  = [string]$m.package.installerSha256
 }
 
 Out-Result ([pscustomobject]@{
