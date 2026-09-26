@@ -2,6 +2,70 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.49.0 - 2026-09-26 - The second version of an app started from a blank sheet
+
+Packaging an application teaches you things that take hours to find: that AOMEI Partition Assistant needs
+`UninstallFB.exe` renamed before `unins000.exe /VERYSILENT` will work, that its mutex is
+`AOMEI_TECHNOLOGY_PARTITION_ASSISTANT`, that it leaves `ProgramData\AOMEIPA` behind, that there is no
+silent activation. All of it is recorded, in `psadt-package.json`, in good shape.
+
+None of it was ever read again.
+
+**Why, precisely.** Every store this skill writes is keyed by the installer's SHA256 - the verified-switch
+store and the evidence store both. That was a deliberate choice and a good one: a hash cannot go stale,
+because the bytes it describes are immutable. The cost is that a new version has a new hash and misses
+every store by construction. The manifest, meanwhile, is a file in a folder that nothing indexes, and its
+identity is the operator's (`app.vendor` + `app.name`) while the stores' identity is the binary's
+(`productName`). **There was no key that joined them.** The only 64-hex value in a manifest is the hash of
+the finished `.intunewin`.
+
+Measured on the authoring machine rather than assumed: Chrome had been packaged twice, into
+`GoogleChrome` and `GoogleChrome_154.0.8037.58`, with independent manifests - three research keys in one,
+seven in the other, each filled from scratch. `decisions.gate1` and `decisions.gate2` were empty on
+Chrome, Firefox and Notepad++ and rich only on AOMEI, because nothing ever asked for them twice.
+
+**`Get-PsadtPriorPackage.ps1`** is the lookup that was missing. It matches on application identity, not on
+the folder name and not on the binary's `productName` - both of which are unstable across versions. In a
+real 24-entry switch store, six entries carry their version inside the product name
+(`LibreOffice 26.2.6.3`, `PuTTY release 0.85 (64-bit)`, `7-Zip 26.03 (x64 edition)`, ...) and can never
+match their own successor, and five are stored with PE-header padding. `app.vendor` + `app.name` has
+neither problem: both Chrome folders resolve to one key. Index first, scan as fallback, so a package that
+was archived or handed over by a colleague is still found.
+
+**It offers; it never applies.** `rule:prior-package-offered`: the carried values are shown as stated
+assumptions the operator confirms or corrects, the same way a research finding is offered, and what they
+confirm is recorded with `Set-PsadtPackageManifest.ps1` tagged with the version it came from. A vendor can
+change their uninstaller between versions, and last year's workaround applied unseen is worse than one
+re-made. There is deliberately no silent path: the generators were not given a `-FromPackage` switch, so
+nothing can inherit without passing through a human.
+
+**Purely additive.** Nothing that is GREEN today becomes RED. No check got stricter, no parameter changed
+meaning. An application with no predecessor behaves exactly as it did at 0.48.0, and `Invoke-PsadtPreflight.ps1`
+was not touched at all - a carried answer lands in `research.answers.<id>`, which its `Research` check
+already reads, so it passes on its own terms.
+
+Two fields the manifest never had, both recorded at scaffold time: `package.installerSha256`, which is
+the join key to both hash-keyed stores and which pre-flight was already computing anyway, and
+`package.processesToClose`, which had been a generator parameter and nothing else - retyped from memory
+for every new version.
+
+**One small bug fixed on the way.** The same-product fallback in `Get-PsadtSwitchCandidates.ps1` compared
+`productName` for exact equality, so the five padded entries in the store could never match their own
+successor unless the next build padded to an identical length. Both sides are trimmed now. The
+`productName` stays the match key - storing a friendly name instead would leave the fallback permanently
+dead, as `Set-PsadtVerifiedSwitch.ps1` has said all along.
+
+**A finding recorded, not acted on.** The pre-flight `Research` check WARNs when the evidence ladder was
+never run and FAILs when it was - so skipping the research is currently the quieter route to GREEN. That
+is a real incentive problem, it is a separate policy decision from anything here, and closing it would
+turn packages that pass today into failures. It is written down and left alone.
+
+`decisions.gate1`, `decisions.gate2` and `decisions.systemTest` still have no writer in the shipped
+scripts - open audit finding **B09**. Giving them a consumer is the first reason the skill has ever had to
+write them reliably; requiring them is a separate question.
+
+Suite 928 -> 968.
+
 ## 0.48.0 - 2026-09-26 - The figure guards only ever read the figures
 
 Patrick read the phase descriptions on the landing page and said they looked out of date. They were -

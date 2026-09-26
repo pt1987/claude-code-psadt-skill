@@ -729,6 +729,16 @@ Assert-NoUnreplacedToken $detect "Detect-$Name.ps1"
     # several files, and a consumer that recovers the installer by parsing it off the front of
     # research.switches.install breaks on the first vendor who ships "Setup 1.2.exe".
     'package.installerFile'  = $InstallerFile
+    # The join key the manifest never had. Both hash-keyed stores - verified-switches.json and
+    # evidence\<sha>.json - are indexed by the SHA256 of THIS file, and the manifest recorded only the
+    # hash of the finished .intunewin. Without this, a package cannot be matched to what was learned
+    # about its own installer. Invoke-PsadtPreflight.ps1 already computes the same value at check time.
+    'package.installerSha256' = $(try { (Get-FileHash -LiteralPath $InstallerPath -Algorithm SHA256).Hash.ToLowerInvariant() } catch { $null })
+    # Recorded so the next version can inherit it. This was a generator parameter and nothing else:
+    # not in the manifest, not in the switch store, so it had to be retyped from memory every time.
+    # Already normalised by Expand-CommaSeparated further up: the -File binder hands 'a,b' over as
+    # ONE element, and recording that would carry a process name matching nothing into the next version.
+    'package.processesToClose' = @($ProcessesToClose)
     'research.switches'      = @{
         # install/uninstall stay prose, because the dossier prints them for a human. installArgs and
         # uninstallArgs are the machine-readable pair: arguments only, no executable, nothing to parse.

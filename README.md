@@ -103,7 +103,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **928 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **968 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -121,7 +121,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 928 Pester tests.
+verified against a live tenant. The helper scripts are covered by 968 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -170,7 +170,14 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.48.0 - The figure guards only ever read the figures.** The landing page described a skill two
+Latest: **0.49.0 - The second version of an app started from a blank sheet.** Everything learned while
+packaging an application - the switches that took an afternoon, the uninstaller that has to be renamed
+first, the app mutex, the leftovers, both decision gates - was recorded in the manifest and then never
+read again, because every store is keyed by the installer hash and a new version has a new hash.
+`Get-PsadtPriorPackage.ps1` finds the previous package by application identity instead and offers what it
+learned for confirmation. Purely additive: nothing that passes today starts failing.
+
+Previously: **0.48.0 - The figure guards only ever read the figures.** The landing page described a skill two
 releases old, and the guards could not see it: every site assertion checked a number, never whether the
 list behind it was complete. The engine tile correctly said 19 while the table under it showed 14 rows.
 The pre-flight gate was described as ten checks and runs fourteen. Phase 9 still told the reader to wire
