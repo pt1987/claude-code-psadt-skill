@@ -2,6 +2,53 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.48.0 - 2026-09-26 - The figure guards only ever read the figures
+
+Patrick read the phase descriptions on the landing page and said they looked out of date. They were -
+by two releases - and the interesting part is why nothing caught it.
+
+`tests/SiteFigures.Tests.ps1` had seven assertions and **every one of them checked a number**: the engine
+tile, the script tile, the reference count, the appendix count, the gate count, and that the page names
+one version. Not one of them asked whether the list that number describes is actually there. So the
+engine tile correctly said **19** while the table directly beneath it showed **14 rows**, under a heading
+reading *"Nineteen installer engines, and the trap in each"* - for several releases, with the suite green
+the whole time. `msp`, `electron-builder`, BitRock and both SFX engines were simply absent, and
+InstallAware and Wise were two catalog engines squeezed into one row.
+
+`tests/DocFigures.Tests.ps1` had the same shape of hole from the other side. It derives the pre-flight
+check count from `Invoke-PsadtPreflight.ps1` and holds the docs to it, which is exactly right - but its
+regex was `'(\d+)\s+checks'`, and `README.md` said *"13 prerequisite checks"*. One word between the
+number and the noun was enough to hide it. The doctor has run **14** since 0.46.0 added `WindowsSandbox`.
+
+**What the page had wrong.** The pre-flight gate was described as *"Ten check categories"* with a list of
+ten, while it runs fourteen - `Research`, `SwitchSync`, `SupportFiles` and `AsyncUninstall` appeared
+nowhere, and `Research` is the check that makes research a gate rather than a habit. Phase 6 claimed
+three harness pre-checks where five are recorded, and its verdict never mentioned that since 0.46.0 the
+host recomputes the guest's verdict instead of believing it. Phase 0 promised *"PowerShell 5.1+ or 7+"*
+as a requirement while the doctor hard-FAILs below 7 - and the page's own tooltip said so, so it
+contradicted itself on the same screen. Phase 3 named two of five generators, which 0.45.0 had already
+fixed everywhere else.
+
+**Phase 9 told the reader to do the job the skill now does.** Its verdict ended *"so you wire
+supersedence yourself"*, and the word appeared nowhere else on the page - so 0.47.0's headline capability
+was represented by one sentence saying it was the user's problem. Phase 12 closed on *"the same artifact,
+not a rebuild"*, a sentence that appears nowhere in this repository, while the phase had meanwhile
+acquired rollback and retirement.
+
+**The guards now check the list, not just the number.** Each engine row carries its catalog id, so the
+assertion is an identity comparison rather than a fuzzy match on prose; the pre-flight list is compared
+name-by-name against the script; the loop, the phase array and the phase tile have to agree; and every
+tooltip key must map to a label that exists, because an orphaned tooltip renders nothing at all - no
+error, no empty box, just a row that does not respond to the mouse. `DocFigures` gained the doctor's own
+count, derived the same way, and the pre-flight regex deliberately still refuses to match "prerequisite
+checks": both numbers are 14 today and mean different things, and one guard covering both would pass by
+coincidence.
+
+`docs/installation.md` no longer promises 5.1, and `references/phases-7-12.md` gained 12.3 Rollback and
+12.4 Retirement, which had lived only in `SKILL.md` and Appendix R.
+
+Suite 921 -> 928.
+
 ## 0.47.0 - 2026-09-25 - The supersedence this skill has been wiring may never have been wired
 
 Supersedence was not a missing feature. `Invoke-IntuneWin32Upload.ps1` has POSTed the relationship since
