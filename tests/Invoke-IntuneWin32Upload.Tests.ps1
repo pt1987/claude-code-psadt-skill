@@ -268,3 +268,20 @@ Describe 'supersedence is chosen, wired on the working route, and recorded (0.47
         $script:us | Should -Match 'coexistsWith\s*='
     }
 }
+
+Describe 'the supersedence hints lead to the script that records it (0.49.1)' {
+    BeforeAll { $script:hint = Get-Content -LiteralPath $script:Upload -Raw }
+
+    # 0.47.0 taught Set-IntuneAppSupersedence.ps1 to write the old version's note. This script's own
+    # -SupersedesAppId route wires the relationship and writes no note, and its closing hint still sent
+    # the operator to the portal, the one route that records nothing at all.
+    It 'no longer sends the operator to the portal to set supersedence' {
+        $script:hint | Should -Not -Match 'set it in the portal'
+    }
+    It 'names Set-IntuneAppSupersedence.ps1, with the real ids, where supersedence is not in place' {
+        $script:hint | Should -Match 'Set-IntuneAppSupersedence\.ps1 -AppId \$appId -SupersedesAppId \$old'
+    }
+    It 'says after a wired supersedence that the old version still needs its note' {
+        $script:hint | Should -Match 'Set-IntuneAppSupersedence\.ps1 -AppId \$appId -SupersedesAppId \$supersededWired'
+    }
+}

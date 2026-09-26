@@ -63,6 +63,13 @@ upload confirmation). Everything else it researches and states as an assumption 
 
 Details, flags, version pinning and requirements: [`docs/installation.md`](docs/installation.md).
 
+**Uploading to Intune** needs an Entra app with the Microsoft Graph application permission
+`DeviceManagementApps.ReadWrite.All`, admin-consented. `scripts/New-PsadtEntraApp.ps1` creates it in one
+run; a Global Administrator or Privileged Role Administrator signs in once. Group management and
+configuration policies are separate opt-in permissions. Everything before the upload, the Windows Sandbox
+test included, needs no Entra permission. What each permission is for and what the script does:
+[`SECURITY.md`](SECURITY.md#entra-permissions).
+
 ## How it works
 
 Thirteen phases, each owned by a script rather than by prose, so a step either passed or did not:
@@ -103,7 +110,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **968 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **987 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -121,7 +128,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 968 Pester tests.
+verified against a live tenant. The helper scripts are covered by 987 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -133,7 +140,9 @@ still open.
 This skill installs software as SYSTEM, researches on the open web, and writes to an Intune tenant
 through an Entra app with admin consent. [`SECURITY.md`](SECURITY.md) states that risk surface next to
 the control that already covers each part of it, and each control names the file that implements it and
-the test that enforces it - so a review can check the claims rather than take them.
+the test that enforces it - so a review can check the claims rather than take them. The Entra
+permissions the skill holds, and exactly what its setup script creates, are listed under
+[Entra permissions](SECURITY.md#entra-permissions).
 
 Two deliberate non-features: the skill does **not** declare `allowed-tools` (that field pre-approves
 tools, it does not restrict them), and content fetched during research is treated as data, never as
@@ -141,9 +150,10 @@ instructions - see [`references/research-trust.md`](references/research-trust.md
 
 ## Roadmap
 
-**Sync finished packages to a GitHub repo** - a setup option (`output.target` = `local` / `git` / `both`)
-to push the per-app artifacts to a Git repo instead of, or in addition to, a local folder. Will need
-**Git LFS** for large `.intunewin` files. Have a request? Open an issue.
+**Publish finished packages to a private GitHub repository** - per version, the package folder and the
+output folder as two zipped release assets. The `.intunewin` stays out, because it is rebuilt from the
+package folder. Private repositories only, credentials from the GitHub CLI, and a secret scan before
+anything leaves the machine. Have a request? Open an issue.
 
 ## Contributing
 
@@ -170,7 +180,16 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.49.0 - The second version of an app started from a blank sheet.** Everything learned while
+Latest: **0.49.1 - The permissions it asks for were written down nowhere a reader looks.** `SECURITY.md`
+now lists every Entra permission the skill can use - with its flag, its purpose and the script behind it -
+says who has to sign in, what `New-PsadtEntraApp.ps1` does step by step and how to revoke access, and the
+README names what an upload needs. A sweep for other stale statements fixed the upload's supersedence
+hint, which pointed at the portal instead of the script that records the change, and the dossier's English
+view, which still showed German detection values and called the SYSTEM test "Phase 5.5". The JSON store
+writer no longer loses an update silently when the file is held open, and runs under Windows PowerShell
+5.1 again.
+
+Previously: **0.49.0 - The second version of an app started from a blank sheet.** Everything learned while
 packaging an application - the switches that took an afternoon, the uninstaller that has to be renamed
 first, the app mutex, the leftovers, both decision gates - was recorded in the manifest and then never
 read again, because every store is keyed by the installer hash and a new version has a new hash.
@@ -193,11 +212,3 @@ no longer hardcoded to `replace`, which uninstalled the previous version from ev
 is the default and the MSI's own Upgrade table decides. Two new scripts make the predecessor's id
 something you can read rather than retype, and Appendix R covers the lifecycle - including that Intune has
 no retire state at all.
-
-Previously: **0.46.0 - Sixteen findings, and the two the live run had already proved.** The last sixteen
-findings from the deep analysis. A full run on 0.45.0 had shown two of them for real: the dossier
-existed on disk while the manifest said nothing about it, and the package finished with no logo and no
-warning. The manifest now records what was produced, the three JSON stores are replaced atomically, the
-packaging tool and the four MSAL packages are verified before anything executes, the host re-checks the
-verdict the sandbox hands it, a generator no longer discards a hand-filled package without -Force, and
-an ampersand in a path no longer produces a sandbox that silently starts without its mapped folders.

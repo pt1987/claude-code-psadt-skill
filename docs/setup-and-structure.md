@@ -30,7 +30,8 @@ pwsh scripts/Initialize-PsadtSkill.ps1 -Fix -Set @{
 
 ### Where the setup is stored
 
-`config.json`, `secret.dpapi`, `tools/` and `verified-switches.json` live in the **config home** -
+`config.json`, `secret.dpapi`, `tools/`, `verified-switches.json`, `package-index.json`, `evidence/` and
+`sandbox/` live in the **config home** -
 `%LOCALAPPDATA%\psadt-deploy\`, overridable with `$env:PSADT_DEPLOY_HOME` - **not** in the skill folder,
 so they survive a `git pull`, a re-clone and a re-install. They are machine-local and never committed.
 
@@ -107,7 +108,7 @@ psadt-deploy/
 │  ├─ conventions.md · research-trust.md the binding conventions, and why fetched text is data
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
 ├─ evals/                                trigger + behaviour eval suite
-└─ tests/                                Pester suite, 968 tests
+└─ tests/                                Pester suite, 987 tests
 ```
 
 Machine-local state lives outside the skill folder:

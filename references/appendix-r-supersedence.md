@@ -110,7 +110,9 @@ pwsh scripts/Set-IntuneAppSupersedence.ps1 -AppId '<new>' -SupersedesAppId '<old
 ```
 
 Or in one pass at upload time: `Invoke-IntuneWin32Upload.ps1 ... -SupersedesAppId '<old>'
--SupersedenceType update -Execute`.
+-SupersedenceType update -Execute`. That wires the relationship but does **not** write the note on the old
+version that `SKILL.md` requires for every supersedence; run the script above afterwards - it keeps the
+existing edge and adds the note. The upload prints that command with the ids filled in.
 
 Three mechanics worth knowing, because they explain the script's shape:
 

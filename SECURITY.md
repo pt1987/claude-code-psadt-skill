@@ -19,6 +19,75 @@ The skill deliberately does **not** declare `allowed-tools`. That field pre-appr
 turn; it does not restrict them. For a skill that installs software as SYSTEM and writes to a tenant,
 being asked each time is the feature, not the friction.
 
+## Entra permissions
+
+Packaging and the Windows Sandbox test need no Entra permission at all. Only the steps that write to the
+tenant do: the upload, supersedence, and the opt-in group-assignment and policy scripts. All of them
+authenticate as one Entra application, which `scripts/New-PsadtEntraApp.ps1` creates once. The manual
+portal route, for a host where that script cannot run, is in `references/app-registration.md`.
+
+### Application permissions the app holds
+
+Microsoft Graph application permissions, each admin-consented. The first is the only one an upload needs;
+the others are granted only when their flag is passed.
+
+| Permission | Needed | Flag | What the skill does with it | Scripts |
+|---|---|---|---|---|
+| `DeviceManagementApps.ReadWrite.All` | for any upload | default | create the Win32 app and upload its content, read existing versions, set supersedence and record it on the old version, assign the app | `Invoke-IntuneWin32Upload.ps1`, `Get-IntuneAppVersions.ps1`, `Set-IntuneAppSupersedence.ps1`, `Invoke-IntuneAppAssignment.ps1` |
+| `Group.Create` | opt-in | `-IncludeGroupManagement` | create an assignment group, which the app then owns. Deliberately not the tenant-wide `Group.ReadWrite.All` | `Invoke-IntuneAppAssignment.ps1` |
+| `GroupMember.Read.All` | opt-in | `-IncludeGroupManagement` | find an existing group by name | `Invoke-IntuneAppAssignment.ps1` |
+| `DeviceManagementConfiguration.ReadWrite.All` | opt-in | `-IncludeConfigurationManagement` | create a firewall-rule policy or a trusted-certificate profile | `New-IntuneFirewallPolicy.ps1`, `New-IntuneTrustedCertPolicy.ps1` |
+
+### Delegated permissions, for one sign-in
+
+Granted by the person who signs in, for that run only. The tokens are held in memory and never written to
+disk.
+
+| Permission | When | Script |
+|---|---|---|
+| `Application.ReadWrite.All`, `AppRoleAssignment.ReadWrite.All` | the one-time bootstrap: create or update the app registration and consent its permissions | `New-PsadtEntraApp.ps1` |
+| `DeviceManagementConfiguration.ReadWrite.All` | only when a policy script runs with `-Interactive` instead of as the app | `New-IntuneFirewallPolicy.ps1`, `New-IntuneTrustedCertPolicy.ps1` |
+
+The bootstrap has to be run by a **Global Administrator** or a **Privileged Role Administrator**: granting
+an application permission requires one of the two. An Application Administrator can create the app but
+not consent it; the script then leaves `intune.uploadEnabled` at `false` and names the permissions still
+pending.
+
+### What `scripts/New-PsadtEntraApp.ps1` does
+
+It runs once, interactively, and has no dry run: unlike the Intune write paths in section 5 it writes to
+Entra right after the sign-in, and the sign-in and the consent are the confirmation. In order:
+
+1. **Sign-in.** Through Microsoft's public "Microsoft Graph Command Line Tools" client
+   (`14d82eec-204b-4c2f-b7e8-296a70dab67e`), using WAM, the Windows sign-in broker. The device-code flow
+   is the fallback, or forced with `-UseDeviceCode`. WAM needs four MSAL.NET packages: they come from the
+   local NuGet cache or are downloaded once from `api.nuget.org` into `%LOCALAPPDATA%\PsadtIntune\msal`,
+   and each is checked against a pinned SHA256 before it is loaded (section 3).
+2. **App registration.** Creates **PSADT Intune Upload** (this tenant only, no redirect URI) and its
+   service principal, or reuses the one recorded in `config.json`.
+3. **Permissions and consent.** Adds the requested application permissions and grants admin consent by
+   creating the app-role assignments on the service principal. Permissions already in place are merged,
+   never removed.
+4. **Credential.** With `-UseCertificate -CertThumbprint` it uploads the certificate's public key; the
+   private key stays in `Cert:\CurrentUser\My`. Otherwise it creates a client secret named
+   `PSADT upload secret`, valid for 12 months by default (`-SecretValidMonths`, 1 to 24). The secret is
+   never displayed, and older secrets are counted but never deleted.
+5. **Local config.** Writes the tenant id, client id, app object id, credential expiry and the permissions
+   actually granted to `config.json`, and the secret DPAPI-encrypted to `secret.dpapi` (section 6).
+   `intune.uploadEnabled` becomes `true` only once consent is in place.
+
+It assigns no directory role, creates no group, changes no Conditional Access policy and deletes nothing.
+Running it again is the normal way to add an opt-in permission or to issue a fresh secret.
+
+### Check it, or take it back
+
+- `scripts/Test-PsadtIntuneAccess.ps1` shows, read-only, which permissions the app's token carries and
+  when its credential expires. Its only write is those verified permissions back into the local config;
+  `-NoPersist` skips even that.
+- To revoke all access, delete the **PSADT Intune Upload** app registration in the Entra admin center.
+  Removing a single permission there applies to every token issued after the change. Locally, delete
+  `secret.dpapi` and remove the `intune.*` keys with `scripts/Set-PsadtConfig.ps1 -Remove`.
+
 ## Risk surface and controls
 
 ### 1. Code execution as SYSTEM on the authoring machine
@@ -85,7 +154,7 @@ Upload, group assignment and certificate/firewall policies write to the tenant.
 
 | Control | Where |
 |---|---|
-| **Every write path dry-runs first**, prints the exact `-Execute` action, and waits for confirmation | `scripts/Invoke-IntuneWin32Upload.ps1`, `scripts/Invoke-IntuneAppAssignment.ps1`, `scripts/New-IntuneTrustedCertPolicy.ps1`, `scripts/New-IntuneFirewallPolicy.ps1` |
+| **Every Intune write path dry-runs first**, prints the exact `-Execute` action, and waits for confirmation. The one-time Entra bootstrap is the exception and says so - see [Entra permissions](#entra-permissions) | `scripts/Invoke-IntuneWin32Upload.ps1`, `scripts/Invoke-IntuneAppAssignment.ps1`, `scripts/New-IntuneTrustedCertPolicy.ps1`, `scripts/New-IntuneFirewallPolicy.ps1` |
 | Required roles are asserted **before** the first write, instead of discovering a 403 halfway through an upload | `scripts/Test-PsadtIntuneAccess.ps1` |
 | Access state is three-valued - `verified` / `refused` / **`unknown`**. Unknown is never treated as permitted | `scripts/Test-PsadtIntuneAccess.ps1` |
 | Nothing is deleted: no app version, no group, no other app's assignment. Ambiguous names are skipped, not guessed | `scripts/Invoke-IntuneAppAssignment.ps1` |
@@ -99,13 +168,13 @@ Upload, group assignment and certificate/firewall policies write to the tenant.
 | Preferred alternative | A **certificate** (`-UseCertificate -CertThumbprint`); `intune.certThumbprint` takes precedence over a stored secret |
 | Location | `%LOCALAPPDATA%\psadt-deploy\` (override `$env:PSADT_DEPLOY_HOME`) - **outside the skill folder**, so a re-clone, update or re-install cannot read, move or overwrite it. A legacy config still sitting beside `scripts\` is readable but **not writable**: writing refuses and names the migration, so a secret cannot be created inside the skill tree |
 | Path handling | `intune.secretRef` names a file beside `config.json`, never a path - a value containing a separator, a drive or `..` is refused by the reader and by the token script instead of resolving outside the config home |
-| Concurrent writes | The manifest, `config.json` and the verified-switch store are replaced through a temp file and a rename under a named mutex - Phase 6 and Phase 7 write the same manifest in the same turn by design | `scripts/_JsonStore.ps1` |
+| Concurrent writes | The manifest, `config.json` and the verified-switch store are replaced through a temp file and an atomic `File.Replace` under a named mutex - Phase 6 and Phase 7 write the same manifest in the same turn by design. A replace that fails **throws** and leaves the original in place; it never loses the update silently (`scripts/_JsonStore.ps1`, `tests/_JsonStore.Tests.ps1`) |
 | Repository hygiene | `config.json`, `secret.dpapi`, `tools/`, `*.pfx`, `*.cer`, `*.key` and `secrets.*` are gitignored |
 | Expiry | The setup doctor counts down to credential expiry and warns inside 30 days |
 
-The Entra application is created by `scripts/New-PsadtEntraApp.ps1` and needs administrator consent.
-Group-management permissions are a separate opt-in flag (`-IncludeGroupManagement`), so an
-upload-only installation never carries them.
+Which permissions the Entra application holds, what creates it, and how to revoke it:
+[Entra permissions](#entra-permissions). Group management and configuration policies are separate opt-in
+flags, so an upload-only installation never carries them.
 
 ### 7. Artefacts that leave the machine
 
@@ -132,7 +201,7 @@ skill installed.
 - Delete an existing Intune app, app version, group or another app's assignment.
 - Assign an app to anyone unless the user opted in at a decision gate.
 - Upload a package whose SYSTEM test did not pass.
-- Run `-Execute` on any write path without a preceding dry-run and a confirmation.
+- Run `-Execute` on any Intune write path without a preceding dry-run and a confirmation.
 - Disable Defender, enable `testsigning`, or weaken Code Integrity to make an install succeed.
 - Store a secret inside the skill folder or the repository.
 - Send telemetry, or transmit package contents, logs or configuration anywhere other than the

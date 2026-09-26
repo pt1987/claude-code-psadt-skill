@@ -2,6 +2,58 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.49.1 - 2026-09-26 - The permissions it asks for were written down nowhere a reader looks
+
+Anyone deciding whether to let this skill into a tenant asks one question first: which Entra permissions
+does it want, and what does its setup script do with an administrator's sign-in? `SECURITY.md` said
+"needs administrator consent" and stopped. The README said less. The real list lived in
+`references/app-registration.md`, which is agent-facing depth, and it was wrong in one place: it said
+delegated scopes are used only by the bootstrap, while the firewall and certificate-policy scripts request
+`DeviceManagementConfiguration.ReadWrite.All` delegated whenever they run `-Interactive`.
+
+`SECURITY.md` now has an **Entra permissions** section: every application permission with its flag, what
+the skill does with it and which script uses it; both delegated routes; who has to sign in; what
+`New-PsadtEntraApp.ps1` does, step by step, including the MSAL download it makes for the Windows sign-in
+and the fact that it has no dry run; and how to check or revoke access. The README says what an upload
+needs before anyone installs, and links there. `SECURITY.md` also stops claiming that every write path
+dry-runs first: every Intune write path does, the one-time Entra bootstrap does not.
+`tests/EntraPermissionsDoc.Tests.ps1` reads the roles and scopes the scripts actually request, so the list
+cannot drift from the code again.
+
+A sweep for other statements the code no longer keeps found five more:
+
+- **The upload sent supersedence to the portal.** Its closing hint still said "set it in the portal", and
+  `SKILL.md` and Appendix R.4 offered the upload-time `-SupersedesAppId` as an equal route. That route
+  wires the relationship but writes no note on the old version, which `SKILL.md` requires for every
+  supersedence and which only `Set-IntuneAppSupersedence.ps1` writes. Both hints now print that script's
+  command with the ids filled in, and the docs say the upload route needs it afterwards.
+- **The dossier's English view was half German.** The SYSTEM-test table read "erkannt / detected" - one
+  hard-coded bilingual string no language switch could reach. It now carries one value per language. The
+  browser tab title was fixed to "Paket-Report" for the same reason.
+- **The dossier called the SYSTEM test "Phase 5.5".** A number from an older phase plan; in `SKILL.md` it
+  is Phase 6, and 5.5 is a pre-flight step.
+- **The roadmap described a GitHub sync that is no longer the plan** - a Git push with LFS for `.intunewin`
+  files. It now describes what is planned: the package and output folders as release assets in a private
+  repository, without the `.intunewin`.
+- `docs/setup-and-structure.md` named four of the config home's seven entries in prose, and the
+  installer's comment still said this repository publishes no GitHub Releases.
+
+**And two defects in `Write-JsonAtomic`**, the writer behind the manifest, `config.json` and the
+verified-switch store. Its commit step was `Move-Item -Force`, whose failure is a non-terminating error:
+when another process held the file open, no caller heard of it, the temp file was deleted and the update
+was gone - reproduced by holding the file open. A Windows Sandbox run with `-KeepSandboxOpen`, whose VM
+still had the package folder mapped, reported exactly that error, and the package's `psadt-package.json`
+was missing afterwards. The commit is now `File.Replace`, which keeps the original when it cannot replace
+it, and a failed write throws. Re-running that same sandbox scenario on the fix: the write fails with
+"the file to be replaced cannot be removed", the run says so, and the manifest is still there with its
+previous content. The mutex name was derived with `[SHA256]::HashData`, which Windows PowerShell 5.1 does
+not have, so since 0.46.0 every store write threw there - including `config.json` from
+`New-PsadtEntraApp.ps1`, which promises 5.1 and writes the config only after it has created the app and
+a secret it never displays. `tests/_JsonStore.Tests.ps1` covers both, the second by running
+`Set-PsadtConfig.ps1` under Windows PowerShell 5.1 the way the bootstrap calls it.
+
+Suite 968 -> 987.
+
 ## 0.49.0 - 2026-09-26 - The second version of an app started from a blank sheet
 
 Packaging an application teaches you things that take hours to find: that AOMEI Partition Assistant needs
