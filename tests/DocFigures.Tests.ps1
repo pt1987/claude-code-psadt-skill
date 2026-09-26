@@ -15,6 +15,10 @@ BeforeAll {
     $script:root = Split-Path $PSScriptRoot -Parent
 
     # --- derived from the repository -------------------------------------------------------------
+    $doctor = Get-Content -LiteralPath (Join-Path $script:root 'scripts/Initialize-PsadtSkill.ps1') -Raw
+    $script:doctorCheckCount = @([regex]::Matches($doctor, "Add-Check\s+'([^']+)'") |
+            ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique).Count
+
     $preflight = Get-Content -LiteralPath (Join-Path $script:root 'scripts/Invoke-PsadtPreflight.ps1') -Raw
     $script:checkCount = @([regex]::Matches($preflight, "Add-Check\s+'([^']+)'") |
         ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique).Count
@@ -53,10 +57,25 @@ BeforeAll {
 Describe 'figures the docs quote about this repository' {
     It 'counts pre-flight checks the way the script does' {
         $script:checkCount | Should -BeGreaterThan 0 -Because 'the check names are read out of Invoke-PsadtPreflight.ps1'
+        # Deliberately does NOT match "prerequisite checks": that is the doctor, counted separately
+        # below. The two numbers are equal today and mean different things, so one regex over both
+        # would pass by coincidence and break confusingly the moment either moves.
         $claims = @(Get-Claims '(\d+)\s+checks')
         $claims | Should -Not -BeNullOrEmpty -Because 'the pre-flight gate is a headline feature and the docs quote its size'
         foreach ($c in $claims) {
             $c.Value | Should -Be $script:checkCount -Because "$($c.Doc) says '$($c.Text)' and the script emits $($script:checkCount) distinct checks"
+        }
+    }
+
+    It 'counts the doctor prerequisite checks the way the doctor does' {
+        # README said "13 prerequisite checks" while the doctor ran 14 - WindowsSandbox, added in
+        # 0.46.0 precisely so a machine that cannot run Phase 6 says so at setup. The pre-flight guard
+        # above could not see it, because its regex wanted the digits immediately before "checks".
+        $script:doctorCheckCount | Should -BeGreaterThan 0
+        $claims = @(Get-Claims '(\d+)\s+prerequisite checks')
+        $claims | Should -Not -BeNullOrEmpty -Because 'the setup doctor is a headline feature and the docs quote its size'
+        foreach ($c in $claims) {
+            $c.Value | Should -Be $script:doctorCheckCount -Because "$($c.Doc) says '$($c.Text)' and Initialize-PsadtSkill.ps1 emits $($script:doctorCheckCount) distinct checks"
         }
     }
 

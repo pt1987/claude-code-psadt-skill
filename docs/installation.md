@@ -53,7 +53,9 @@ a folder containing `Invoke-AppDeployToolkit.ps1`.
 
 ## Requirements
 
-- Windows with PowerShell 5.1+ / PowerShell 7+
+- Windows with **PowerShell 7+**. This is a floor, not a preference: the doctor's `PowerShell7` check
+  is a hard FAIL below 7. Windows PowerShell 5.1 is checked separately and warn-only - the Phase 6
+  SYSTEM test re-executes through it, packaging never does.
 - For the `npx` installer only: **Node 18+** (the skill itself never needs Node)
 - [PSAppDeployToolkit](https://psappdeploytoolkit.com/) v4.x *(installed/updated automatically from the
   PowerShell Gallery if missing)*

@@ -61,6 +61,20 @@ BeforeAll {
         Set-ItResult -Skipped -Because 'no gh-pages ref in this clone - fetch it to run this guard'
         return $false
     }
+    function Get-Block {
+        param([string]$Name)
+        # Slices `const <NAME> = [ ... ]` out of the page so a regex cannot stray into a neighbour.
+        # Plain string arithmetic on purpose: a regex needing \r?\n is one escaping mistake away from
+        # matching nothing and reporting it as "the array is missing", which is what happened here.
+        # Defined in BeforeAll, not in the Describe - Pester does not carry a Describe-scoped function
+        # into its It blocks, and the failure then reads as a typo rather than a scoping rule.
+        $open = "const $Name = ["
+        $i = $script:site.IndexOf($open)
+        if ($i -lt 0) { return $null }
+        $j = $script:site.IndexOf("`n]", $i)
+        if ($j -lt 0) { return $null }
+        return $script:site.Substring($i, $j - $i)
+    }
 
     function Get-Tile {
         param([string]$Label)
@@ -127,4 +141,85 @@ Describe 'the landing page counts what the repository actually contains' {
     #                    what those phases ARE, so it would test the wrong thing.
     #   'Pester tests' - would have to run this suite to know, from inside this suite. That figure is
     #                    updated by the release that changes it, and the changelog records both numbers.
+}
+
+Describe 'the landing page lists everything it claims to list' {
+
+    # Why this block exists. Every assertion above checks a NUMBER - a tile value, a count in a
+    # sentence. None of them ever asked whether the list that number describes is actually complete.
+    # So the engine tile correctly said 19 while the table under it showed 14 rows, for several
+    # releases, with the suite green the whole time. A figure guard that only reads figures is half a
+    # guard: it catches a stale number and waves through a stale list.
+
+    It 'the engine table has a row for every engine in the switch catalog' {
+        if (-not (Test-SiteAvailable)) { return }
+        $block = Get-Block 'ENGINES'
+        $block | Should -Not -BeNullOrEmpty -Because 'the ENGINES array should be findable'
+        $catalog = Get-Content -LiteralPath (Join-Path $script:root 'references/switch-catalog/engine-defaults.json') -Raw | ConvertFrom-Json
+        $catalogIds = @($catalog.engines | ForEach-Object { [string]$_.engine } | Sort-Object)
+        # Each row carries the catalog id so this is an identity check, not a fuzzy match on prose.
+        $pageIds = @([regex]::Matches($block, "id:\s*'([a-z0-9-]+)'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object)
+        $missing = @($catalogIds | Where-Object { $pageIds -notcontains $_ })
+        $extra = @($pageIds | Where-Object { $catalogIds -notcontains $_ })
+        $missing | Should -BeNullOrEmpty -Because "the page promises the trap for every engine; missing: $($missing -join ', ')"
+        $extra | Should -BeNullOrEmpty -Because "the page lists engines the catalog does not have: $($extra -join ', ')"
+    }
+
+    It 'the pre-flight list names every check the gate actually runs' {
+        if (-not (Test-SiteAvailable)) { return }
+        $block = Get-Block 'CHECKS'
+        $block | Should -Not -BeNullOrEmpty
+        $preflight = Get-Content -LiteralPath (Join-Path $script:root 'scripts/Invoke-PsadtPreflight.ps1') -Raw
+        $real = @([regex]::Matches($preflight, "Add-Check\s+'([^']+)'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+        $page = @([regex]::Matches($block, "name:\s*'([^']+)'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+        $missing = @($real | Where-Object { $page -notcontains $_ })
+        $missing | Should -BeNullOrEmpty -Because "a check the gate runs but the page never mentions is a check nobody knows can stop them; missing: $($missing -join ', ')"
+        @($page | Where-Object { $real -notcontains $_ }) | Should -BeNullOrEmpty -Because 'the page should not invent checks'
+    }
+
+    It 'the pre-flight count in the prose matches that list' {
+        if (-not (Test-SiteAvailable)) { return }
+        $preflight = Get-Content -LiteralPath (Join-Path $script:root 'scripts/Invoke-PsadtPreflight.ps1') -Raw
+        $real = @([regex]::Matches($preflight, "Add-Check\s+'([^']+)'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique).Count
+        $words = @{ Ten = 10; Eleven = 11; Twelve = 12; Thirteen = 13; Fourteen = 14; Fifteen = 15; Sixteen = 16 }
+        $m = [regex]::Match($script:site, '(\w+) check categories')
+        $m.Success | Should -BeTrue -Because 'the Phase 5 blurb should still state how many checks there are'
+        $spelled = $m.Groups[1].Value
+        $words.ContainsKey($spelled) | Should -BeTrue -Because "'$spelled' is not a number word this guard knows"
+        $words[$spelled] | Should -Be $real
+    }
+
+    It 'the SYSTEM-test loop lists every deployment action' {
+        if (-not (Test-SiteAvailable)) { return }
+        $block = Get-Block 'LOOP'
+        $sandbox = Get-Content -LiteralPath (Join-Path $script:root 'scripts/Invoke-PsadtSandboxTest.ps1') -Raw
+        # The five action ids the phase plan appends, in Initialize-PhasePlan.
+        $real = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall') |
+            Where-Object { $sandbox -match "'$_'" }
+        @([regex]::Matches($block, "action:\s*'([^']+)'")).Count | Should -Be $real.Count
+    }
+
+    It 'the phase list has as many phases as the tile claims' {
+        if (-not (Test-SiteAvailable)) { return }
+        # Internal agreement, which is what the note below is about: this does not assert 13 against the
+        # repo, it asserts that the number on the tile and the list under it cannot drift apart.
+        $block = Get-Block 'PHASES'
+        $rows = @([regex]::Matches($block, "\{\s*num:\s*'")).Count
+        (Get-Tile 'phases').Value | Should -Be $rows
+    }
+
+    It 'every tooltip belongs to something the page actually shows' {
+        if (-not (Test-SiteAvailable)) { return }
+        # A TIPS key that matches no label renders nothing at all - no error, no empty box, just a row
+        # with no hover. Renaming a label and forgetting its tooltip is therefore silent.
+        $ti = $script:site.IndexOf("const TIPS = {")
+        $tj = $script:site.IndexOf("`n}", $ti)
+        $tipsBody = if ($ti -ge 0 -and $tj -gt $ti) { $script:site.Substring($ti, $tj - $ti) } else { '' }
+        $tipsBody | Should -Not -BeNullOrEmpty
+                $keys = @([regex]::Matches($tipsBody, "(?m)^\s{2}'([^']+)':") | ForEach-Object { $_.Groups[1].Value })
+        $labels = @([regex]::Matches($script:site, "label:\s*'([^']+)'") | ForEach-Object { $_.Groups[1].Value })
+        $names = @([regex]::Matches((Get-Block 'CHECKS'), "name:\s*'([^']+)'") | ForEach-Object { $_.Groups[1].Value })
+        $orphans = @($keys | Where-Object { $labels -notcontains $_ -and $names -notcontains $_ })
+        $orphans | Should -BeNullOrEmpty -Because "these tooltips can never be shown: $($orphans -join ', ')"
+    }
 }

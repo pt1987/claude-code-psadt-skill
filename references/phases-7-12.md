@@ -261,7 +261,20 @@ Only after success: production rollout.
 - Review the Company Portal description + support notes
 - Known issues into the internal knowledge base
 
-### 12.3 Ongoing
+### 12.3 Rollback
+- The prior version was never deleted (`-OnExisting CreateNewCoexist`), so rollback is a re-point, not a rebuild
+- Re-point the **assignment** AND the **supersedence** at the retained version - moving only the assignment
+  leaves the new app still declaring itself the successor, and the chain keeps pulling devices forward
+- `Get-IntuneAppVersions.ps1` shows which versions exist and how they are related before you touch anything
+
+### 12.4 Retirement
+- Intune has **no retire state** for a Win32 app, and Microsoft publishes no retention guidance. The
+  sequence is deliberate: supersede -> remove the old app's **required** assignment -> optionally add an
+  Uninstall assignment -> delete last, and only when the node ceiling forces pruning
+- An app declared superseded and left required still installs on every new device in that group, because
+  supersedence only reaches devices the superseding app targets. App. R.6 / R.7 has the full sequence
+
+### 12.5 Ongoing
 - Subscribe to the GitHub release feed (Releases -> Watch -> Releases only) so you don't miss PSADT updates
 - Check with every new package: is the module in the scaffold still up to date (Phase 1.1)
 

@@ -69,7 +69,7 @@ Thirteen phases, each owned by a script rather than by prose, so a step either p
 
 | Phase | What happens | Owner |
 |---|---|---|
-| **0** Setup | 13 prerequisite checks, GREEN/YELLOW/RED, `-Fix` provisions | `Initialize-PsadtSkill.ps1` |
+| **0** Setup | 14 prerequisite checks, GREEN/YELLOW/RED, `-Fix` provisions | `Initialize-PsadtSkill.ps1` |
 | **1-2** Intake + research | blocker questions as clickable options; a local-evidence ladder (installed here? binary here? already written down?) answers what it can, and a research agent is dispatched only per question it leaves open | agent (gates 1-2) |
 | **3** Scaffold | a generator writes launcher + detection + per-run log name + manifest | `New-MsiPackage` · `New-ExePackage` · `New-BrowserExtensionPackage` · `New-WindowsFeaturePackage` · `New-DriverPackage` |
 | **4** Customize | all three hooks filled from the research, helpers in the Extensions module | agent |
@@ -103,7 +103,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **921 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **928 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -121,7 +121,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 921 Pester tests.
+verified against a live tenant. The helper scripts are covered by 928 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -170,7 +170,14 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.47.0 - The supersedence this skill has been wiring may never have been wired.** The upload has
+Latest: **0.48.0 - The figure guards only ever read the figures.** The landing page described a skill two
+releases old, and the guards could not see it: every site assertion checked a number, never whether the
+list behind it was complete. The engine tile correctly said 19 while the table under it showed 14 rows.
+The pre-flight gate was described as ten checks and runs fourteen. Phase 9 still told the reader to wire
+supersedence themselves. The page is corrected, three wrong statements in the repo with it, and the
+guards now compare lists name-by-name instead of counting.
+
+Previously: **0.47.0 - The supersedence this skill has been wiring may never have been wired.** The upload has
 POSTed a supersedence relationship since 0.8.x, on a route that is reported not to exist, catching the
 failure and printing a yellow line - so a chain that never took looked like a normal run. No test touched
 any of it. The write now uses the `updateRelationships` action the admin center uses, merges onto the
