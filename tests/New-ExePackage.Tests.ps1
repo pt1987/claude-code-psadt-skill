@@ -67,3 +67,23 @@ Describe 'New-ExePackage.ps1 refuses the comment terminator in Author and Change
         $script:genText | Should -Match 'Assert-NoCommentTerminator[^\r\n]*\$Changelog'
     }
 }
+
+Describe 'the installer hash is recorded, so the manifest can be joined to the stores (0.49.0)' {
+    BeforeAll { $script:genSrc = Get-Content -LiteralPath $script:src -Raw }
+
+    # Both hash-keyed stores - verified-switches.json and evidence\<sha>.json - are indexed by the
+    # SHA256 of the vendor installer. The manifest never recorded it, so a package could not be joined
+    # to what was learned about its own installer. Invoke-PsadtPreflight.ps1:388 already computes this
+    # value from the same staged file; recording it at scaffold time costs one Get-FileHash.
+    It 'records package.installerSha256' {
+        $script:genSrc | Should -Match "'package\.installerSha256'"
+    }
+    It 'hashes the staged installer rather than inventing the value' {
+        $script:genSrc | Should -Match 'Get-FileHash'
+    }
+    It 'records the processes to close, so the next version can inherit them' {
+        # -ProcessesToClose was a generator parameter and nothing else: not in the manifest, not in the
+        # switch store. It had to be retyped for every new version from memory.
+        $script:genSrc | Should -Match "'package\.processesToClose'"
+    }
+}

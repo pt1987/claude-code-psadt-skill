@@ -105,3 +105,62 @@ Describe 'the artifact stem keeps products apart (0.46.0)' {
         (& $script:mfScript -Identity @{ vendor = 'MS'; name = 'C#'; version = '1'; arch = 'x64' }).Stem | Should -Match 'Sharp'
     }
 }
+
+Describe 'ConvertTo-PsadtAppKey - the identity that survives a version bump (0.49.0)' {
+    BeforeAll {
+        # Dot-source the script's functions without running it: the app key has to be testable on its
+        # own, because it is the join between a package built today and one built next year.
+        . (Join-Path $PSScriptRoot '..\scripts\_AppKey.ps1')
+    }
+
+    It 'joins vendor and name, lowercased' {
+        ConvertTo-PsadtAppKey -Vendor 'AOMEI' -Name 'Partition Assistant' | Should -Be 'aomei partition assistant'
+    }
+
+    It 'gives both Chrome package folders the same key' {
+        # Measured on the real machine: C:\PSADT\Packages holds GoogleChrome and
+        # GoogleChrome_154.0.8037.58 - two folders, one application. The folder name is not an identity.
+        $a = ConvertTo-PsadtAppKey -Vendor 'Google LLC' -Name 'Google Chrome'
+        $b = ConvertTo-PsadtAppKey -Vendor 'Google LLC' -Name 'Google Chrome'
+        $a | Should -Be $b
+        $a | Should -Be 'google llc google chrome'
+    }
+
+    It 'trims and collapses whitespace' {
+        # Five entries in the real switch store are stored with PE-header padding - 'WinSCP        '.
+        # An identity that does not normalise whitespace would never match its own successor.
+        ConvertTo-PsadtAppKey -Vendor '  WinSCP   ' -Name '  Client  ' | Should -Be 'winscp client'
+    }
+
+    It 'is stable when the vendor is missing' {
+        ConvertTo-PsadtAppKey -Vendor '' -Name '7-Zip' | Should -Be '7-zip'
+        ConvertTo-PsadtAppKey -Vendor $null -Name '7-Zip' | Should -Be '7-zip'
+    }
+
+    It 'returns empty when there is no name to key on, rather than a key that matches everything' {
+        ConvertTo-PsadtAppKey -Vendor 'Acme' -Name '' | Should -BeNullOrEmpty
+        ConvertTo-PsadtAppKey -Vendor '' -Name '' | Should -BeNullOrEmpty
+    }
+
+    It 'ignores case differences between runs' {
+        ConvertTo-PsadtAppKey -Vendor 'MOZILLA' -Name 'firefox' |
+            Should -Be (ConvertTo-PsadtAppKey -Vendor 'Mozilla' -Name 'Firefox')
+    }
+
+    It 'does NOT strip a version from the name - that is the caller''s identity, not ours to guess' {
+        # The store's productName carries versions ('LibreOffice 26.2.6.3') and that is exactly why the
+        # key is built from app.vendor + app.name instead. Silently stripping digits here would merge
+        # 'Office 2019' and 'Office 2021', which are genuinely different packages.
+        ConvertTo-PsadtAppKey -Vendor 'The Document Foundation' -Name 'LibreOffice 26.2' |
+            Should -Be 'the document foundation libreoffice 26.2'
+    }
+
+    It 'derives the key from a manifest object too' {
+        $mf = [pscustomobject]@{ app = [pscustomobject]@{ vendor = 'AOMEI'; name = 'Partition Assistant' } }
+        Get-PsadtAppKeyFromManifest -Manifest $mf | Should -Be 'aomei partition assistant'
+    }
+
+    It 'returns empty for a manifest with no identity, instead of throwing' {
+        Get-PsadtAppKeyFromManifest -Manifest ([pscustomobject]@{}) | Should -BeNullOrEmpty
+    }
+}

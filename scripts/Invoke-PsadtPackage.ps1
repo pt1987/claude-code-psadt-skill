@@ -191,6 +191,46 @@ try {
         }
     } | Out-Null
 
+    # --- 7b. Append to the package index ----------------------------------------------------------
+    # So the NEXT version of this application can find what this one learned. Every store here is keyed
+    # by the installer SHA256, which changes with every build, and the manifest is a file in a folder
+    # nothing indexes - so without this, the switches, the known issues and both decision gates recorded
+    # today are unreachable in six months. Keyed by app identity (vendor + name), which survives a
+    # version bump where the folder name does not: this machine holds the same application in
+    # 'GoogleChrome' and 'GoogleChrome_154.0.8037.58'.
+    #
+    # Best effort, always. The .intunewin exists by this point; an index is a convenience and losing it
+    # must never turn a finished package into an error. Get-PsadtPriorPackage.ps1 falls back to a scan.
+    try {
+        . (Join-Path $PSScriptRoot '_AppKey.ps1')
+        $idxKey = Get-PsadtAppKeyFromManifest -Manifest $mf.Manifest
+        if ($idxKey) {
+            $idxHome = [string](& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')).Home
+            if ($idxHome) {
+                $idxPath = Join-Path $idxHome 'package-index.json'
+                $idxDoc = if (Test-Path -LiteralPath $idxPath) {
+                    try { Get-Content -LiteralPath $idxPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null }
+                } else { $null }
+                $entries = @()
+                if ($idxDoc -and $idxDoc.entries) { $entries = @($idxDoc.entries) }
+                $mfPath = Join-Path $PackagePath 'psadt-package.json'
+                # One entry per package folder: a re-pack of the same version updates rather than doubles.
+                $entries = @($entries | Where-Object { [string]$_.manifestPath -ne $mfPath })
+                $entries = @([pscustomobject]@{
+                        appKey       = $idxKey
+                        vendor       = [string]$mf.Manifest.app.vendor
+                        name         = [string]$mf.Manifest.app.name
+                        version      = [string]$mf.Manifest.app.version
+                        manifestPath = $mfPath
+                        packagePath  = $PackagePath
+                        packedAt     = (Get-Date).ToUniversalTime().ToString('o')
+                    }) + $entries
+                . (Join-Path $PSScriptRoot '_JsonStore.ps1')
+                Write-JsonAtomic -Path $idxPath -Object ([ordered]@{ schemaVersion = 1; entries = $entries }) -Depth 6
+            }
+        }
+    } catch { Write-Warning "Packaged, but the package index was not updated: $($_.Exception.Message)" }
+
     $result = [pscustomobject]@{
         Stem            = $stem
         IntuneWin       = $target

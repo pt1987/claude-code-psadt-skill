@@ -507,3 +507,21 @@ Describe 'Get-PsadtSwitchCandidates' {
         }
     }
 }
+
+Describe 'the same-product fallback survives a padded product name (0.49.0)' {
+    BeforeAll { $script:cand = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\scripts\Get-PsadtSwitchCandidates.ps1') -Raw }
+
+    # Five of the 24 entries in a real store are written with PE-header padding - 'WinSCP' followed by
+    # fifty spaces, and the same for GIMP, Git, Greenshot and Visual Studio Code. The fallback compared
+    # productName for exact equality, so those five could never match their own successor: the next
+    # build would have to pad to an identical length. Trimming both sides costs nothing and recovers
+    # them. The binary's productName stays the match key - Set-PsadtVerifiedSwitch.ps1 is explicit that
+    # storing a friendly name instead would leave this fallback permanently dead.
+    It 'trims both sides before comparing the product name' {
+        $script:cand | Should -Match '\$_\.productName\)?\.Trim\(\)|Trim\(\)\s*-eq'
+    }
+    It 'still compares productName, not a friendly name from the manifest' {
+        $script:cand | Should -Match 'productName'
+        $script:cand | Should -Not -Match '\$engineInfo\.ProductName\s*-eq\s*\$m\.app\.name'
+    }
+}

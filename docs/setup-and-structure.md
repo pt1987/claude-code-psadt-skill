@@ -55,7 +55,7 @@ psadt-deploy/
 ├─ SKILL.md · README.md · CHANGELOG.md · SECURITY.md · LICENSE
 ├─ package.json · bin/install.mjs        the npx installer (Node 18+, zero dependencies)
 ├─ docs/                                 this documentation set
-├─ scripts/                              41 files: 37 invocable, 4 shared includes
+├─ scripts/                              43 files: 38 invocable, 5 shared includes
 │  │  setup + config
 │  ├─ Initialize-PsadtSkill.ps1          setup doctor (Phase 0, GREEN/YELLOW/RED, -Fix/-Set)
 │  ├─ Get-PsadtConfig.ps1                config read + config-home resolver
@@ -107,7 +107,7 @@ psadt-deploy/
 │  ├─ conventions.md · research-trust.md the binding conventions, and why fetched text is data
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
 ├─ evals/                                trigger + behaviour eval suite
-└─ tests/                                Pester suite, 928 tests
+└─ tests/                                Pester suite, 966 tests
 ```
 
 Machine-local state lives outside the skill folder:
@@ -117,6 +117,10 @@ Machine-local state lives outside the skill folder:
 ├─ config.json                           settings incl. the optional intune.* block
 ├─ secret.dpapi                          DPAPI client secret (only without cert auth)
 ├─ tools/                                IntuneWinAppUtil.exe + WinGet module
+├─ evidence/<sha256>.json                the questions the research ladder could not close, per installer
+├─ sandbox/<Stem>/                       scratch for the running SYSTEM test; replaced on the next run
+├─ package-index.json                    which application was packaged where, so the NEXT version of it
+│                                        can inherit what this one learned (keyed by vendor + name)
 └─ verified-switches.json                what a GREEN full gate proved here, keyed by file hash
 ```
 

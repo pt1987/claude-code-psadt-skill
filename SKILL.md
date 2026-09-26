@@ -157,7 +157,7 @@ at the end. Resolve scope via gates 1 + 2 only, every option pre-filled from res
 
 **Phase 2 - Research, gated.** `pwsh scripts/Get-PsadtLocalEvidence.ps1 -Path <installer>` FIRST: the
 local ladder - installed here? (the Uninstall registry) · binary here? (`Get-PsadtMsiFacts.ps1` /
-`Get-PsadtSwitchCandidates.ps1`) · written down already? (this skill's corpus, and it NAMES a vendor
+`Get-PsadtSwitchCandidates.ps1`) · written down already? (the corpus + `Get-PsadtPriorPackage.ps1`, and it NAMES a vendor
 doc URL for you to fetch) - returning `OpenQuestions[]` + `AgentBudget`.
 <!-- rule:research-gate -->
 **`AgentBudget` IS the dispatch rule: 0 open questions = 0 sub-agents; N = at most N, one per question,
@@ -307,6 +307,19 @@ phase 11, App. E.
 **Phase 12 - Rollout.** All three green → pilot 24-48h → staged production. **Rollback** = re-point the
 assignment (and supersedence) at the retained prior version - it was never deleted (`CreateNewCoexist`).
 Guide Phase 12. Retiring the old version - Intune has no retire state, and Microsoft publishes no retention guidance: App. R.7.
+
+<!-- rule:prior-package-offered -->
+**A version this machine has packaged before is not a blank sheet.** Every store here is keyed by the
+installer SHA256, which changes with every build, so the switches, the known issues, the app mutex, the
+leftovers and both decision gates recorded for the previous version are unreachable by hash.
+`Get-PsadtPriorPackage.ps1` finds them by application identity instead (`app.vendor` + `app.name`, which
+is stable where the folder name and the binary's ProductName are not) and returns what that package
+learned. Run it in Phase 1/2 whenever the app may have been packaged here before. Then **offer the
+carried values as stated assumptions the operator confirms or corrects** - the same way a research
+finding is offered - and record what they confirm with `Set-PsadtPackageManifest.ps1`, tagged with the
+version it came from. Never apply them silently: a vendor can change the uninstaller between versions,
+and last year's workaround applied unseen is worse than one re-made. Nothing about this is a gate; an app
+with no predecessor proceeds exactly as before.
 
 ## Sub-agent architecture (roles + handoffs)
 

@@ -190,8 +190,16 @@ if ($stagesRequested -contains 0) {
                 })
         }
         else {
+            # Trimmed on both sides. A ProductName comes straight out of the MSI Property table or the
+            # PE header, and both preserve padding verbatim - five entries in a real 24-entry store are
+            # stored as 'WinSCP' followed by fifty spaces, and the same for GIMP, Git, Greenshot and
+            # Visual Studio Code. An exact comparison means those five can never match their own
+            # successor unless the next build pads to an identical length. The productName stays the
+            # match key (storing a friendly name instead would leave this fallback permanently dead,
+            # Set-PsadtVerifiedSwitch.ps1:38-46); only the whitespace goes.
+            $wantProduct = ([string]$engineInfo.ProductName).Trim()
             $sameProduct = @($entries | Where-Object {
-                    $_.productName -and $engineInfo.ProductName -and $_.productName -eq $engineInfo.ProductName
+                    $_.productName -and $wantProduct -and ([string]$_.productName).Trim() -eq $wantProduct
                 })[0]
             if ($sameProduct) {
                 # productVersion comes from the PE header, which for a WRAPPED installer is the
