@@ -30,13 +30,14 @@ repeating it. Only the first row is required; the rest are opt-in and off by def
 The `Groups` capability needs **both** group roles: an app that can create a group but not read its members
 produces a half-finished assignment. `Test-PsadtIntuneAccess.ps1` reports which half is missing.
 
-**Delegated scopes** - used only by the one-time bootstrap sign-in (you, as an admin, in
-`New-PsadtEntraApp.ps1`). They are never stored and never used for packaging or upload.
+**Delegated scopes** - granted by the person who signs in, for that run only. They are held in memory,
+never stored, and never used for packaging or upload.
 
 | Scope | Needed for |
 |---|---|
-| `Application.ReadWrite.All` | create / update the app registration |
-| `AppRoleAssignment.ReadWrite.All` | grant + admin-consent the application roles above |
+| `Application.ReadWrite.All` | bootstrap (`New-PsadtEntraApp.ps1`): create / update the app registration |
+| `AppRoleAssignment.ReadWrite.All` | bootstrap (`New-PsadtEntraApp.ps1`): grant + admin-consent the application roles above |
+| `DeviceManagementConfiguration.ReadWrite.All` | `New-IntuneFirewallPolicy.ps1` / `New-IntuneTrustedCertPolicy.ps1` run with `-Interactive` - the route that needs no app registration at all |
 
 Granting the application roles requires **Global Administrator** or **Privileged Role Administrator**. A
 non-admin sign-in can create the app but not consent it: `New-PsadtEntraApp.ps1` then leaves
