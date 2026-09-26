@@ -168,7 +168,7 @@ Upload, group assignment and certificate/firewall policies write to the tenant.
 | Preferred alternative | A **certificate** (`-UseCertificate -CertThumbprint`); `intune.certThumbprint` takes precedence over a stored secret |
 | Location | `%LOCALAPPDATA%\psadt-deploy\` (override `$env:PSADT_DEPLOY_HOME`) - **outside the skill folder**, so a re-clone, update or re-install cannot read, move or overwrite it. A legacy config still sitting beside `scripts\` is readable but **not writable**: writing refuses and names the migration, so a secret cannot be created inside the skill tree |
 | Path handling | `intune.secretRef` names a file beside `config.json`, never a path - a value containing a separator, a drive or `..` is refused by the reader and by the token script instead of resolving outside the config home |
-| Concurrent writes | The manifest, `config.json` and the verified-switch store are replaced through a temp file and a rename under a named mutex - Phase 6 and Phase 7 write the same manifest in the same turn by design | `scripts/_JsonStore.ps1` |
+| Concurrent writes | The manifest, `config.json` and the verified-switch store are replaced through a temp file and an atomic `File.Replace` under a named mutex - Phase 6 and Phase 7 write the same manifest in the same turn by design. A replace that fails **throws** and leaves the original in place; it never loses the update silently (`scripts/_JsonStore.ps1`, `tests/_JsonStore.Tests.ps1`) |
 | Repository hygiene | `config.json`, `secret.dpapi`, `tools/`, `*.pfx`, `*.cer`, `*.key` and `secrets.*` are gitignored |
 | Expiry | The setup doctor counts down to credential expiry and warns inside 30 days |
 

@@ -110,7 +110,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **982 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **987 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -128,7 +128,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 982 Pester tests.
+verified against a live tenant. The helper scripts are covered by 987 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -185,7 +185,9 @@ now lists every Entra permission the skill can use - with its flag, its purpose 
 says who has to sign in, what `New-PsadtEntraApp.ps1` does step by step and how to revoke access, and the
 README names what an upload needs. A sweep for other stale statements fixed the upload's supersedence
 hint, which pointed at the portal instead of the script that records the change, and the dossier's English
-view, which still showed German detection values and called the SYSTEM test "Phase 5.5".
+view, which still showed German detection values and called the SYSTEM test "Phase 5.5". The JSON store
+writer no longer loses an update silently when the file is held open, and runs under Windows PowerShell
+5.1 again.
 
 Previously: **0.49.0 - The second version of an app started from a blank sheet.** Everything learned while
 packaging an application - the switches that took an afternoon, the uninstaller that has to be renamed

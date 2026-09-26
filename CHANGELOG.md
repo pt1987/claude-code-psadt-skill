@@ -38,7 +38,21 @@ A sweep for other statements the code no longer keeps found five more:
 - `docs/setup-and-structure.md` named four of the config home's seven entries in prose, and the
   installer's comment still said this repository publishes no GitHub Releases.
 
-Suite 968 -> 982.
+**And two defects in `Write-JsonAtomic`**, the writer behind the manifest, `config.json` and the
+verified-switch store. Its commit step was `Move-Item -Force`, whose failure is a non-terminating error:
+when another process held the file open, no caller heard of it, the temp file was deleted and the update
+was gone - reproduced by holding the file open. A Windows Sandbox run with `-KeepSandboxOpen`, whose VM
+still had the package folder mapped, reported exactly that error, and the package's `psadt-package.json`
+was missing afterwards. The commit is now `File.Replace`, which keeps the original when it cannot replace
+it, and a failed write throws. Re-running that same sandbox scenario on the fix: the write fails with
+"the file to be replaced cannot be removed", the run says so, and the manifest is still there with its
+previous content. The mutex name was derived with `[SHA256]::HashData`, which Windows PowerShell 5.1 does
+not have, so since 0.46.0 every store write threw there - including `config.json` from
+`New-PsadtEntraApp.ps1`, which promises 5.1 and writes the config only after it has created the app and
+a secret it never displays. `tests/_JsonStore.Tests.ps1` covers both, the second by running
+`Set-PsadtConfig.ps1` under Windows PowerShell 5.1 the way the bootstrap calls it.
+
+Suite 968 -> 987.
 
 ## 0.49.0 - 2026-09-26 - The second version of an app started from a blank sheet
 

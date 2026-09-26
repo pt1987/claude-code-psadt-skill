@@ -13,9 +13,12 @@
     A half-written config.json is worse than a missing one: Get-PsadtConfig.ps1 reports it as "malformed"
     and every script downstream then behaves as if the skill had never been set up.
 
-    So: serialise through a per-path mutex, write to a sibling temp file, flush it, and rename over the
-    target. Move-Item -Force on the same volume is a metadata operation - a reader sees either the old
-    file or the new one, never a truncated one.
+    So: serialise through a per-path mutex, write to a sibling temp file, and replace the target with it.
+    On the same volume that is a metadata operation - a reader sees either the old file or the new one,
+    never a truncated one.
+
+    A failed replace THROWS. Until 0.49.1 the commit was Move-Item -Force, whose failure is a
+    non-terminating error: no caller heard of it, the temp file was deleted and the update was gone.
 
 .PARAMETER Path     The store to replace.
 .PARAMETER Object   The object to serialise.
@@ -33,6 +36,10 @@ function Write-JsonAtomic {
         [int]$Depth = 12
     )
 
+    # Absolute before any .NET call: [System.IO.File] resolves a relative path against the process
+    # directory, PowerShell against its own location, and the two are not the same.
+    $Path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+
     $dir = Split-Path -Parent $Path
     if ($dir -and -not (Test-Path -LiteralPath $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
@@ -42,9 +49,13 @@ function Write-JsonAtomic {
 
     # One mutex per store path. Global\ so it spans sessions, not just this process; the path is hashed
     # because a mutex name cannot contain a backslash and is capped at 260 characters.
-    $key = [System.BitConverter]::ToString(
-        [System.Security.Cryptography.SHA256]::HashData(
-            [System.Text.Encoding]::UTF8.GetBytes($Path.ToLowerInvariant()))).Replace('-', '').Substring(0, 32)
+    # SHA256.Create(), not [SHA256]::HashData: HashData exists only from .NET 5 on, so under Windows
+    # PowerShell 5.1 every write threw - config.json from New-PsadtEntraApp.ps1 included, a script that
+    # promises 5.1 and writes the config only after it has created the app and an undisplayed secret.
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { $hash = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Path.ToLowerInvariant())) }
+    finally { $sha.Dispose() }
+    $key = [System.BitConverter]::ToString($hash).Replace('-', '').Substring(0, 32)
     $mutex = [System.Threading.Mutex]::new($false, "Global\psadt-jsonstore-$key")
     $held = $false
     try {
@@ -61,9 +72,16 @@ function Write-JsonAtomic {
 
         $tmp = "$Path.$PID.tmp"
         try {
-            # WriteAllText, then rename: the rename is the commit point.
             [System.IO.File]::WriteAllText($tmp, $json, [System.Text.UTF8Encoding]::new($false))
-            Move-Item -LiteralPath $tmp -Destination $Path -Force
+            # The commit point, and it must fail LOUDLY. File.Replace is atomic on the same volume and keeps
+            # the original when it cannot replace it - held open by another process, a VM's mapped folder
+            # among them. File.Move covers the first write. [NullString]::Value, because PowerShell turns
+            # $null into '' for a string parameter and File.Replace refuses an empty backup path.
+            if ([System.IO.File]::Exists($Path)) { [System.IO.File]::Replace($tmp, $Path, [NullString]::Value) }
+            else { [System.IO.File]::Move($tmp, $Path) }
+        }
+        catch {
+            throw "Write-JsonAtomic: $Path was NOT updated - $($_.Exception.Message)"
         }
         finally {
             if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
