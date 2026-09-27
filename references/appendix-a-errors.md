@@ -23,7 +23,7 @@ Intune converts unknown positive exit codes into an HRESULT: `0x80070000 + exitc
 | `0x8000EA61` | 60001 | PSADT unhandled script error |
 | `0x8000EA68` | 60008 | PSADT init / module load failed |
 | `0x8007064B` | 1611 | MSI component qualifier not present |
-| `0x80070642` | 1602 | User cancelled - or, since PSADT 4.1, the user deferred (`UI.DeferExitCode` default; cannot occur under `-DeployMode Silent`) |
+| `0x80070642` | 1602 | User cancelled - or, since PSADT 4.1, the user deferred (`UI.DeferExitCode` default; cannot occur under `-DeployMode Silent`, nor from the generators' `Auto` prompt, which offers no deferral) |
 | `0x80070652` | 1618 | Another install in progress |
 | `0x80070643` | 1603 | **Fatal error during installation** (perms, disk space, pending reboot, bad property) |
 | `0x80070645` | 1605 | Product not installed (on UNINSTALL this is effectively success - already gone) |

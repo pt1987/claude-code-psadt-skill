@@ -91,3 +91,13 @@ Describe 'New-WindowsFeaturePackage.ps1 refuses the comment terminator in Author
         $script:genText | Should -Match 'Assert-NoCommentTerminator[^\r\n]*\$Changelog'
     }
 }
+
+Describe 'New-WindowsFeaturePackage records its command lines (0.49.2)' {
+    # Fixed Silent for this package type (no running app to prompt about), but RECORDED, so the upload,
+    # the dossier and the sandbox read one value instead of three defaults.
+    BeforeAll { $script:s3 = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\scripts\New-WindowsFeaturePackage.ps1') -Raw }
+    It 'records the install and uninstall command lines, Silent' {
+        $script:s3 | Should -Match "'package\.installCommand'\s*=\s*'Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode Silent'"
+        $script:s3 | Should -Match "'package\.uninstallCommand'\s*=\s*'Invoke-AppDeployToolkit\.exe -DeploymentType Uninstall -DeployMode Silent'"
+    }
+}

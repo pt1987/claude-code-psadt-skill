@@ -890,3 +890,57 @@ Describe 'the host checks the verdict it was handed (0.46.0)' {
         (Assert-GuestVerdict -Result $r).Verdict | Should -Be 'RED'
     }
 }
+
+Describe 'the sandbox tests the command line the package ships (0.49.2)' {
+    # It always ran '-DeployMode Silent', whatever Gate 2 chose. Usually the same outcome - Auto falls back
+    # to Silent in session 0 with no user - but an installer that leaves the app running turns Auto into
+    # Interactive, and that path must be the one tested.
+    BeforeEach {
+        $script:mRoot = New-TempSkillRoot
+        $script:mPrevHome = $env:PSADT_DEPLOY_HOME
+        $env:PSADT_DEPLOY_HOME = Join-Path $script:mRoot 'confighome'
+        New-Item -ItemType Directory -Path $env:PSADT_DEPLOY_HOME -Force | Out-Null
+        $script:mPkg = Join-Path $script:mRoot 'Widget'
+        New-Item $script:mPkg -ItemType Directory -Force | Out-Null
+        Set-Content (Join-Path $script:mPkg 'Invoke-AppDeployToolkit.ps1') '# stub launcher'
+        Set-Content (Join-Path $script:mPkg 'Invoke-AppDeployToolkit.exe') 'stub'
+        Set-Content (Join-Path $script:mPkg 'Detect-Widget.ps1') 'exit 0'
+        $script:mScript = Join-Path $script:mRoot 'scripts/Invoke-PsadtSandboxTest.ps1'
+        $script:mSet = Join-Path $script:mRoot 'scripts/Set-PsadtPackageManifest.ps1'
+        Mock -CommandName Get-CimInstance -MockWith { [pscustomobject]@{ Name = 'Containers-DisposableClientVM'; InstallState = 1 } }
+        Mock -CommandName Get-Process -MockWith { @() }
+    }
+    AfterEach {
+        if ($null -eq $script:mPrevHome) { Remove-Item Env:\PSADT_DEPLOY_HOME -ErrorAction SilentlyContinue }
+        else { $env:PSADT_DEPLOY_HOME = $script:mPrevHome }
+        Remove-TempSkillRoot $script:mRoot
+    }
+
+    It 'runs Install and Uninstall with the modes the manifest records, each its own' {
+        & $script:mSet -PackagePath $script:mPkg -Updates @{
+            'package.installCommand'   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
+            'package.uninstallCommand' = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent' } | Out-Null
+        $runner = Get-Content -LiteralPath (& $script:mScript -PackagePath $script:mPkg -GenerateOnly).RunnerPath -Raw
+        $runner | Should -Match "\`$installDeployMode\s*=\s*'Auto'"
+        $runner | Should -Match "\`$uninstallDeployMode\s*=\s*'Silent'"
+        $runner | Should -Match '-DeployMode \$mode'
+        $runner | Should -Not -Match '-DeploymentType \$DeploymentType -DeployMode Silent'
+    }
+
+    It 'keeps Silent for a package that recorded nothing' {
+        $runner = Get-Content -LiteralPath (& $script:mScript -PackagePath $script:mPkg -GenerateOnly).RunnerPath -Raw
+        $runner | Should -Match "\`$installDeployMode\s*=\s*'Silent'"
+        $runner | Should -Match "\`$uninstallDeployMode\s*=\s*'Silent'"
+    }
+
+    It 'keeps its own PSADT canary Silent - that is a harness probe, not the package' {
+        $runner = Get-Content -LiteralPath (& $script:mScript -PackagePath $script:mPkg -GenerateOnly).RunnerPath -Raw
+        $runner | Should -Match "Open-ADTSession -AppVendor 'PSADT' -AppName 'SandboxCanary'[^\r\n]*-DeployMode Silent"
+    }
+
+    It 'refuses a recorded command line that is not the launcher''s own, before a VM exists' {
+        & $script:mSet -PackagePath $script:mPkg -Updates @{
+            'package.installCommand' = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent & calc.exe' } | Out-Null
+        { & $script:mScript -PackagePath $script:mPkg -GenerateOnly } | Should -Throw -ExpectedMessage '*package.installCommand*'
+    }
+}

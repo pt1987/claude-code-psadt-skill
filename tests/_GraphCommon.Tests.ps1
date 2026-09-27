@@ -294,3 +294,53 @@ Describe 'Merge-AppRelationships (0.47.0)' {
         { Merge-AppRelationships -Existing @() -SupersedeTargetIds 'x' -SupersedenceType 'uninstall' } | Should -Throw
     }
 }
+
+Describe 'one app, looked up under every name it has carried (0.49.2)' {
+    # The display name derivation moved from "<vendor> <name>" to app.name (0.49.2). A tenant that holds
+    # earlier versions under the old name must not get a second, unrelated app: the upload keeps the old
+    # name when only it exists, and Get-IntuneAppVersions.ps1 lists both.
+    BeforeEach {
+        $script:tenant = @{}
+        Mock Invoke-Graph {
+            $script:lastUri = $Uri
+            $name = [regex]::Match([uri]::UnescapeDataString($Uri), "displayName eq '((?:[^']|'')*)'").Groups[1].Value.Replace("''", "'")
+            [pscustomobject]@{ value = @(@($script:tenant[$name]) | Where-Object { $_ }) }
+        }
+    }
+
+    It 'queries win32LobApp only, with the apostrophe doubled' {
+        Get-IntuneWin32AppsByName -Names @("Igor's Tool") -Headers @{} -GraphBase 'https://g' | Out-Null
+        $script:lastUri | Should -Match ([regex]::Escape("displayName eq 'Igor''s Tool'"))
+        $script:lastUri | Should -Match ([regex]::Escape("isof('microsoft.graph.win32LobApp')"))
+    }
+
+    It 'returns the union of all names, each app once' {
+        $a = [pscustomobject]@{ id = 'a1'; displayName = 'Widget' }
+        $b = [pscustomobject]@{ id = 'b1'; displayName = 'ACME Widget' }
+        $script:tenant['Widget'] = @($a); $script:tenant['ACME Widget'] = @($b, $a)
+        $r = @(Get-IntuneWin32AppsByName -Names @('Widget', 'ACME Widget', 'Widget') -Headers @{} -GraphBase 'https://g')
+        @($r.id | Sort-Object) | Should -Be @('a1', 'b1')
+    }
+
+    It 'keeps the old "<vendor> <name>" when only it exists in the tenant, and says why' {
+        $script:tenant['ACME Widget'] = @([pscustomobject]@{ id = 'old1'; displayName = 'ACME Widget' })
+        $r = Resolve-IntuneUploadName -Name 'Widget' -Source 'app.name' -LegacyName 'ACME Widget' -Headers @{} -GraphBase 'https://g'
+        $r.Name   | Should -Be 'ACME Widget'
+        $r.Reason | Should -Match 'older versions'
+    }
+
+    It 'uses the new name when the tenant already has it, or has neither' {
+        (Resolve-IntuneUploadName -Name 'Widget' -Source 'app.name' -LegacyName 'ACME Widget' -Headers @{} -GraphBase 'https://g').Name | Should -Be 'Widget'
+        $script:tenant['Widget'] = @([pscustomobject]@{ id = 'n1'; displayName = 'Widget' })
+        $script:tenant['ACME Widget'] = @([pscustomobject]@{ id = 'o1'; displayName = 'ACME Widget' })
+        (Resolve-IntuneUploadName -Name 'Widget' -Source 'app.name' -LegacyName 'ACME Widget' -Headers @{} -GraphBase 'https://g').Name | Should -Be 'Widget'
+    }
+
+    It 'never second-guesses a name that was chosen or recorded' {
+        $script:tenant['ACME Widget'] = @([pscustomobject]@{ id = 'old1'; displayName = 'ACME Widget' })
+        foreach ($src in 'explicit', 'app.displayName', 'results.upload', 'predecessor') {
+            (Resolve-IntuneUploadName -Name 'Widget' -Source $src -LegacyName 'ACME Widget' -Headers @{} -GraphBase 'https://g').Name | Should -Be 'Widget'
+        }
+        Should -Invoke Invoke-Graph -Times 0 -Exactly
+    }
+}

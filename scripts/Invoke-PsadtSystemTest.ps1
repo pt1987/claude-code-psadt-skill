@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS  Runs ONE PSADT deployment action as the SYSTEM account (via Invoke-CommandAs) and reports structured facts.
 .DESCRIPTION
-  Executes Invoke-AppDeployToolkit.exe -DeploymentType <X> -DeployMode Silent as SYSTEM, optionally runs a
+  Executes Invoke-AppDeployToolkit.exe -DeploymentType <X> -DeployMode <the mode the package records in
+  package.installCommand / uninstallCommand, Silent when none> as SYSTEM, optionally runs a
   detection script in the same SYSTEM context, reads the fresh PSADT session log, and returns a structured
   result. Performs ONE action and decides nothing about fixes - the caller (skill/agent) drives the loop.
 .OUTPUTS PSCustomObject: DeploymentType, ExitCode, Success, DetectionState, LogPath, LogTail, ErrorLines, Elevated
@@ -115,10 +116,24 @@ Import-Module Invoke-CommandAs -ErrorAction SilentlyContinue
 $PackagePath = (Resolve-Path -LiteralPath $PackagePath).ProviderPath.TrimEnd('\')
 $exe = Join-Path $PackagePath 'Invoke-AppDeployToolkit.exe'
 
+# The DeployMode the package ships (0.49.2): package.installCommand for Install and Repair,
+# package.uninstallCommand for Uninstall, parsed by Get-PsadtPackageManifest.ps1 - Silent when nothing is
+# recorded. A recorded line that is not the launcher's own is refused, exactly like the upload does.
+# A folder without the launcher script (only the .exe) has no manifest to read and runs Silent.
+$cmd = $null
+try {
+    $mfCmd = & (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -PackagePath $PackagePath
+    $cmd = if ($DeploymentType -eq 'Uninstall') { $mfCmd.Commands.Uninstall } else { $mfCmd.Commands.Install }
+} catch { $cmd = $null }
+if ($cmd -and -not $cmd.Valid) {
+    throw "The recorded command line is not the launcher's own, so it is not run: '$($cmd.Command)'. Expected: Invoke-AppDeployToolkit.exe -DeploymentType <Install|Uninstall> -DeployMode <Silent|Auto|Interactive|NonInteractive>."
+}
+$deployMode = if ($cmd) { [string]$cmd.DeployMode } else { 'Silent' }
+
 # 3. Run the launcher (and optional detection) as SYSTEM in one context
 $sb = {
-    param($Exe, $Dt, $Detect)
-    $deployOut  = & $Exe -DeploymentType $Dt -DeployMode Silent 2>&1 | Out-String
+    param($Exe, $Dt, $Detect, $Mode)
+    $deployOut  = & $Exe -DeploymentType $Dt -DeployMode $Mode 2>&1 | Out-String
     $deployExit = $LASTEXITCODE
     $detExit = $null; $detOut = $null
     if ($Detect) {
@@ -130,7 +145,7 @@ $sb = {
 # A second of slack: the log's LastWriteTime is written by the SYSTEM process, whose clock resolution and
 # our own are not the same thing, and a log created in the same tick must not be excluded.
 $runStart = (Get-Date).AddSeconds(-1)
-$run = Invoke-CommandAs -AsSystem -ScriptBlock $sb -ArgumentList $exe, $DeploymentType, $DetectionScript
+$run = Invoke-CommandAs -AsSystem -ScriptBlock $sb -ArgumentList $exe, $DeploymentType, $DetectionScript, $deployMode
 
 # 4. Locate + read the fresh PSADT session log
 $log = Get-FreshSessionLog -LogDirectory $LogDirectory -DeploymentType $DeploymentType -Since $runStart

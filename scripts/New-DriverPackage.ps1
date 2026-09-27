@@ -630,6 +630,10 @@ $detect = $detect.
     'app.revision'           = 1
     'package.name'           = $logStem
     'package.type'           = 'driver'
+    # The command lines Intune runs (0.49.2), recorded so the upload, the dossier and the sandbox read one
+    # value. Always Silent for this package type: there is no running application to prompt about.
+    'package.installCommand'   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+    'package.uninstallCommand' = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
     'package.installerTech'  = 'pnputil'
     'package.sourceStrategy' = 'bundle'
     'driverTrust'            = @{

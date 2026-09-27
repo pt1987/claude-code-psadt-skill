@@ -98,6 +98,17 @@ if ($ManifestPath) {
     if ($mf.artifacts.detection) { Set-FromManifest 'DetectScript' ([IO.Path]::GetFileName([string]$mf.artifacts.detection)) }
     Set-FromManifest 'SetupFile'    $mf.results.package.setupFile
     Set-FromManifest 'DriverTrust'  $mf.driverTrust
+    # The command lines the package ships (0.49.2), parsed once, by Get-PsadtPackageManifest.ps1 - the
+    # upload reads the same value. Before, the dossier printed its own '-DeployMode Silent' default
+    # whatever Gate 2 had chosen. A line the upload would refuse is named, not rendered as if it were fine.
+    $mfDir = Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath).ProviderPath
+    if (Test-Path -LiteralPath (Join-Path $mfDir 'Invoke-AppDeployToolkit.ps1')) {
+        $mfCmds = (& (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -PackagePath $mfDir).Commands
+        foreach ($c in @(@('InstallCmd', $mfCmds.Install, 'installCommand'), @('UninstallCmd', $mfCmds.Uninstall, 'uninstallCommand'))) {
+            if (-not $c[1].Valid) { Write-Warning "package.$($c[2]) is not the launcher's own command line, and the upload will refuse it: '$($c[1].Command)'" }
+            elseif ($c[1].Recorded) { Set-FromManifest $c[0] $c[1].Command }
+        }
+    }
     # Installer-specific return codes researched in Phase 1.3. Recorded once in the manifest so the
     # dossier and Invoke-IntuneWin32Upload.ps1 cannot document different mappings.
     Set-FromManifest 'ReturnCodes'  $mf.research.returnCodes

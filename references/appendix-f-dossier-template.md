@@ -59,7 +59,7 @@ Phase 6 is the binding gate for upload.
 | `SubDe`/`SubEn`, `StatusDe`/`StatusEn` | header subtitle + status pill (HTML entities allowed) |
 | `Category` (null⇒"not preset"), `Featured` (bool), `InfoUrl`, `PrivacyUrl`, `Notes` | App Info |
 | `DescMdDe`, `DescMdEn` | description **Markdown** per language (real umlauts here) |
-| `InstallCmd`, `UninstallCmd`, `InstallBehavior`, `RestartBehaviorDe/En`, `RestartNoteDe/En`, `InstallTimeMin`, `AllowUninstall` | Program |
+| `InstallCmd`, `UninstallCmd`, `InstallBehavior`, `RestartBehaviorDe/En`, `RestartNoteDe/En`, `InstallTimeMin`, `AllowUninstall` | Program. `InstallCmd` / `UninstallCmd` come from `package.installCommand` / `uninstallCommand` (0.49.2) - the line the upload sends |
 | `ReturnCodes` | INSTALLER-SPECIFIC codes only, as `@{ Code; Type; De; En }` with `Type` one of `success`/`softReboot`/`hardReboot`/`retry`/`failed`. They are MERGED OVER the mandatory F.4 table, never replace it, and an invalid type THROWS. `Cls`/`Label` are derived from `Type` and ignored if passed. |
 | `OsArch`, `MinOs`, `DiskMb`, `MemoryMb` | Requirements |
 | `RuleFormat`, `DetectScript`, `RunAs32` (bool), `SignatureCheck` (bool) | Detection |
@@ -78,7 +78,7 @@ them onto the template. Keep them for depth and for the manual Admin-Center rout
 
 | Intune field | Value | Notes |
 |---|---|---|
-| **Name** | `<AppName> <Version>` | exactly as visible in the Company Portal; version incl. build if there are updates |
+| **Name** | `app.displayName`, else the name the previous version was uploaded under, else `app.name` | the SAME name for every version - the version is its own field. Derived once (`Resolve-PsadtDisplayName`); a tenant that still holds older versions under `<Vendor> <App>` keeps that name |
 | **Description** | see F.2 (Markdown block) | the first ~200 characters are the short preview in the CP |
 | **Publisher** | `<Vendor>` | from Phase 1.2 (Adobe Inc., Oracle Corporation, ...) |
 | **App version** | `<Major.Minor.Build.Rev>` | exact file version |
@@ -134,9 +134,9 @@ Check: the first paragraph must also be readable on its own (200-character short
 
 | Intune field | Value |
 |---|---|
-| **Install command** | `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent` |
+| **Install command** | `package.installCommand`: `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent` or `-DeployMode Auto` (Gate 2, phase 1.2) |
 | **Install script** | - (do not use, the command is enough) |
-| **Uninstall command** | `Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent` |
+| **Uninstall command** | `package.uninstallCommand`, the same `-DeployMode` |
 | **Uninstall script** | - |
 | **Installation time required (mins)** | Default 60; only raise if >45 min documented |
 | **Allow available uninstall** | Yes (the user may uninstall via the CP) |

@@ -60,3 +60,35 @@ function Get-PsadtAppKeyFromManifest {
     if ($null -eq $app) { return '' }
     return ConvertTo-PsadtAppKey -Vendor ([string]$app.vendor) -Name ([string]$app.name)
 }
+
+function Resolve-PsadtDisplayName {
+    <#
+        The Intune display name of an application - ONE derivation for every script that names it (the
+        upload, the version listing). In this order: an explicit name; app.displayName; the name THIS
+        package was already uploaded under (results.upload.displayName); the name the PREVIOUS version was
+        uploaded under; app.name.
+
+        Never "<vendor> <name>": that was the upload's own derivation until 0.49.2 and it disagreed with
+        phases-7-12.md and the dossier, which both say app.name. Measured 2026-09-27: a vendor name that
+        already contains the app name produced the name twice. LegacyName is that old form, returned so a
+        caller with a token can check whether the tenant still holds older versions under it.
+    #>
+    param([string]$Explicit, $Manifest, [string]$PriorUploadName)
+
+    $app = if ($null -ne $Manifest) { $Manifest.app } else { $null }
+    $name = if ($null -ne $app -and $app.name) { ([string]$app.name).Trim() } else { '' }
+    $vendor = if ($null -ne $app -and $app.vendor) { ([string]$app.vendor).Trim() } else { '' }
+    $own = $null
+    if ($null -ne $Manifest -and $Manifest.results -and $Manifest.results.upload) { $own = [string]$Manifest.results.upload.displayName }
+    $legacy = if ($vendor -and $name) { "$vendor $name" } else { $null }
+
+    $pick = $(
+        if ($Explicit) { @($Explicit, 'explicit') }
+        elseif ($null -ne $app -and $app.displayName) { @(([string]$app.displayName).Trim(), 'app.displayName') }
+        elseif ($own) { @($own, 'results.upload') }
+        elseif ($PriorUploadName) { @($PriorUploadName, 'predecessor') }
+        elseif ($name) { @($name, 'app.name') }
+        else { @($null, $null) }
+    )
+    return [pscustomobject]@{ Name = $pick[0]; Source = $pick[1]; LegacyName = $legacy }
+}

@@ -51,7 +51,8 @@ Bundle questions (max 4 per call).
 
 <!-- rule:gate-deployment-semantics -->
 2. **Deployment semantics** - target audience (Required / Available / both, + AAD groups), uninstall "what
-   goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641). Pre-select defaults from
+   goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641), and with processes to
+   close: Auto (60 s prompt) or Silent (1.2). Pre-select defaults from
    the installer type. Group assignment is **opt-in**: only when the user wants it here do you create/assign
    Entra groups (Phase 10, config `intune.groups`, guide Appendix M); the default is upload-without-assignment.
    An **NSIS MultiUser** installer also needs its scope chosen here - all-users (recommended, matches a
@@ -164,7 +165,7 @@ each given that question's `KnownContext` so it confirms instead of rediscoverin
 never one for a question the ladder closed. One WebFetch is not a fan-out.
 Findings before scaffold - pre-flight `Research` stays RED until each is `research.answers.<id>` - per
 deployment type: install/uninstall/repair, exit codes, log path, leftovers, and the unbundled runtime
-Gate 1 decides (phase 1.4) - a GREEN Phase 6 proves the PACKAGE works, never that the app does.
+Gate 1 decides (phase 1.4).
 Ladder detail, queries, per-type research (K · O.2 · P.2 · I.1) and the PSADT release-notes diff (verify
 with `Get-Command -Module PSAppDeployToolkit`, never adopt a version by number): phases 1.1/1.3, App. D/L.
 
@@ -172,10 +173,10 @@ with `Get-Command -Module PSAppDeployToolkit`, never adopt a version by number):
 script, the per-run `LogName` and the manifest in one go: MSI → `New-MsiPackage.ps1` (self-updating:
 `-SelfUpdatingBinary`, 4.3), EXE → `New-ExePackage.ps1`, browser extension →
 `New-BrowserExtensionPackage.ps1`, Windows features → `New-WindowsFeaturePackage.ps1`, driver →
-`New-DriverPackage.ps1` (classify with `Get-DriverSignatureInfo.ps1` first - Gate 1).
-and write the manifest immediately (`Set-PsadtPackageManifest.ps1`) - a hand-scaffold still owes a
-per-run `LogName` and a `.NOTES` changelog. A generic gap: fix the generator first, generate once. Every
-field, the 4.1.x parameter set and the WinGet variant: phase 3, App. I.2.
+`New-DriverPackage.ps1`. A hand-scaffold (`New-ADTTemplate`) writes the manifest at once
+(`Set-PsadtPackageManifest.ps1`) and still owes a per-run `LogName` and a `.NOTES` changelog. A generic
+gap: fix the generator first, generate once. Every field, the 4.1.x parameter set and the WinGet variant:
+phase 3, App. I.2.
 
 <!-- rule:driver-classify-first -->
 **Phase 4 - Customize all three hooks.** User drops the installer in `<pkg>\Files\`; fill

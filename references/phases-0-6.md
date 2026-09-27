@@ -200,6 +200,18 @@ Without answers to these points the package will be junk. Clarify with the stake
 
 **Runtime behavior:**
 - Processes that have to be closed (for `AppProcessesToClose` in `$adtSession`)
+- **When there are processes to close: what happens if the app is running** (Gate 2, 0.49.2). Offer:
+
+  | Option | On the device | Generator |
+  |---|---|---|
+  | **Auto (recommended)** | PSADT decides per device: during OOBE and the ESP, in session 0 with no user signed in, and when none of the processes is running, it runs Silent; otherwise the user sees the close prompt with a 60-second countdown, after which the processes are closed | `-DeployMode Auto` |
+  | **Silent** | the processes are closed without asking, also under a user who is working in the app | `-DeployMode Silent` (the default) |
+
+  Measured in PSADT 4.1.8 (the `Auto` rules are PSADT's own). The generators record the choice as
+  `package.installCommand` / `package.uninstallCommand`; the upload, the dossier and the sandbox read the
+  command line from there, so it cannot be one thing in Intune and another in the dossier. Record the
+  decision as `decisions.gate2.runningApp`. The Install prompt always carries the countdown: an
+  Interactive prompt without one waits `UI.DefaultTimeout` (3300 s) and then exits 1618.
 - Visible UI during install (Silent vs. NonInteractive)?
 - User notifications desired (welcome dialog, defer button, countdown)?
 - Required environment variables / registry policies

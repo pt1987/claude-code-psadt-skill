@@ -42,11 +42,30 @@ Describe 'the OData filter is built safely' {
     # Invoke-IntuneWin32Upload.ps1:254 doubles the apostrophe before interpolating into $filter. An
     # apostrophe is ordinary in a vendor name ("Igor's"), and an undoubled one does not merely fail - it
     # changes which apps the filter returns, which is how a supersedence gets wired to the wrong app.
+    # 0.49.2: the filter lives in _GraphCommon.ps1 (Get-IntuneWin32AppsByName), shared with the upload's
+    # name check; tests/_GraphCommon.Tests.ps1 runs it against a mocked Graph. These guard the source.
+    BeforeAll { $script:Common = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\scripts\_GraphCommon.ps1') -Raw }
+    It 'looks the app up through the shared, tested lookup' {
+        $script:Src | Should -Match 'Get-IntuneWin32AppsByName'
+    }
     It 'doubles an apostrophe before the name reaches the filter' {
-        $script:Src | Should -Match "Replace\(\s*[`"']'[`"']\s*,\s*[`"']''[`"']\s*\)"
+        $script:Common | Should -Match "Replace\(\s*[`"']'[`"']\s*,\s*[`"']''[`"']\s*\)"
     }
     It 'restricts the filter to win32LobApp, so a Store app of the same name is never a candidate' {
-        $script:Src | Should -Match "isof\('microsoft\.graph\.win32LobApp'\)"
+        $script:Common | Should -Match "isof\('microsoft\.graph\.win32LobApp'\)"
+    }
+}
+
+Describe 'it finds the app under every name it has carried (0.49.2)' {
+    # The upload names an app app.name since 0.49.2, and "<vendor> <name>" before. Asked by manifest,
+    # this script must see both, or it reports "no versions" for an app whose older versions are there.
+    It 'names it with the same helper the upload uses' {
+        $script:Src | Should -Match 'Resolve-PsadtDisplayName'
+        $script:Src | Should -Not -Match '"\$\(\$mf\.app\.vendor\) \$\(\$mf\.app\.name\)"'
+    }
+    It 'also looks under the older "<vendor> <name>" and the predecessor''s uploaded name' {
+        $script:Src | Should -Match 'LegacyName'
+        $script:Src | Should -Match 'Get-PsadtPriorPackage\.ps1'
     }
 }
 
