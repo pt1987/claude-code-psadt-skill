@@ -12,7 +12,8 @@ ask-only-at-gates            Questions happen at the gates and nowhere else, alw
 blockade-protocol            On any error: isolate, emit PROBLEM/TRIED/OPTIONS, never dump a raw error, never give up
 hard-handoff-gates           Builder waits for a GREEN pre-flight; upload waits for a GREEN SYSTEM test
 gate-scope-confirm           Gate 1: app, version, installer type, source strategy, package type (incl. MSIX is not the default)
-gate-deployment-semantics    Gate 2: audience, uninstall scope, repair strategy, reboot behaviour, running-app handling (DeployMode), group assignment opt-in
+gate-deployment-semantics    Gate 2: audience, uninstall scope, repair strategy, reboot behaviour; assignment recommended as all three groups (available, required, uninstall)
+deploymode-silent            Every package runs -DeployMode Silent, without exception; no DeployMode question, and any other recorded command line is refused
 gate-system-test-consent     Gate 3: sandbox route offered first; skipping is not on offer while an upload is planned
 gate-upload-confirm          Gate 4: dry-run summary and the exact -Execute action, confirmed before writing
 language-split               Scripts are English 7-bit ASCII; the dossier is language.dossier with real umlauts

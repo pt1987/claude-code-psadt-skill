@@ -191,12 +191,20 @@ Describe 'the launcher command lines come from the manifest, parsed once (0.49.2
         $c.Uninstall.Command  | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
     }
 
-    It 'reads a recorded Auto command and its DeployMode' {
-        $c = & $script:cmdOf 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto' 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode auto'
-        $c.Install.DeployMode   | Should -Be 'Auto'
+    It 'reads a recorded Silent command, normalised to the launcher''s own spelling' {
+        $c = & $script:cmdOf 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent' 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode silent'
+        $c.Install.DeployMode   | Should -Be 'Silent'
         $c.Install.Recorded     | Should -BeTrue
-        $c.Uninstall.DeployMode | Should -Be 'Auto' -Because 'the mode is normalised to the launcher''s own spelling'
-        $c.Uninstall.Command    | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto'
+        $c.Uninstall.Valid      | Should -BeTrue
+        $c.Uninstall.Command    | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
+    }
+
+    It 'refuses every DeployMode but Silent - the skill runs every package Silent, without exception (0.49.3)' {
+        foreach ($mode in 'Auto', 'Interactive', 'NonInteractive') {
+            $c = & $script:cmdOf "Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode $mode" $null
+            $c.Install.Valid  | Should -BeFalse -Because "-DeployMode $mode is not the skill's mode"
+            $c.Install.Reason | Should -Match 'Silent'
+        }
     }
 
     It 'refuses anything that is not the launcher''s own command line' {

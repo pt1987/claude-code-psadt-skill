@@ -216,7 +216,7 @@ $stem = if ($mf.Stem) { $mf.Stem } else { Split-Path $PackagePath -Leaf }
 # before a VM exists - the upload refuses the same line.
 foreach ($c in @(@('installCommand', $mf.Commands.Install), @('uninstallCommand', $mf.Commands.Uninstall))) {
     if (-not $c[1].Valid) {
-        throw "package.$($c[0]) is not the launcher's own command line, so it can be neither tested nor uploaded: '$($c[1].Command)'. Expected: Invoke-AppDeployToolkit.exe -DeploymentType <Install|Uninstall> -DeployMode <Silent|Auto|Interactive|NonInteractive>."
+        throw "package.$($c[0]) is refused, so the package can be neither tested nor uploaded: $($c[1].Reason). Recorded: '$($c[1].Command)'."
     }
 }
 $installDeployMode = [string]$mf.Commands.Install.DeployMode

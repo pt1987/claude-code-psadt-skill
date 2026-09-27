@@ -172,13 +172,13 @@ if ($ManifestPath) {
         $mfCmds = (& (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -PackagePath $manifestPackagePath).Commands
         if (-not $PSBoundParameters.ContainsKey('InstallCommandLine')) {
             if (-not $mfCmds.Install.Valid) {
-                throw "package.installCommand is not the launcher's own command line and would run as SYSTEM on every device: '$($mfCmds.Install.Command)'. Fix it in the manifest, or pass -InstallCommandLine."
+                throw "package.installCommand is refused: $($mfCmds.Install.Reason). Recorded: '$($mfCmds.Install.Command)'. Fix it in the manifest."
             }
             if ($mfCmds.Install.Recorded) { $InstallCommandLine = $mfCmds.Install.Command; $commandSource = 'from the manifest' }
         }
         if (-not $PSBoundParameters.ContainsKey('UninstallCommandLine')) {
             if (-not $mfCmds.Uninstall.Valid) {
-                throw "package.uninstallCommand is not the launcher's own command line and would run as SYSTEM on every device: '$($mfCmds.Uninstall.Command)'. Fix it in the manifest, or pass -UninstallCommandLine."
+                throw "package.uninstallCommand is refused: $($mfCmds.Uninstall.Reason). Recorded: '$($mfCmds.Uninstall.Command)'. Fix it in the manifest."
             }
             if ($mfCmds.Uninstall.Recorded) { $UninstallCommandLine = $mfCmds.Uninstall.Command; $commandSource = 'from the manifest' }
         }

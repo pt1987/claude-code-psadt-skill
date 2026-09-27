@@ -176,13 +176,13 @@ Describe 'what it carries forward' {
             schema  = 1
             app     = @{ vendor = 'ACME'; name = 'Widget'; version = '1.0'; arch = 'x64' }
             package = @{ type = 'installer'
-                         installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
-                         uninstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto' }
+                         installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+                         uninstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent' }
             results = @{ upload = @{ displayName = 'Widget (ACME)' } }
         } | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $dir 'psadt-package.json') -Encoding UTF8
         $c = (& $script:Prior -Vendor 'ACME' -Name 'Widget' -Version '2.0' -PackageRoot $script:root).Carry
-        $c.installCommand    | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
-        $c.uninstallCommand  | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto'
+        $c.installCommand    | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+        $c.uninstallCommand  | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
         $c.uploadDisplayName | Should -Be 'Widget (ACME)'
     }
 

@@ -120,8 +120,8 @@ The XML must contain `<SetupFile>Invoke-AppDeployToolkit.exe</SetupFile>`. If so
 - Logo: `<pkg>\Assets\<App>-Logo.png` (the REAL downloaded application logo - NOT the PSADT default `AppIcon.png`), >=512x512 PNG (App. J)
 
 ### 8.2 Program
-- **Install command**: `package.installCommand` - `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent`, or `-DeployMode Auto` when Gate 2 chose the close prompt (phase 1.2)
-- **Uninstall command**: `package.uninstallCommand`, the same `-DeployMode` (case does not matter, the ValidateSet is case-insensitive). The upload, the dossier and the sandbox all read these two from the manifest; a recorded line that is not the launcher's own is refused
+- **Install command**: `package.installCommand` - `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent`, always (`rule:deploymode-silent`)
+- **Uninstall command**: `package.uninstallCommand`, the same `-DeployMode` (case does not matter, the ValidateSet is case-insensitive). The upload, the dossier and the sandbox all read these two from the manifest; a recorded line that is not the launcher's own, or not Silent, is refused
 - **Install behavior**: `System` (default; the SYSTEM context is correct for Win32 apps)
 - **Device restart behavior**:
   - `App install may force a device restart` - when the installer can return 1641

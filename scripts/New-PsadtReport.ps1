@@ -105,7 +105,7 @@ if ($ManifestPath) {
     if (Test-Path -LiteralPath (Join-Path $mfDir 'Invoke-AppDeployToolkit.ps1')) {
         $mfCmds = (& (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -PackagePath $mfDir).Commands
         foreach ($c in @(@('InstallCmd', $mfCmds.Install, 'installCommand'), @('UninstallCmd', $mfCmds.Uninstall, 'uninstallCommand'))) {
-            if (-not $c[1].Valid) { Write-Warning "package.$($c[2]) is not the launcher's own command line, and the upload will refuse it: '$($c[1].Command)'" }
+            if (-not $c[1].Valid) { Write-Warning "package.$($c[2]) is refused by the upload and the sandbox: $($c[1].Reason). Recorded: '$($c[1].Command)'" }
             elseif ($c[1].Recorded) { Set-FromManifest $c[0] $c[1].Command }
         }
     }

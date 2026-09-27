@@ -90,12 +90,12 @@ Describe 'the installer hash is recorded, so the manifest can be joined to the s
 
 Describe 'New-ExePackage: the running app and the command line (0.49.2)' {
     BeforeAll { $script:s3 = Get-Content -LiteralPath $script:src -Raw }
-    It 'offers -DeployMode Silent or Auto, Silent by default' {
-        $script:s3 | Should -Match "\[ValidateSet\('Silent', 'Auto'\)\]\[string\]\`$DeployMode = 'Silent'"
+    It 'has no DeployMode switch - every package runs Silent (0.49.3)' {
+        @($script:ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath }) | Should -Not -Contain 'DeployMode'
     }
-    It 'records the install and uninstall command lines in the manifest' {
-        $script:s3 | Should -Match "'package\.installCommand'\s*=\s*`"Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode \`$DeployMode`""
-        $script:s3 | Should -Match "'package\.uninstallCommand'\s*=\s*`"Invoke-AppDeployToolkit\.exe -DeploymentType Uninstall -DeployMode \`$DeployMode`""
+    It 'records the install and uninstall command lines in the manifest, Silent' {
+        $script:s3 | Should -Match "'package\.installCommand'\s*=\s*'Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode Silent'"
+        $script:s3 | Should -Match "'package\.uninstallCommand'\s*=\s*'Invoke-AppDeployToolkit\.exe -DeploymentType Uninstall -DeployMode Silent'"
     }
     It 'gives the Install close prompt a countdown - inside the if, because the countdown needs -CloseProcesses' {
         $script:s3 | Should -Match "(?s)if \(\`$adtSession\.AppProcessesToClose\.Count -gt 0\)\s*\{\s*\`$saiwParams\.Add\('CloseProcesses', \`$adtSession\.AppProcessesToClose\)\s*\`$saiwParams\.Add\('CloseProcessesCountdown', 60\)\s*\}"
@@ -104,7 +104,7 @@ Describe 'New-ExePackage: the running app and the command line (0.49.2)' {
 
 BeforeDiscovery { $script:hasPsadtExe = [bool](Get-Module -ListAvailable PSAppDeployToolkit) }
 
-Describe 'New-ExePackage: a generated Auto package (0.49.2)' -Skip:(-not $script:hasPsadtExe) {
+Describe 'New-ExePackage: a generated package with processes to close (0.49.2)' -Skip:(-not $script:hasPsadtExe) {
     BeforeAll {
         $g = Join-Path $PSScriptRoot '..\scripts\New-ExePackage.ps1'
         $r = Join-Path $TestDrive 'pk3'
@@ -112,13 +112,13 @@ Describe 'New-ExePackage: a generated Auto package (0.49.2)' -Skip:(-not $script
         Set-Content -LiteralPath $exe -Value 'x'
         & $g -Name 'Auto' -AppVendor 'ACME' -AppName 'Widget' -AppVersion '2.0' -AppArch 'x64' -InstallerFile 'setup.exe' `
             -InstallerPath $exe -InstallArgs '/S' -DisplayNameLike 'Widget' -VerifyRelativePath 'widget.exe' `
-            -ProcessesToClose @('widget') -DeployMode Auto -Author 'Test' -Changelog 'c' -PackageRoot $r | Out-Null
+            -ProcessesToClose @('widget') -Author 'Test' -Changelog 'c' -PackageRoot $r | Out-Null
         $script:exeM = Get-Content (Join-Path $r 'Auto\psadt-package.json') -Raw | ConvertFrom-Json
         $script:exeL = Get-Content (Join-Path $r 'Auto\Invoke-AppDeployToolkit.ps1') -Raw
     }
-    It 'records the Auto command lines' {
-        $script:exeM.package.installCommand   | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
-        $script:exeM.package.uninstallCommand | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto'
+    It 'records the Silent command lines' {
+        $script:exeM.package.installCommand   | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+        $script:exeM.package.uninstallCommand | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
     }
     It 'writes the Install countdown into the launcher, and the launcher parses' {
         $script:exeL | Should -Match "\`$saiwParams\.Add\('CloseProcessesCountdown', 60\)"

@@ -748,13 +748,21 @@ Describe 'New-PsadtReport documents the command line the package recorded (0.49.
         Set-Content (Join-Path $script:pd3 'Invoke-AppDeployToolkit.ps1') '# launcher'
     }
     It 'shows the recorded install and uninstall command lines' {
-        $script:m3.package.installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
-        $script:m3.package.uninstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto'
+        $script:m3.package.installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode silent'
+        $script:m3.package.uninstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode silent'
         $script:m3 | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $script:mf3 -Encoding UTF8
         & $script:gen -ManifestPath $script:mf3 -OutputPath $script:out3
         $html = Get-Content $script:out3 -Raw
-        $html | Should -Match 'Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode Auto'
-        $html | Should -Match 'Invoke-AppDeployToolkit\.exe -DeploymentType Uninstall -DeployMode Auto'
+        # the recorded line, normalised by the parser - proof it came from the manifest, not the default
+        $html | Should -Match 'Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode Silent'
+        $html | Should -Match 'Invoke-AppDeployToolkit\.exe -DeploymentType Uninstall -DeployMode Silent'
+    }
+    It 'names a recorded -DeployMode Auto as refused instead of printing it (0.49.3)' {
+        $script:m3.package.installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
+        $script:m3 | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $script:mf3 -Encoding UTF8
+        $w = & $script:gen -ManifestPath $script:mf3 -OutputPath $script:out3 3>&1 | Where-Object { $_ -is [System.Management.Automation.WarningRecord] }
+        ($w -join ' ') | Should -Match 'Silent'
+        (Get-Content $script:out3 -Raw) | Should -Not -Match 'DeployMode Auto'
     }
     It 'shows the Silent default when nothing is recorded' {
         $script:m3 | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $script:mf3 -Encoding UTF8
@@ -762,9 +770,9 @@ Describe 'New-PsadtReport documents the command line the package recorded (0.49.
         (Get-Content $script:out3 -Raw) | Should -Match 'Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode Silent'
     }
     It 'lets an explicit -Metadata InstallCmd win' {
-        $script:m3.package.installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
+        $script:m3.package.installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
         $script:m3 | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $script:mf3 -Encoding UTF8
-        & $script:gen -ManifestPath $script:mf3 -Metadata @{ InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive' } -OutputPath $script:out3
-        (Get-Content $script:out3 -Raw) | Should -Match 'DeployMode Interactive'
+        & $script:gen -ManifestPath $script:mf3 -Metadata @{ InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent /explicit' } -OutputPath $script:out3
+        (Get-Content $script:out3 -Raw) | Should -Match 'DeployMode Silent /explicit'
     }
 }

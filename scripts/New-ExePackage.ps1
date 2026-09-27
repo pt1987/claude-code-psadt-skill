@@ -71,13 +71,9 @@ param(
     [string]$Changelog = '',
     # A re-run used to wipe the folder outright. Phase 4 fills the three hooks BY HAND, so that threw away
     # work nothing else holds - along with the Extensions module, Assets\ and the recorded results.
-    [switch]$Force,
-    # How Intune starts the launcher (0.49.2), chosen at Gate 2 when the app has processes to close.
-    # Silent closes them without asking. Auto lets PSADT decide per device: Silent during OOBE and the
-    # ESP, in session 0 with no user signed in, and when none of the processes is running - otherwise
-    # Interactive, i.e. the close prompt with its 60 s countdown. Recorded as package.installCommand /
-    # package.uninstallCommand; the upload, the dossier and the sandbox read it from there.
-    [ValidateSet('Silent', 'Auto')][string]$DeployMode = 'Silent'
+    [switch]$Force
+    # No -DeployMode: every package runs Silent, without exception (rule:deploymode-silent). 0.49.2 had an
+    # Auto option here; it is gone, not hidden.
 )
 
 $ErrorActionPreference = 'Stop'
@@ -733,9 +729,9 @@ Assert-NoUnreplacedToken $detect "Detect-$Name.ps1"
     'package.installerTech'  = 'exe'
     'package.sourceStrategy' = 'bundle'
     # The command lines Intune runs (0.49.2) - recorded once, read by the upload, the dossier and the
-    # sandbox (Get-PsadtPackageManifest.ps1 parses them). -DeployMode is the Gate 2 running-app choice.
-    'package.installCommand'   = "Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode $DeployMode"
-    'package.uninstallCommand' = "Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode $DeployMode"
+    # sandbox (Get-PsadtPackageManifest.ps1 parses them). Silent, without exception (rule:deploymode-silent).
+    'package.installCommand'   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+    'package.uninstallCommand' = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
     # The installer file name is recorded because nothing else names it. Files\ may legitimately hold
     # several files, and a consumer that recovers the installer by parsing it off the front of
     # research.switches.install breaks on the first vendor who ships "Setup 1.2.exe".

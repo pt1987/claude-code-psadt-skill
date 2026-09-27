@@ -31,13 +31,9 @@ param(
     # 'Google\Chrome\Application\chrome.exe'. Switches the package from ProductCode identity to a version
     # FLOOR - see the comment at $selfUpdating below.
     [string]$SelfUpdatingBinary = '',
-    [string]$ArpDisplayName = '',                   # exact ARP DisplayName for that mode (default: AppName)
-    # How Intune starts the launcher (0.49.2), chosen at Gate 2 when the app has processes to close.
-    # Silent closes them without asking. Auto lets PSADT decide per device: Silent during OOBE and the
-    # ESP, in session 0 with no user signed in, and when none of the processes is running - otherwise
-    # Interactive, i.e. the close prompt with its 60 s countdown. Recorded as package.installCommand /
-    # package.uninstallCommand; the upload, the dossier and the sandbox read it from there.
-    [ValidateSet('Silent', 'Auto')][string]$DeployMode = 'Silent'
+    [string]$ArpDisplayName = ''                    # exact ARP DisplayName for that mode (default: AppName)
+    # No -DeployMode: every package runs Silent, without exception (rule:deploymode-silent). 0.49.2 had an
+    # Auto option here; it is gone, not hidden.
 )
 
 $ErrorActionPreference = 'Stop'
@@ -576,9 +572,9 @@ $detect = $detect.Replace('__NAME__', $Name).Replace('__APPNAME__', $AppName).Re
     'package.productCode'    = $ProductCode
     'package.sourceStrategy' = 'bundle'
     # The command lines Intune runs (0.49.2) - recorded once, read by the upload, the dossier and the
-    # sandbox (Get-PsadtPackageManifest.ps1 parses them). -DeployMode is the Gate 2 running-app choice.
-    'package.installCommand'   = "Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode $DeployMode"
-    'package.uninstallCommand' = "Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode $DeployMode"
+    # sandbox (Get-PsadtPackageManifest.ps1 parses them). Silent, without exception (rule:deploymode-silent).
+    'package.installCommand'   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+    'package.uninstallCommand' = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
     'research.switches'      = @{
         install       = "msiexec /i `"$InstallerFile`" /qn /norestart$(if ($AdditionalArgs) { " $AdditionalArgs" })"
         installArgs   = "/qn /norestart$(if ($AdditionalArgs) { " $AdditionalArgs" })"
