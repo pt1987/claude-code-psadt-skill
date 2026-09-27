@@ -33,8 +33,7 @@ every script resolves the config home itself (see Conventions).
 
 ## Decision gates (the ONLY AskUserQuestion moments)
 
-Everything else is a researched assumption. Bundle questions (max 4 per call); pre-fill every option with
-researched defaults; recommended option first.
+Bundle questions (max 4 per call).
 
 <!-- rule:gate-scope-confirm -->
 1. **Scope confirm** - app + exact version, installer type, source strategy (local / bundle / download
@@ -208,7 +207,8 @@ enforces. Runs append to `results.systemTest[]`.
 Sandbox, every action as SYSTEM. No elevation, host untouched. Runs the FULL gate by default: a VM boot
 costs 139s fixed, so a second run is never cheap. Red Install/Uninstall skips the rest; `-Quick` = the
 pair. Poll the `progress.json` it names; never buffer its output. **Start the VM, then do Phases 7+8 in
-the SAME turn** - neither needs the verdict, and waiting idle costs the whole run twice. Verdict = the
+the SAME turn** - neither needs the verdict (the VM runs a snapshot, so their manifest writes are safe),
+and waiting idle costs the whole run twice. Verdict = the
 DETECTION SCRIPT (what Intune evaluates). Each run snapshots the real installed-app entry (`InstalledAppFacts`):
 write hooks against those strings, never a guess. `-Paths*`, prerequisite, wrong-host case: phase 6.1.
 

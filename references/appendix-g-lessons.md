@@ -195,10 +195,11 @@ without the ADK, so in a fresh sandbox it aborts on its own precondition check -
 precondition, never the installation. Such packages need a DEV VM with the dependency pre-installed. Say
 "not tested" in the dossier rather than shipping a green verdict that measured nothing.
 
-**5. The SYSTEM test validates the package FOLDER, not the `.intunewin`.** The harness maps the folder into
-the VM. The artifact that ships is therefore never the artifact tested. They match only if nothing was
-edited after packaging - worth verifying explicitly (compare the newest file mtime under the package
-against the `.intunewin` mtime) before an upload.
+**5. The SYSTEM test validates the package FOLDER, not the `.intunewin`.** The harness maps a snapshot of
+the folder into the VM (since 0.49.2; before, the folder itself). The artifact that ships is therefore
+never the artifact tested. They match only if nothing was edited after packaging - worth verifying
+explicitly (compare the newest file mtime under the package against the `.intunewin` mtime) before an
+upload. An edit made while the VM runs is caught: `results.sandboxTest.packageChangedDuringRun`.
 
 **6. Killing a sandbox run from the host orphans the VM worker.** The design is correct - the GUEST shuts
 itself down, which is what releases the mapped folder. `vmmemWindowsSandbox` is owned by the Hyper-V
@@ -265,10 +266,14 @@ took two separate probe VMs to read the two lines that explained the two 60008s.
 a 60008 action once through `powershell.exe -File` with stderr captured, and its PSADT canary opens a
 real Silent session as SYSTEM so the next environment fault is named before the loop starts.
 
-**5. Never edit the package while the sandbox is running against it.** The package folder is mapped
+**5. Never edit the package while the sandbox is running against it.** The package folder was mapped
 read-only into the VM and copied at the start of the run; a launcher edit mid-run produced a result that
-would have mixed old and new code. That run had to be thrown away. **General lesson**: finish every edit,
-re-run pre-flight, re-pack - then start the test, and touch nothing until the verdict.
+would have mixed old and new code. That run had to be thrown away. Since 0.49.2 the VM maps a snapshot
+taken before it starts, so an edit no longer corrupts the run - it makes the run's verdict STALE, and the
+harness says so (`packageChangedDuringRun`, the changed files, no switch stored as proven). **General
+lesson**: finish every edit, re-run pre-flight, then start the test, and leave what the verdict is about
+alone until it is in - the launcher, the Extensions module, the detection script, `Files\`,
+`SupportFiles\`. The manifest, `Assets\` and the Output folder are what Phases 7 and 8 write meanwhile.
 
 **6. A SYSTEM action draws nothing.** Twenty minutes of an idle-looking VM screen are indistinguishable
 from a hang, and "I see nothing happening" was correct - both when the tasks really did not run and later

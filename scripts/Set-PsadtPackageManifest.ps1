@@ -92,39 +92,48 @@ function Get-ParentNode($root, [string[]]$segs, [bool]$Create) {
     return $node
 }
 
-$manifest = if (Test-Path -LiteralPath $manifestPath) {
-    try { ConvertTo-HashtableDeep (Get-Content $manifestPath -Raw | ConvertFrom-Json) }
-    catch { throw "psadt-package.json is malformed and cannot be safely updated: $($_.Exception.Message). Fix or delete it, then re-run." }
-} else { @{ schema = 1 } }
-if (-not $manifest.ContainsKey('schema')) { $manifest['schema'] = 1 }
-
-foreach ($key in $Updates.Keys) {
-    $segs = $key -split '\.'
-    $node = Get-ParentNode $manifest $segs $true
-    $node[$segs[-1]] = $Updates[$key]
-}
-
-foreach ($key in $Append.Keys) {
-    $segs = $key -split '\.'
-    $node = Get-ParentNode $manifest $segs $true
-    $leaf = $segs[-1]
-    # Deliberately statements, not `$x = if (...) {...}`: PowerShell unwraps a single-element array on the
-    # way out of a block, and a lone hashtable would make the next line a hashtable MERGE (which throws on
-    # a duplicate key) instead of an array append. @() on both sides keeps it concatenation.
-    $existing = @()
-    if ($null -ne $node[$leaf]) { $existing = @($node[$leaf]) }
-    $node[$leaf] = @() + $existing + @($Append[$key])
-}
-
-foreach ($key in $Remove) {
-    if ([string]::IsNullOrWhiteSpace($key)) { continue }
-    $segs = $key -split '\.'
-    $node = Get-ParentNode $manifest $segs $false
-    if ($node -is [hashtable]) { $node.Remove($segs[-1]) }
-}
-
+# Read, change and replace under ONE lock. Until 0.49.2 the read happened before the lock was taken, so
+# the sandbox harness and the packaging step - which SKILL.md runs in the same turn - could both read the
+# same manifest, and the second replace erased the first one's change.
 # Depth 12: results/artifacts nest arrays of objects, and a truncated manifest is a silent data loss.
 . (Join-Path $PSScriptRoot '_JsonStore.ps1')
-Write-JsonAtomic -Path $manifestPath -Object $manifest -Depth 12
+$manifest = Update-JsonAtomic -Path $manifestPath -Depth 12 -Mutate {
+    param($rawText)
+    $m = if ($null -ne $rawText) {
+        try {
+            $parsed = ConvertTo-HashtableDeep ($rawText | ConvertFrom-Json)
+            if ($parsed -isnot [hashtable]) { throw 'the file holds no JSON object' }
+            $parsed
+        }
+        catch { throw "psadt-package.json is malformed and cannot be safely updated: $($_.Exception.Message). Fix or delete it, then re-run." }
+    } else { @{ schema = 1 } }
+    if (-not $m.ContainsKey('schema')) { $m['schema'] = 1 }
+
+    foreach ($key in $Updates.Keys) {
+        $segs = $key -split '\.'
+        $node = Get-ParentNode $m $segs $true
+        $node[$segs[-1]] = $Updates[$key]
+    }
+
+    foreach ($key in $Append.Keys) {
+        $segs = $key -split '\.'
+        $node = Get-ParentNode $m $segs $true
+        $leaf = $segs[-1]
+        # Deliberately statements, not `$x = if (...) {...}`: PowerShell unwraps a single-element array on
+        # the way out of a block, and a lone hashtable would make the next line a hashtable MERGE (which
+        # throws on a duplicate key) instead of an array append. @() on both sides keeps it concatenation.
+        $existing = @()
+        if ($null -ne $node[$leaf]) { $existing = @($node[$leaf]) }
+        $node[$leaf] = @() + $existing + @($Append[$key])
+    }
+
+    foreach ($key in $Remove) {
+        if ([string]::IsNullOrWhiteSpace($key)) { continue }
+        $segs = $key -split '\.'
+        $node = Get-ParentNode $m $segs $false
+        if ($node -is [hashtable]) { $node.Remove($segs[-1]) }
+    }
+    $m
+}
 
 [pscustomobject]@{ Path = $manifestPath; Schema = $manifest['schema'] }

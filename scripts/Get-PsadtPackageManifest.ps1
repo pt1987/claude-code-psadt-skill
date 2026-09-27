@@ -99,7 +99,14 @@ function New-Result([bool]$exists, $manifest, $missing, [string]$stem, [string]$
 
 if (-not (Test-Path -LiteralPath $manifestPath)) { return (New-Result $false $null $required $null $null) }
 
-try { $m = Get-Content $manifestPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop }
+# Read and parse apart. A writer's File.Replace holds the file for milliseconds, and a read that lands in
+# that window used to be reported as "malformed" - measured 2026-09-27 with two processes on one manifest.
+# A busy file is retried briefly (_JsonStore.ps1) and, if it stays busy, named as busy.
+. (Join-Path $PSScriptRoot '_JsonStore.ps1')
+$fullManifestPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($manifestPath)
+try { $rawManifest = Invoke-JsonStoreRetry { [System.IO.File]::ReadAllText($fullManifestPath, [System.Text.Encoding]::UTF8) } }
+catch { return (New-Result $true $null $required $null "psadt-package.json could not be read: $($_.Exception.Message)") }
+try { $m = $rawManifest | ConvertFrom-Json -ErrorAction Stop }
 catch { return (New-Result $true $null $required $null "psadt-package.json is malformed: $($_.Exception.Message)") }
 
 $missing = [System.Collections.Generic.List[string]]::new()

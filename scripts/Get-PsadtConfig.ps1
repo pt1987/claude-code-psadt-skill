@@ -73,7 +73,13 @@ function New-Result([bool]$exists, $config, $missing, [string]$err) {
 
 if (-not (Test-Path -LiteralPath $configPath)) { return (New-Result $false $null $required $null) }
 
-try { $cfg = Get-Content $configPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop }
+# Read and parse apart: a read that lands in a writer's File.Replace window is busy, not malformed
+# (_JsonStore.ps1 retries it briefly).
+. (Join-Path $PSScriptRoot '_JsonStore.ps1')
+$fullConfigPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($configPath)
+try { $rawConfig = Invoke-JsonStoreRetry { [System.IO.File]::ReadAllText($fullConfigPath, [System.Text.Encoding]::UTF8) } }
+catch { return (New-Result $true $null $required "config.json could not be read: $($_.Exception.Message)") }
+try { $cfg = $rawConfig | ConvertFrom-Json -ErrorAction Stop }
 catch { return (New-Result $true $null $required "config.json is malformed: $($_.Exception.Message)") }
 $missing = [System.Collections.Generic.List[string]]::new()
 foreach ($key in $required) {

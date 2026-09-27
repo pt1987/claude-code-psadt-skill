@@ -97,10 +97,10 @@ Describe 'the stores survive an interrupted write (0.46.0)' {
         $root = Split-Path $PSScriptRoot -Parent
         foreach ($s in 'Set-PsadtPackageManifest.ps1', 'Set-PsadtConfig.ps1', 'Set-PsadtVerifiedSwitch.ps1') {
             $text = Get-Content -LiteralPath (Join-Path $root "scripts/$s") -Raw
-            $text | Should -Match 'Write-JsonAtomic' -Because "$s replaces a file the next phase reads"
+            $text | Should -Match 'Write-JsonAtomic|Update-JsonAtomic' -Because "$s replaces a file the next phase reads"
         }
         $helper = Get-Content -LiteralPath (Join-Path $root 'scripts/_JsonStore.ps1') -Raw
-        $helper | Should -Match 'Move-Item' -Because 'the rename is what makes the replacement atomic'
+        $helper | Should -Match 'File\]::Replace' -Because 'the replace is what makes the replacement atomic'
     }
 }
 
