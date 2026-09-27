@@ -146,7 +146,10 @@ Additionally enter the installer-specific codes from 0.3.
 
 ### 8.4 Requirements
 - **OS architecture**: `x64` when the script has `AppArch='x64'`, otherwise accordingly
-- **Minimum OS**: realistic (Win11 22H2, Win10 22H2) - not `1607`, that is leaving it open to legacy
+- **Minimum OS**: what the upload sends, and the dossier shows the same value (0.49.3): `1607` unless
+  `app.minWindowsRelease` names one of 1607-2004. Newer releases (22H2) are refused by some tenants' Graph
+  backend (`Invoke-IntuneWin32Upload.ps1` help), so a realistic minimum like Win10 22H2 is set in the portal
+  after the upload - and then it is the portal, not this package, that records it
 - **Disk space**: when the installer needs a lot - saves time on small disks
 - **Physical memory**: only for genuinely memory-hungry installers
 - **Additional requirement rules**: Registry / File / Script - for everything that goes beyond the standard requirements (e.g. domain-join check, specific build number)
@@ -212,6 +215,9 @@ mid-upload.
 Config, naming rules and the permission model: Appendix M. Only runs when the user chose it at Gate 2 AND
 `intune.groups.enabled` is set. Needs BOTH group roles (`Capabilities.Groups`), which
 `Invoke-IntuneAppAssignment.ps1` asserts before it creates anything. Dry-run first, like every write.
+`-ManifestPath <pkg>\psadt-package.json` supplies the app id (`results.upload.appId`) and the identity
+(0.49.3); after `-Execute` the assignments are read back and recorded as `results.assignment`, and the
+dossier renders them from there - regenerate it.
 
 ---
 

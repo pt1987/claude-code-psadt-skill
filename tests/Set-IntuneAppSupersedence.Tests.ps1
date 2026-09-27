@@ -184,3 +184,64 @@ Describe 'no assignments is not the same as unknown assignments (0.47.0)' {
         $script:Src | Should -Match 'no longer targets any group'
     }
 }
+
+Describe 'the supersedence names the versions and records itself on both packages (0.49.3)' {
+    # Measured 2026-09-27: results.supersedence held two bare ids, so the dossier printed a GUID where the
+    # previous version belongs; and the superseded package's manifest - and so its dossier - never learned
+    # that it had been superseded. Run against a fake tenant (tests/_helpers.ps1).
+    BeforeAll {
+        . (Join-Path $PSScriptRoot '_helpers.ps1')
+        function Invoke-Graph { param([string]$Method, [string]$Uri, $Body, [hashtable]$Headers, [int]$Depth = 20) }
+        $script:OLD = '11111111-2222-3333-4444-555555555555'
+        $script:NEW = '99999999-2222-3333-4444-555555555555'
+    }
+    BeforeEach {
+        $script:oldHome = $env:PSADT_DEPLOY_HOME
+        $script:sHome = Join-Path $TestDrive ('shome_' + [guid]::NewGuid().ToString('N'))
+        $script:root = Join-Path $script:sHome 'packages'
+        New-Item $script:root -ItemType Directory -Force | Out-Null
+        $env:PSADT_DEPLOY_HOME = $script:sHome
+        @{ version = 1; paths = @{ packageRoot = $script:root } } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $script:sHome 'config.json') -Encoding UTF8
+        $script:newPkg = { param([string]$Folder, [string]$Version, [string]$AppId)
+            $d = Join-Path $script:root $Folder
+            New-Item $d -ItemType Directory -Force | Out-Null
+            Set-Content (Join-Path $d 'Invoke-AppDeployToolkit.ps1') '# launcher'
+            @{ schema = 1; app = @{ vendor = 'ACME'; name = 'Widget'; version = $Version; arch = 'x64' }; package = @{ type = 'installer' }
+               results = @{ upload = @{ appId = $AppId; displayName = 'Widget' } } } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $d 'psadt-package.json') -Encoding UTF8
+            Join-Path $d 'psadt-package.json' }
+        $script:mfOld = & $script:newPkg 'Widget_1.0' '1.0' $script:OLD
+        $script:mfNew = & $script:newPkg 'Widget_2.0' '2.0' $script:NEW
+        $global:PsadtFakeTenant = New-FakeIntuneTenant
+        Add-FakeApp -Id $script:OLD -Name 'Widget' -Version '1.0'
+        Add-FakeApp -Id $script:NEW -Name 'Widget' -Version '2.0'
+        $g = Add-FakeGroup -Name 'grp-available-Widget'
+        Add-FakeAssignment -AppId $script:NEW -Intent 'available' -GroupId $g
+        Mock Invoke-Graph { Invoke-FakeGraph -Method $Method -Uri $Uri -Body $Body }
+    }
+    AfterEach { $env:PSADT_DEPLOY_HOME = $script:oldHome; Remove-Variable -Name PsadtFakeTenant -Scope Global -ErrorAction SilentlyContinue }
+
+    It 'names the superseded version in results.supersedence' {
+        & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -ManifestPath $script:mfNew -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        $s = (Get-Content $script:mfNew -Raw | ConvertFrom-Json).results.supersedence
+        $s.verified | Should -BeTrue
+        $a = @($s.supersedesApps)[0]
+        $a.id | Should -Be $script:OLD
+        $a.displayName | Should -Be 'Widget'
+        $a.displayVersion | Should -Be '1.0'
+    }
+
+    It 'records on the superseded package what superseded it' {
+        & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -ManifestPath $script:mfNew -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        $b = (Get-Content $script:mfOld -Raw | ConvertFrom-Json).results.supersededBy
+        $b.appId | Should -Be $script:NEW
+        $b.displayName | Should -Be 'Widget'
+        $b.displayVersion | Should -Be '2.0'
+        $b.supersedenceType | Should -Be 'update'
+    }
+
+    It 'records nothing on a dry run' {
+        & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -ManifestPath $script:mfNew -GraphToken 'opaque' 6>$null | Out-Null
+        (Get-Content $script:mfOld -Raw | ConvertFrom-Json).results.supersededBy | Should -BeNullOrEmpty
+        @($global:PsadtFakeTenant.Calls | Where-Object { $_ -match '^(POST|PATCH|DELETE)' }).Count | Should -Be 0
+    }
+}

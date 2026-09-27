@@ -780,3 +780,115 @@ Describe 'New-PsadtReport documents the command line the package recorded (0.49.
         (Get-Content $script:out3 -Raw) | Should -Match 'DeployMode Silent /explicit'
     }
 }
+
+Describe 'the dossier and the upload describe the same app (0.49.3)' {
+    # The class of defect, not one instance. Measured 2026-09-27: the dossier showed Developer = vendor, a
+    # branded "PSADT v4.1.8 - pkg rev 01" note and "Windows 10 22H2"; the upload sent an empty developer,
+    # empty notes and 1607. Each script was tested on its own and each test was green. This runs BOTH on
+    # the same manifest - the upload up to its artifact step, before any token - and compares what the
+    # approver reads with what Intune would get.
+    BeforeAll {
+        $script:up = Join-Path $PSScriptRoot '..\scripts\Invoke-IntuneWin32Upload.ps1'
+        $script:pair = { param([hashtable]$App)
+            $d = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+            New-Item $d -ItemType Directory -Force | Out-Null
+            Set-Content (Join-Path $d 'Invoke-AppDeployToolkit.ps1') '# launcher'
+            $mf = Join-Path $d 'psadt-package.json'
+            @{ schema = 1; app = $App; package = @{ type = 'installer' } } | ConvertTo-Json -Depth 6 | Set-Content $mf -Encoding UTF8
+            $lines = New-Object System.Collections.Generic.List[string]
+            try { & $script:up -ManifestPath $mf -IntuneWinPath 'C:\__nonexistent__\nope.intunewin' -ErrorAction Stop 6>&1 | ForEach-Object { $lines.Add([string]$_) } } catch { }
+            $txt = $lines -join "`n"
+            $out = Join-Path $d 'Intune-Dossier.html'
+            & $script:gen -ManifestPath $mf -OutputPath $out -AllowMissingDescription 3>$null | Out-Null
+            $html = Get-Content $out -Raw
+            $cell = { param($label) [regex]::Match($html, "data-de=`"$label`"[^>]*>$label</td><td>(.*?)</td>").Groups[1].Value }
+            [pscustomobject]@{
+                UpDeveloper = [regex]::Match($txt, 'developer : ([^\r\n]*)').Groups[1].Value.Trim()
+                UpNotes     = [regex]::Match($txt, 'notes     : ([^\r\n]*)').Groups[1].Value.Trim()
+                UpMinOs     = [regex]::Match($txt, 'min OS    : ([^\r\n]*)').Groups[1].Value.Trim()
+                DoDeveloper = & $cell 'Developer'
+                DoNotes     = & $cell 'Notes'
+                DoMinOs     = & $cell 'Minimum OS'
+            }
+        }
+        $script:agree = { param($p)
+            $p.UpDeveloper | Should -Not -BeNullOrEmpty -Because 'the upload names the developer it will send'
+            $p.DoDeveloper | Should -BeExactly $p.UpDeveloper
+            $p.DoMinOs | Should -BeExactly $p.UpMinOs
+            if ($p.UpNotes -eq '(empty)') { $p.DoNotes | Should -Match 'nicht gesetzt' }
+            else { $p.DoNotes | Should -BeExactly $p.UpNotes }
+        }
+    }
+    BeforeEach {
+        $script:oldHome = $env:PSADT_DEPLOY_HOME
+        $env:PSADT_DEPLOY_HOME = Join-Path $TestDrive ('home_' + [guid]::NewGuid().ToString('N'))
+        New-Item $env:PSADT_DEPLOY_HOME -ItemType Directory -Force | Out-Null
+    }
+    AfterEach { $env:PSADT_DEPLOY_HOME = $script:oldHome }
+
+    It 'agrees on a manifest that records nothing beyond the identity' {
+        $p = & $script:pair @{ vendor = 'ACME'; name = 'Widget'; version = '2.0'; arch = 'x64' }
+        & $script:agree $p
+        $p.UpDeveloper | Should -BeExactly 'ACME'
+        $p.UpMinOs | Should -BeExactly 'Windows 10 1607'
+        $p.UpNotes | Should -BeExactly '(empty)' -Because 'no branded note is imposed'
+    }
+
+    It 'agrees on recorded developer, notes and minimum release' {
+        $p = & $script:pair @{ vendor = 'ACME'; name = 'Widget'; version = '2.0'; arch = 'x64'; developer = 'ACME Labs'; notes = 'Pilot only'; minWindowsRelease = '1809' }
+        & $script:agree $p
+        $p.UpMinOs | Should -BeExactly 'Windows 10 1809'
+    }
+
+    It 'agrees when the organisation opted into a default note' {
+        @{ version = 1; intune = @{ notes = 'Desktop team' } } | ConvertTo-Json -Depth 4 |
+            Set-Content (Join-Path $env:PSADT_DEPLOY_HOME 'config.json') -Encoding UTF8
+        $p = & $script:pair @{ vendor = 'ACME'; name = 'Widget'; version = '2.0'; arch = 'x64' }
+        & $script:agree $p
+        $p.UpNotes | Should -BeExactly 'Desktop team'
+    }
+}
+
+Describe 'the dossier shows what Intune holds, not a suggestion (0.49.3)' {
+    BeforeEach {
+        $script:pd = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item $script:pd -ItemType Directory -Force | Out-Null
+        $script:pm = Join-Path $script:pd 'psadt-package.json'
+        $script:po = Join-Path $script:pd 'Intune-Dossier.html'
+        $script:base = @{ schema = 1; app = @{ vendor = 'ACME'; name = 'Widget'; version = '2.0'; arch = 'x64' }; package = @{ type = 'installer' } }
+        $script:render = { param([hashtable]$Results)
+            $m = $script:base.Clone(); if ($Results) { $m['results'] = $Results }
+            $m | ConvertTo-Json -Depth 8 | Set-Content $script:pm -Encoding UTF8
+            & $script:gen -ManifestPath $script:pm -OutputPath $script:po -AllowMissingDescription 3>$null | Out-Null
+            Get-Content $script:po -Raw }
+    }
+
+    It 'renders the assignments Phase 10 recorded, and says they were read back' {
+        $html = & $script:render @{ assignment = @{ at = '2026-09-27T14:00:00Z'; verified = 'read back from Intune'; groups = @(
+                    @{ Group = 'grp-available-Widget'; Type = 'Available'; Availability = 'As soon as possible' },
+                    @{ Group = 'grp-required-Widget'; Type = 'Required'; Availability = 'As soon as possible' }) } }
+        $html | Should -Match 'grp-available-Widget'
+        $html | Should -Match 'grp-required-Widget'
+        # The date as the ISO day. ConvertFrom-Json turns an ISO timestamp into [datetime], and [string] of that
+        # is culture-formatted - measured 2026-09-27: the tag read '09/27/2026'.
+        $html | Should -Match 'aus Intune zur&uuml;ckgelesen 2026-09-27'
+        $html | Should -Not -Match 'Vorschlag &middot; Anwender entscheidet'
+    }
+
+    It 'still calls it a suggestion while nothing is assigned' {
+        (& $script:render $null) | Should -Match 'Vorschlag &middot; Anwender entscheidet'
+    }
+
+    It 'names the superseded version, not its bare id' {
+        $html = & $script:render @{ supersedence = @{ supersedes = @('11111111-2222-3333-4444-555555555555'); supersedenceType = 'update'
+                supersedesApps = @(@{ id = '11111111-2222-3333-4444-555555555555'; displayName = 'Widget'; displayVersion = '1.0' }) } }
+        $html | Should -Match 'Widget 1\.0'
+    }
+
+    It 'says on a superseded version what superseded it' {
+        $html = & $script:render @{ supersededBy = @{ appId = '99999999-2222-3333-4444-555555555555'; displayName = 'Widget'; displayVersion = '3.0'; supersedenceType = 'update'; at = '2026-09-27T14:00:00Z' } }
+        $html | Should -Match 'Abgel&ouml;st durch Widget 3\.0'
+        $html | Should -Match 'Superseded by Widget 3\.0'
+        $html | Should -Match 'Modus update, 2026-09-27'
+    }
+}

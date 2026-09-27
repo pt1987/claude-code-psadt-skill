@@ -22,8 +22,12 @@
       - create a group       : Group.Create   (the app owns what it creates; NOT the tenant-wide Group.ReadWrite.All)
       - assign the app       : DeviceManagementApps.ReadWrite.All (already required for upload)
 
-.PARAMETER AppId        The win32LobApp id (from the upload).
-.PARAMETER AppName      App name for the {AppName} token.
+.PARAMETER ManifestPath psadt-package.json of the package: the app id (results.upload.appId) and the
+                        identity (app.name/vendor/version/arch) come from it, and after -Execute the
+                        assignments READ BACK from Intune are recorded as results.assignment - the
+                        dossier renders them from there (0.49.3). Explicit parameters still win.
+.PARAMETER AppId        The win32LobApp id (from the upload). Not needed with -ManifestPath.
+.PARAMETER AppName      App name for the {AppName} token. Not needed with -ManifestPath.
 .PARAMETER AppVendor    Optional {AppVendor} token.
 .PARAMETER AppArch      Optional {AppArch} token (default x64).
 .PARAMETER Intents      Subset of required/available/uninstall. Default = every intent that has a template.
@@ -36,8 +40,9 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$AppId,
-    [Parameter(Mandatory)][string]$AppName,
+    [string]$ManifestPath,
+    [string]$AppId,
+    [string]$AppName,
     [string]$AppVendor = '',
     [string]$AppVersion = '',
     [ValidateSet('x64', 'x86', 'arm64')][string]$AppArch = 'x64',
@@ -53,6 +58,24 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $GraphBase = 'https://graph.microsoft.com/beta'
+
+# --- Identity from the package manifest (0.49.3) -------------------------------------------------
+# The app id the upload recorded, and the identity the group names are built from - never retyped. An
+# explicit parameter still wins.
+if ($ManifestPath) {
+    if (-not (Test-Path -LiteralPath $ManifestPath)) { throw "ManifestPath not found: $ManifestPath" }
+    try { $mfA = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { throw "psadt-package.json is malformed: $($_.Exception.Message)" }
+    if (-not $PSBoundParameters.ContainsKey('AppId')) {
+        $AppId = if ($mfA.results -and $mfA.results.upload) { [string]$mfA.results.upload.appId } else { '' }
+        if (-not $AppId) { throw "The manifest records no results.upload.appId - upload the package first (Phase 9), or pass -AppId." }
+    }
+    if (-not $PSBoundParameters.ContainsKey('AppName'))    { $AppName = [string]$mfA.app.name }
+    if (-not $PSBoundParameters.ContainsKey('AppVendor'))  { $AppVendor = [string]$mfA.app.vendor }
+    if (-not $PSBoundParameters.ContainsKey('AppVersion')) { $AppVersion = [string]$mfA.app.version }
+    if (-not $PSBoundParameters.ContainsKey('AppArch') -and [string]$mfA.app.arch -in @('x64', 'x86', 'arm64')) { $AppArch = [string]$mfA.app.arch }
+}
+if (-not $AppId -or -not $AppName) { throw 'Pass -ManifestPath <pkg>\psadt-package.json, or -AppId and -AppName.' }
 
 # --- Shared Graph helpers (Write-*, Get-GraphErr, Invoke-Graph; retry + PS7-safe) ----------------
 . (Join-Path $PSScriptRoot '_GraphCommon.ps1')
@@ -197,6 +220,28 @@ if (-not $Execute) {
 }
 else {
     Write-Host "`nDone. Groups + assignments are set (app NOT removed/modified beyond assignments)." -ForegroundColor Green
+    # What Intune holds NOW, read back - not what was asked for (0.49.3). Until then nothing was recorded,
+    # and the dossier, which could only take assignments from -Metadata, called a real three-group
+    # assignment "not yet assigned - a suggestion".
+    if ($ManifestPath) {
+        $typeOf = @{ available = 'Available'; required = 'Required'; uninstall = 'Uninstall' }
+        $order = @('Available', 'Required', 'Uninstall')
+        $rows = @(foreach ($a in @((Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps/$AppId/assignments" -Headers $H).value)) {
+                if ("$($a.target.'@odata.type')" -notmatch 'groupAssignmentTarget') { continue }
+                $gname = try { [string](Invoke-Graph GET "$GraphBase/groups/$($a.target.groupId)?`$select=displayName" -Headers $H).displayName } catch { [string]$a.target.groupId }
+                [ordered]@{ Group = $gname; Type = $typeOf[[string]$a.intent]; Availability = 'As soon as possible' }
+            }) | Sort-Object { $order.IndexOf([string]$_.Type) }
+        $rows = @($rows)
+        & (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath (Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath).ProviderPath) -Updates @{
+            'results.assignment' = [ordered]@{
+                groups   = $rows
+                intents  = @($rows | ForEach-Object { ([string]$_.Type).ToLowerInvariant() })
+                at       = (Get-Date).ToUniversalTime().ToString('o')
+                verified = 'read back from Intune'
+            }
+        } | Out-Null
+        Write-Ok "Recorded results.assignment in the manifest ($($rows.Count) assignment(s), read back from Intune)."
+    }
 }
 
 [pscustomobject]@{

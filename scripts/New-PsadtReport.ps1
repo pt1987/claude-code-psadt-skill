@@ -79,6 +79,15 @@ if ($PSCmdlet.ParameterSetName -eq 'Json') {
     foreach ($p in $json.PSObject.Properties) { $Metadata[$p.Name] = $p.Value }
 }
 
+# A recorded timestamp as its ISO day (0.49.3). ConvertFrom-Json turns an ISO string into [datetime], and
+# [string] of that is culture-formatted - the assignment tag read '09/27/2026' (measured 2026-09-27).
+function Format-IsoDay($Value) {
+    if ($Value -is [datetime]) { return $Value.ToUniversalTime().ToString('yyyy-MM-dd') }
+    $s = [string]$Value
+    if ($s.Length -ge 10) { return $s.Substring(0, 10) }
+    return $s
+}
+
 # ----------------------------------------------------------------------------- manifest (0.21.0)
 if ($ManifestPath) {
     if (-not (Test-Path -LiteralPath $ManifestPath)) { throw "ManifestPath not found: $ManifestPath" }
@@ -98,6 +107,30 @@ if ($ManifestPath) {
     if ($mf.artifacts.detection) { Set-FromManifest 'DetectScript' ([IO.Path]::GetFileName([string]$mf.artifacts.detection)) }
     Set-FromManifest 'SetupFile'    $mf.results.package.setupFile
     Set-FromManifest 'DriverTrust'  $mf.driverTrust
+    # The App-information fields, ONE derivation with the upload (Resolve-PsadtIntuneAppInfo, 0.49.3). This
+    # document used to print Developer = vendor, a branded "PSADT vX - pkg rev NN" note and "Windows 10
+    # 22H2" while the upload sent an empty developer, empty notes and 1607.
+    . (Join-Path $PSScriptRoot '_AppKey.ps1')
+    $cfgNotes = ''
+    try {
+        $cfgR = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')).Config
+        if ($cfgR.intune -and $cfgR.intune.notes) { $cfgNotes = [string]$cfgR.intune.notes }
+    } catch {}
+    $appInfo = Resolve-PsadtIntuneAppInfo -Manifest $mf -ConfigNotes $cfgNotes
+    Set-FromManifest 'Developer'  $appInfo.Developer
+    Set-FromManifest 'Owner'      $appInfo.Owner
+    Set-FromManifest 'Notes'      $appInfo.Notes
+    Set-FromManifest 'InfoUrl'    $appInfo.InformationUrl
+    Set-FromManifest 'PrivacyUrl' $appInfo.PrivacyUrl
+    Set-FromManifest 'MinOs'      "Windows 10 $($appInfo.MinWindowsRelease)"
+    # The assignments Phase 10 set and read back (Invoke-IntuneAppAssignment.ps1 -ManifestPath, 0.49.3).
+    # Until then they reached this document only through -Metadata, so a real three-group assignment was
+    # shown as "not yet assigned - a suggestion".
+    $asgRecorded = $null
+    if ($mf.results.assignment -and $mf.results.assignment.groups) {
+        $asgRecorded = $mf.results.assignment
+        Set-FromManifest 'Assignments' @($asgRecorded.groups | ForEach-Object { @{ Group = [string]$_.Group; Type = [string]$_.Type; Availability = [string]$_.Availability } })
+    }
     # The command lines the package ships (0.49.2), parsed once, by Get-PsadtPackageManifest.ps1 - the
     # upload reads the same value. Before, the dossier printed its own '-DeployMode Silent' default
     # whatever Gate 2 had chosen. A line the upload would refuse is named, not rendered as if it were fine.
@@ -127,18 +160,40 @@ if ($ManifestPath) {
     $supRec = if ($mf.results.supersedence -and $mf.results.supersedence.supersedes) { $mf.results.supersedence }
     elseif ($mf.results.upload -and $mf.results.upload.supersedes) { $mf.results.upload }
     else { $null }
+    # The superseded apps by NAME AND VERSION when the supersedence recorded them (0.49.3) - a bare GUID
+    # told the reader nothing about which version this one replaces.
+    $supNoteDe = $null; $supNoteEn = $null
     if ($supRec) {
-        $supIds  = @($supRec.supersedes) -join ', '
+        $supNamed = @($supRec.supersedesApps | Where-Object { $_ -and $_.displayName })
+        $supIds  = if ($supNamed.Count) { @($supNamed | ForEach-Object { ("$($_.displayName) $($_.displayVersion)").Trim() }) -join ', ' }
+                   else { @($supRec.supersedes) -join ', ' }
         $supMode = if ($supRec.supersedenceType) { [string]$supRec.supersedenceType } else { 'update' }
         Set-FromManifest 'Supersedence' $supIds
         if ($supMode -eq 'replace') {
-            Set-FromManifest 'SupersedenceNoteDe' 'Modus "replace": die Vorversion wird vor der Installation DEINSTALLIERT. Sie bleibt in Intune erhalten (Rollback-Ziel), wird aber nicht mehr angeboten.'
-            Set-FromManifest 'SupersedenceNoteEn' 'Mode "replace": the previous version is UNINSTALLED before the new one installs. It stays in Intune as a rollback target but is no longer offered.'
+            $supNoteDe = 'Modus "replace": die Vorversion wird vor der Installation DEINSTALLIERT. Sie bleibt in Intune erhalten (Rollback-Ziel), wird aber nicht mehr angeboten.'
+            $supNoteEn = 'Mode "replace": the previous version is UNINSTALLED before the new one installs. It stays in Intune as a rollback target but is no longer offered.'
         } else {
-            Set-FromManifest 'SupersedenceNoteDe' 'Modus "update": das Installationsprogramm aktualisiert die Vorversion selbst; es wird kein Deinstallationsbefehl gesendet. Die Vorversion bleibt in Intune erhalten (Rollback-Ziel).'
-            Set-FromManifest 'SupersedenceNoteEn' 'Mode "update": the installer upgrades the previous version itself; no uninstall command is sent. The previous version stays in Intune as a rollback target.'
+            $supNoteDe = 'Modus "update": das Installationsprogramm aktualisiert die Vorversion selbst; es wird kein Deinstallationsbefehl gesendet. Die Vorversion bleibt in Intune erhalten (Rollback-Ziel).'
+            $supNoteEn = 'Mode "update": the installer upgrades the previous version itself; no uninstall command is sent. The previous version stays in Intune as a rollback target.'
         }
     }
+    # ...and, on a superseded version, what superseded it. Set-IntuneAppSupersedence.ps1 records that on the
+    # OLD package since 0.49.3; before, the old package's dossier never learned it had been replaced.
+    $by = $mf.results.supersededBy
+    if ($by -and $by.appId) {
+        $byName = ("$($by.displayName) $($by.displayVersion)").Trim()
+        # Esc is defined further down; the same four replacements, here.
+        $byHtml = $byName.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;').Replace('"', '&quot;')
+        $byMode = if ($by.supersedenceType) { [string]$by.supersedenceType } else { 'update' }
+        $byDate = if ($by.at) { Format-IsoDay $by.at } else { '' }
+        $byDe = "Abgel&ouml;st durch $byHtml (Modus $byMode$(if ($byDate) { ", $byDate" })). Diese Version bleibt in Intune als Rollback-Ziel."
+        $byEn = "Superseded by $byHtml (mode $byMode$(if ($byDate) { ", $byDate" })). This version stays in Intune as a rollback target."
+        if (-not $supRec) { Set-FromManifest 'Supersedence' $byName }
+        $supNoteDe = if ($supNoteDe) { "$supNoteDe $byDe" } else { $byDe }
+        $supNoteEn = if ($supNoteEn) { "$supNoteEn $byEn" } else { $byEn }
+    }
+    Set-FromManifest 'SupersedenceNoteDe' $supNoteDe
+    Set-FromManifest 'SupersedenceNoteEn' $supNoteEn
 
     # The sandbox harness already measures every action and writes its verdict, exit codes, durations and
     # detection results into result.json, recording the path in the manifest. Until 0.32.0 this document
@@ -375,7 +430,9 @@ $infoUrl    = Get-Val 'InfoUrl' ''
 $privacyUrl = Get-Val 'PrivacyUrl' ''
 $vInfoUrl    = if ($infoUrl) { Codei $infoUrl } else { Bspan 'nicht gesetzt' 'not set' }
 $vPrivacyUrl = if ($privacyUrl) { Codei $privacyUrl } else { Bspan 'nicht gesetzt' 'not set' }
-$vNotes = Esc (Get-Val 'Notes' "PSADT v$psadtVersion - pkg rev $pkgRev - $created")
+# No branded default (0.49.3): the upload sends none, and a note that is not in Intune is not a fact.
+$notesVal = Get-Val 'Notes' ''
+$vNotes = if ($notesVal) { Esc $notesVal } else { Bspan 'nicht gesetzt' 'not set' }
 
 $logoLeaf = ''
 if ($LogoPath) { $logoLeaf = Split-Path $LogoPath -Leaf }
@@ -401,7 +458,8 @@ $vAllowUninstall = if ($allowUninstall) { Badge 'b-ok' 'Ja' 'Yes' } else { Badge
 
 # ----------------------------------------------------------------------------- requirements / detection
 $vOsArch = Esc (Get-Val 'OsArch' 'x64')
-$vMinOs  = Esc (Get-Val 'MinOs' 'Windows 10 22H2')
+# 1607 is what the upload sends by default (0.49.3); '22H2' was printed here while Intune got 1607.
+$vMinOs  = Esc (Get-Val 'MinOs' 'Windows 10 1607')
 $vDisk   = Esc (Get-Val 'DiskMb' '')
 $vMemory = $m = Get-Val 'MemoryMb' ''
 $vMemory = if ($m) { Esc $m } else { (Bspan 'nicht relevant' 'not relevant') }
@@ -537,6 +595,19 @@ $rcRows = @(foreach ($r in $rc) {
 
 # ----------------------------------------------------------------------------- assignments
 $asg = Get-Val 'Assignments' @()
+# What the section says it is (0.49.3): assignments Phase 10 set and read back are facts, not a suggestion.
+if ($asgRecorded) {
+    $asgAt = Format-IsoDay $asgRecorded.at
+    $asgTagDe = "Gesetzt &middot; aus Intune zur&uuml;ckgelesen $asgAt"
+    $asgTagEn = "Set &middot; read back from Intune $asgAt"
+    $asgNoteDe = 'Die Zuweisung wurde in Phase 10 gesetzt und aus Intune zur&uuml;ckgelesen (Invoke-IntuneAppAssignment.ps1). Kategorie und Featured-Flag bleiben bewusste menschliche Entscheidungen.'
+    $asgNoteEn = 'The assignment was set in Phase 10 and read back from Intune (Invoke-IntuneAppAssignment.ps1). Category and the featured flag remain deliberate human decisions.'
+} else {
+    $asgTagDe = 'Vorschlag &middot; Anwender entscheidet'
+    $asgTagEn = 'Suggestion &middot; user decides'
+    $asgNoteDe = 'Zuweisung, Kategorie und Featured-Flag sind bewusste menschliche Entscheidungen &ndash; der Report schl&auml;gt nur vor, setzt nichts automatisch.'
+    $asgNoteEn = 'Assignment, category and the featured flag are deliberate human decisions &ndash; the report only suggests, it sets nothing automatically.'
+}
 if ($asg.Count -eq 0) {
     $asgRows = "            <tr><td colspan=`"3`"><span data-de=`"noch nicht zugewiesen &ndash; bewusste Entscheidung im Admin Center`" data-en=`"not yet assigned &ndash; a deliberate decision in the Admin Center`">noch nicht zugewiesen</span></td></tr>"
 } else {
@@ -785,6 +856,10 @@ $tokens = [ordered]@{
     'V_DEPENDENCIES'    = $vDeps
     'V_SUPERSEDENCE'    = $vSup
     'ASSIGNMENT_ROWS'   = $asgRows
+    'ASSIGN_TAG_DE'     = (AttrHtml $asgTagDe)
+    'ASSIGN_TAG_EN'     = (AttrHtml $asgTagEn)
+    'ASSIGN_NOTE_DE'    = (AttrHtml $asgNoteDe)
+    'ASSIGN_NOTE_EN'    = (AttrHtml $asgNoteEn)
     'HOOK_INSTALL_ITEMS' = $hookInstall
     'HOOK_UNINSTALL_ITEMS' = $hookUninstall
     'HOOK_REPAIR_ITEMS' = $hookRepair

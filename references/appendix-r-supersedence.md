@@ -114,6 +114,13 @@ Or in one pass at upload time: `Invoke-IntuneWin32Upload.ps1 ... -SupersedesAppI
 version that `SKILL.md` requires for every supersedence; run the script above afterwards - it keeps the
 existing edge and adds the note. The upload prints that command with the ids filled in.
 
+**What it records (0.49.3).** With `-ManifestPath` the new package's `results.supersedence` names each
+superseded app by id, name and version (`supersedesApps`), so the dossier shows "<name> <version>" where it
+used to print a bare GUID. And the superseded package learns it too: the script finds its manifest under
+`paths.packageRoot` by the app id its own upload recorded and writes `results.supersededBy`; that
+package's dossier then reads "superseded by <name> <version>". Regenerate it - the script names the
+command.
+
 Three mechanics worth knowing, because they explain the script's shape:
 
 - **The route is `updateRelationships`, not `POST .../relationships`.** The documented POST answers

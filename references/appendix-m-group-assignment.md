@@ -102,13 +102,16 @@ This breaks the supersedence reuse above. Choose it only when you genuinely want
 Always dry-run first (read-only), confirm the planned group names + actions, then `-Execute`:
 
 ```
-# dry run
-pwsh scripts/Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName '<App>' -AppVendor '<Vendor>' `
-    -AppVersion '<x.y.z>' -AppArch x64 -Intents available,required,uninstall
-# execute
-pwsh scripts/Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName '<App>' -AppVendor '<Vendor>' `
-    -AppVersion '<x.y.z>' -AppArch x64 -Intents available,required,uninstall -Execute
+# dry run - the app id and the identity come from the manifest (0.49.3)
+pwsh scripts/Invoke-IntuneAppAssignment.ps1 -ManifestPath '<pkg>\psadt-package.json' -Intents available,required,uninstall
+# execute - then reads the assignments back and records them as results.assignment
+pwsh scripts/Invoke-IntuneAppAssignment.ps1 -ManifestPath '<pkg>\psadt-package.json' -Intents available,required,uninstall -Execute
+# without a manifest, name the app yourself:
+#   -AppId <id> -AppName '<App>' -AppVendor '<Vendor>' -AppVersion '<x.y.z>' -AppArch x64
 ```
+
+After `-Execute` the dossier renders the recorded assignments and marks the section as set and read back
+from Intune, instead of a suggestion - regenerate it (`rule:dossier-always`).
 
 > **Array parameters and the `-File` binder (bit us on 2026-09-06).** `pwsh script.ps1 -Intents a,b` uses
 > `-File` semantics, and that binder passes `a,b` as a SINGLE array element - it does not split on commas.

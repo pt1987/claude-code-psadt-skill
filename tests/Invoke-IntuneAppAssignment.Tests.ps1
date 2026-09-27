@@ -97,3 +97,61 @@ Describe 'the assignment dry-runs unless -Execute (0.46.0)' {
         $src | Should -Match 'Executed\s*='
     }
 }
+
+Describe 'the assignment takes its identity from the manifest and records what Intune holds (0.49.3)' {
+    # Measured 2026-09-27: after a real three-group assignment the manifest recorded nothing, and the
+    # dossier - which reads assignments only from -Metadata - still called the section a suggestion. Run
+    # against a fake tenant (tests/_helpers.ps1), so what is recorded is what the tenant ends up holding.
+    BeforeAll {
+        function Invoke-Graph { param([string]$Method, [string]$Uri, $Body, [hashtable]$Headers, [int]$Depth = 20) }
+        $script:appId = '11111111-2222-3333-4444-555555555555'
+    }
+    BeforeEach {
+        $script:oldHome = $env:PSADT_DEPLOY_HOME
+        $env:PSADT_DEPLOY_HOME = Join-Path $TestDrive ('ahome_' + [guid]::NewGuid().ToString('N'))
+        New-Item $env:PSADT_DEPLOY_HOME -ItemType Directory -Force | Out-Null
+        @{ version = 1; intune = @{ groups = @{ enabled = $true; create = $true; membershipType = 'assigned'; naming = @{
+                        available = 'grp-available-%appname%'; required = 'grp-required-%appname%'; uninstall = 'grp-uninstall-%appname%' } } } } |
+            ConvertTo-Json -Depth 6 | Set-Content (Join-Path $env:PSADT_DEPLOY_HOME 'config.json') -Encoding UTF8
+        $global:PsadtFakeTenant = New-FakeIntuneTenant
+        Add-FakeApp -Id $script:appId -Name 'Widget' -Version '2.0'
+        $script:pkg = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item $script:pkg -ItemType Directory -Force | Out-Null
+        Set-Content (Join-Path $script:pkg 'Invoke-AppDeployToolkit.ps1') '# launcher'
+        $script:mf = Join-Path $script:pkg 'psadt-package.json'
+        @{ schema = 1; app = @{ vendor = 'ACME'; name = 'Widget'; version = '2.0'; arch = 'x64' }; package = @{ type = 'installer' }
+           results = @{ upload = @{ appId = $script:appId; displayName = 'Widget' } } } | ConvertTo-Json -Depth 6 | Set-Content $script:mf -Encoding UTF8
+        Mock Invoke-Graph { Invoke-FakeGraph -Method $Method -Uri $Uri -Body $Body }
+    }
+    AfterEach { $env:PSADT_DEPLOY_HOME = $script:oldHome; Remove-Variable -Name PsadtFakeTenant -Scope Global -ErrorAction SilentlyContinue }
+
+    It 'binds with -ManifestPath alone and takes the app id from results.upload' {
+        $r = & $script:AssignScript -ManifestPath $script:mf -Intents available,required,uninstall -GraphToken 'opaque' 6>$null
+        $r.AppId | Should -Be $script:appId
+        @($r.Groups.Name) | Should -Contain 'grp-required-Widget'
+        $r.Executed | Should -BeFalse
+    }
+
+    It 'records the assignments it read back from the tenant after -Execute' {
+        & $script:AssignScript -ManifestPath $script:mf -Intents available,required,uninstall -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        $global:PsadtFakeTenant.Assignments[$script:appId].Count | Should -Be 3   # .Count, never @(): @() around a Generic.List throws "Argument types do not match"
+        $m = Get-Content $script:mf -Raw | ConvertFrom-Json
+        $m.results.assignment.verified | Should -Be 'read back from Intune'
+        @($m.results.assignment.groups).Count | Should -Be 3
+        @($m.results.assignment.groups | ForEach-Object { $_.Type }) | Should -Be @('Available', 'Required', 'Uninstall')
+        @($m.results.assignment.groups | Where-Object Type -eq 'Required')[0].Group | Should -Be 'grp-required-Widget'
+    }
+
+    It 'records nothing on a dry run' {
+        & $script:AssignScript -ManifestPath $script:mf -Intents available,required,uninstall -GraphToken 'opaque' 6>$null | Out-Null
+        (Get-Content $script:mf -Raw | ConvertFrom-Json).results.assignment | Should -BeNullOrEmpty
+        @($global:PsadtFakeTenant.Calls | Where-Object { $_ -match '^(POST|PATCH|DELETE)' }).Count | Should -Be 0
+    }
+
+    It 'refuses a manifest whose package was never uploaded' {
+        @{ schema = 1; app = @{ vendor = 'ACME'; name = 'Widget'; version = '2.0'; arch = 'x64' }; package = @{ type = 'installer' } } |
+            ConvertTo-Json -Depth 6 | Set-Content $script:mf -Encoding UTF8
+        { & $script:AssignScript -ManifestPath $script:mf -Intents required -GraphToken 'opaque' -ErrorAction Stop 6>$null } |
+            Should -Throw -ExpectedMessage '*results.upload.appId*'
+    }
+}

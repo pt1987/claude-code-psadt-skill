@@ -183,7 +183,23 @@ if ($ManifestPath) {
             if ($mfCmds.Uninstall.Recorded) { $UninstallCommandLine = $mfCmds.Uninstall.Command; $commandSource = 'from the manifest' }
         }
     }
-    if (-not $PSBoundParameters.ContainsKey('Publisher')  -and $mfUp.app.vendor)  { $Publisher  = [string]$mfUp.app.vendor }
+    # The App-information fields, ONE derivation with the dossier (Resolve-PsadtIntuneAppInfo, 0.49.3).
+    # Until then the dossier printed Developer = vendor, a branded note and "Windows 10 22H2" while this
+    # script sent an empty developer, empty notes and 1607. An explicit parameter still wins.
+    $cfgNotes = ''
+    try {
+        $cfgA = (& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot).Config
+        if ($cfgA.intune -and $cfgA.intune.notes) { $cfgNotes = [string]$cfgA.intune.notes }
+    } catch {}
+    $appInfo = Resolve-PsadtIntuneAppInfo -Manifest $mfUp -ConfigNotes $cfgNotes
+    foreach ($w in @($appInfo.Warnings)) { Write-Warning $w }
+    if (-not $PSBoundParameters.ContainsKey('Publisher') -and $appInfo.Publisher) { $Publisher = $appInfo.Publisher }
+    if (-not $PSBoundParameters.ContainsKey('Developer'))         { $Developer = $appInfo.Developer }
+    if (-not $PSBoundParameters.ContainsKey('Owner'))             { $Owner = $appInfo.Owner }
+    if (-not $PSBoundParameters.ContainsKey('Notes'))             { $Notes = $appInfo.Notes }
+    if (-not $PSBoundParameters.ContainsKey('InformationUrl'))    { $InformationUrl = $appInfo.InformationUrl }
+    if (-not $PSBoundParameters.ContainsKey('PrivacyUrl'))        { $PrivacyUrl = $appInfo.PrivacyUrl }
+    if (-not $PSBoundParameters.ContainsKey('MinWindowsRelease')) { $MinWindowsRelease = $appInfo.MinWindowsRelease }
     # Installer-specific codes researched in Phase 1.3 and recorded once in the manifest, so the dossier
     # and the uploaded app cannot document different mappings.
     if (-not $PSBoundParameters.ContainsKey('ReturnCodes') -and $mfUp.research.returnCodes) { $ReturnCodes = @($mfUp.research.returnCodes) }
@@ -268,6 +284,10 @@ if ($ManifestPath) {
     Write-Info "name      : from $displayNameSource"
     Write-Info "install   : $InstallCommandLine ($commandSource)"
     Write-Info "uninstall : $UninstallCommandLine"
+    # The App-information fields as they will be sent - the dossier shows the same derivation (0.49.3).
+    Write-Info "developer : $Developer"
+    Write-Info "notes     : $(if ($Notes) { $Notes } else { '(empty)' })"
+    Write-Info "min OS    : Windows 10 $MinWindowsRelease"
     if ($testGate.Passed) { Write-Info "SYSTEM test: met ($($testGate.Route))" }
     else { Write-Warn2 "SYSTEM test: NOT met - -Execute will refuse: $($testGate.Reason)" }
 }
@@ -637,7 +657,11 @@ if ($SupersedesAppId -and -not $UpdateAppId) {
     }
 }
 
-Write-Host "`nDone. App is in Intune (NOT assigned to groups - assign to Entra groups manually)." -ForegroundColor Green
+# Until 0.49.3 this line sent the operator to the portal to assign by hand; Phase 10 does it, when Gate 2
+# chose groups.
+Write-Host "`nDone. App is in Intune - not assigned yet." -ForegroundColor Green
+Write-Host ("  Assign (Phase 10, when Gate 2 chose groups): pwsh scripts/Invoke-IntuneAppAssignment.ps1 -ManifestPath " +
+    $(if ($ManifestPath) { "'$ManifestPath'" } else { '<pkg>\psadt-package.json' }) + " -Intents available,required,uninstall (dry run first).") -ForegroundColor White
 Write-Host "  Portal: $portal" -ForegroundColor White
 # Both hints name Set-IntuneAppSupersedence.ps1: it is the only route that writes the old version's note
 # (SKILL.md, rule supersedence-recorded). The relationship wired above carries no note, and the portal

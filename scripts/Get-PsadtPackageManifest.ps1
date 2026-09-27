@@ -11,7 +11,8 @@
 
     Schema 1 sections:
       app        vendor, name, version, arch, lang, revision, displayName (optional Intune name),
-                 description{de,en}
+                 description{de,en}; optional App-information fields developer, owner, notes,
+                 informationUrl, privacyUrl, minWindowsRelease (Resolve-PsadtIntuneAppInfo, _AppKey.ps1)
       package    name, type (installer|winget|script|browser-extension|windows-feature|driver),
                  installerTech, sourceStrategy, installerFile, installerSha256, productCode,
                  processesToClose[], installCommand, uninstallCommand, detection, selfUpdating
@@ -21,7 +22,8 @@
                  installer-specific Intune return codes; type is one of success/softReboot/hardReboot/
                  retry/failed and is validated by Get-PsadtReturnCodes.ps1)
       driverTrust classification, owner, thumbprint
-      results    preflight, systemTest[], package, report, upload
+      results    preflight, sandboxTest, systemTest[], package, report, upload, assignment (read back
+                 from Intune), supersedence{supersedes[], supersedesApps[]}, supersededBy
       artifacts  outputFolder, intunewin, detection, dossier, logo, logs[]
 
     .Stem is the BINDING artifact name, ALWAYS derived from the identity: <Vendor>_<App>_<Version>_<Arch>,
@@ -142,6 +144,15 @@ function Get-LauncherCommands($manifest) {
 #   dev-vm  - results.systemTest[] from Invoke-PsadtSystemTest.ps1: the LATEST Install and the LATEST
 #             Uninstall both succeeded. Rows the sandbox appends (context = windows-sandbox) do not count
 #             here, or a partial sandbox run would pass through this door on its own rows.
+# A recorded timestamp as a point in time. ConvertFrom-Json turns an ISO string into [datetime], and [string]
+# of that is '12/30/2026 ...', which sorts after '01/02/2027 ...' - so timestamps are compared as instants,
+# never as text (0.49.3). Unreadable or missing is the earliest possible time.
+function ConvertTo-Instant($Value) {
+    if ($Value -is [datetime]) { return $Value.ToUniversalTime() }
+    $d = [datetime]::MinValue
+    if ([datetime]::TryParse([string]$Value, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AdjustToUniversal -bor [System.Globalization.DateTimeStyles]::AssumeUniversal, [ref]$d)) { return $d }
+    return [datetime]::MinValue
+}
 function Get-TestGate($manifest) {
     $rerun = 'pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg> (the full gate is the default)'
     $five = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
@@ -166,7 +177,7 @@ function Get-TestGate($manifest) {
     foreach ($row in $dev) {
         $t = [string]$row.type
         if ($t -notin 'Install', 'Uninstall') { continue }
-        if (-not $latest.ContainsKey($t) -or ([string]$row.at -ge [string]$latest[$t].at)) { $latest[$t] = $row }
+        if (-not $latest.ContainsKey($t) -or ((ConvertTo-Instant $row.at) -ge (ConvertTo-Instant $latest[$t].at))) { $latest[$t] = $row }
     }
     if ($latest.Count) {
         $state = foreach ($t in 'Install', 'Uninstall') {
@@ -175,8 +186,8 @@ function Get-TestGate($manifest) {
         }
         if (-not @($state).Count) {
             # A newer DEV-VM pass settles it; a sandbox failure recorded AFTER it does not get overruled.
-            $devAt = @($latest.Values | ForEach-Object { [string]$_.at } | Sort-Object)[-1]
-            if (-not $sbx -or -not [string]$sbx.at -or $devAt -gt [string]$sbx.at) {
+            $devAt = @($latest.Values | ForEach-Object { ConvertTo-Instant $_.at } | Sort-Object)[-1]
+            if (-not $sbx -or -not $sbx.at -or $devAt -gt (ConvertTo-Instant $sbx.at)) {
                 return [pscustomobject]@{ Passed = $true; Route = 'dev-vm'; Code = 'passed'; Reason = $null }
             }
         } elseif (-not $sbx) {

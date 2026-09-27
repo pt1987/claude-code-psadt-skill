@@ -25,6 +25,10 @@
     'Office 2019' and 'Office 2021' are different products to the people deploying them, and a key that
     merged them would carry the wrong decisions forward silently. If a name carries a version, that is
     the operator's identity and it is theirs to change.
+
+    The same identity also decides what Intune shows, so the Intune-facing derivations live here too:
+    the display name (Resolve-PsadtDisplayName) and the App-information fields
+    (Resolve-PsadtIntuneAppInfo) - one derivation each, read by the upload AND the dossier.
 #>
 
 function ConvertTo-PsadtAppKey {
@@ -91,4 +95,50 @@ function Resolve-PsadtDisplayName {
         else { @($null, $null) }
     )
     return [pscustomobject]@{ Name = $pick[0]; Source = $pick[1]; LegacyName = $legacy }
+}
+
+function Resolve-PsadtIntuneAppInfo {
+    <#
+        The App-information fields Intune shows - ONE derivation for the upload and the dossier (0.49.3).
+        Measured 2026-09-27 on one real app: the dossier said Developer = the vendor, showed a branded
+        "PSADT v4.1.8 - pkg rev 01" note and "Windows 10 22H2", while the upload sent an empty developer,
+        empty notes and 1607. The approver read one app and Intune got another.
+
+          Publisher / Developer  app.vendor (objective - filled); app.developer when recorded
+          Owner                  app.owner, else empty (an organisational choice)
+          Notes                  app.notes; else the organisation's opt-in intune.notes (-ConfigNotes);
+                                 else empty - never a branded default
+          InformationUrl         app.informationUrl, else empty
+          PrivacyUrl             app.privacyUrl, else empty
+          MinWindowsRelease      app.minWindowsRelease when it is one the upload can send, else 1607 -
+                                 newer labels like 22H2 are refused by some tenants (upload help)
+    #>
+    param($Manifest, [string]$ConfigNotes)
+
+    $app = if ($null -ne $Manifest) { $Manifest.app } else { $null }
+    function Get-AppField([string]$Key) {
+        if ($null -eq $app -or -not $app.PSObject.Properties[$Key]) { return '' }
+        return ([string]$app.$Key).Trim()
+    }
+    $validReleases = @('1607', '1703', '1709', '1803', '1809', '1903', '1909', '2004')
+    $warnings = @()
+    $vendor = Get-AppField 'vendor'
+    $developer = Get-AppField 'developer'
+    $notes = Get-AppField 'notes'
+    if (-not $notes -and $ConfigNotes) { $notes = $ConfigNotes.Trim() }
+    $minRelease = Get-AppField 'minWindowsRelease'
+    if ($minRelease -and $validReleases -notcontains $minRelease) {
+        $warnings += "app.minWindowsRelease '$minRelease' is not a release the upload can send ($($validReleases -join ', ')); 1607 is used - set a newer minimum in the portal after the upload"
+        $minRelease = ''
+    }
+    [pscustomobject]@{
+        Publisher         = $vendor
+        Developer         = $(if ($developer) { $developer } else { $vendor })
+        Owner             = Get-AppField 'owner'
+        Notes             = $notes
+        InformationUrl    = Get-AppField 'informationUrl'
+        PrivacyUrl        = Get-AppField 'privacyUrl'
+        MinWindowsRelease = $(if ($minRelease) { $minRelease } else { '1607' })
+        Warnings          = $warnings
+    }
 }
