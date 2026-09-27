@@ -641,10 +641,12 @@ function Add-Candidate
     $clean = $m.Value
     if (($clean.ToCharArray() | Where-Object { $_ -eq '.' } | Measure-Object).Count -eq 0) { $clean = "$clean.0" }
 
+    # Compared as a version, reported as written: [System.Version] reads '3.01' as 3.1, which orders
+    # correctly but names a version that does not exist in the one line the IME log shows.
     $parsed = $null
     if ([System.Version]::TryParse($clean, [ref]$parsed))
     {
-        [void]$candidates.Add([PSCustomObject]@{ Version = $parsed; Source = $Source })
+        [void]$candidates.Add([PSCustomObject]@{ Version = $parsed; Text = $m.Value; Source = $Source })
     }
 }
 
@@ -693,7 +695,7 @@ if ($candidates.Count -gt 0)
     $best = $candidates | Sort-Object -Property Version -Descending | Select-Object -First 1
     if ($best.Version -ge $baseline)
     {
-        Write-Output "__APPNAME__ $($best.Version) detected via $($best.Source) (baseline $baseline)"
+        Write-Output "__APPNAME__ $($best.Text) detected via $($best.Source) (baseline __BASELINE__)"
     }
 }
 

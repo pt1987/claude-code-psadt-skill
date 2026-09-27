@@ -593,6 +593,13 @@ Export-ModuleMember -Function Set-CompanyBranding, Disable-AppUpdater
 
 The main script loads the extensions automatically (the block `Get-ChildItem ... -match 'PSAppDeployToolkit\..+$'` at the end of `Invoke-AppDeployToolkit.ps1`).
 
+**A module function cannot see the launcher's `$adtSession`.** The module has its own session state, so
+`$adtSession.DirSupportFiles` inside a helper is empty - measured 2026-09-27: the install died with 60001,
+one full sandbox run later. Ask PSADT instead: `(Get-ADTSession).DirSupportFiles`, or
+`$adtSession = Get-ADTSession` at the top of the function. Pre-flight check 5 FAILs on the first form
+since 0.49.3; it also follows helper chains, so a helper that only another helper calls is not reported
+as unused.
+
 ---
 
 ## Phase 5: Pre-flight checks

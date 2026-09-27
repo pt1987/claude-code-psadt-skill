@@ -494,3 +494,94 @@ MfgName="Mobotix AG"
         $r.Overall | Should -Be 'GREEN'
     }
 }
+
+Describe 'Pre-flight check 5: the Extensions module as it really behaves (0.49.3)' {
+    # Two findings from one live run (2026-09-27):
+    #  - a helper called only by ANOTHER helper was reported "defined but never called by the launcher",
+    #    and that WARN turned the dossier's pre-flight tile amber for a correct package;
+    #  - a helper read $adtSession.DirSupportFiles. The launcher's $adtSession is invisible inside a module
+    #    function, so the path came out empty and the install died with 60001 - in the VM, one full sandbox
+    #    run later. Pre-flight had it in front of it and said nothing.
+    BeforeAll {
+        $script:helperLauncher = @'
+[CmdletBinding()]
+param([string]$DeploymentType)
+$adtSession = @{ AppName = 'X' }
+function Install-ADTDeployment   { Set-ADTWidgetConfig }
+function Uninstall-ADTDeployment { }
+function Repair-ADTDeployment    { Set-ADTWidgetConfig }
+'@
+    }
+
+    It 'counts a helper as called when another called helper calls it' {
+        $ext = @'
+function Get-ADTWidgetDir { 'C:\Widget' }
+function Set-ADTWidgetConfig { $d = Get-ADTWidgetDir; Write-ADTLogEntry -Message $d }
+'@
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $script:helperLauncher -Ext $ext -SupportFile 'widget.ini')
+        $c = @($r.Checks | Where-Object { $_.Name -eq 'Structure' -and $_.Detail -match 'Get-ADTWidgetDir' })[0]
+        $c.Status | Should -Be 'PASS'
+        $c.Detail | Should -Match 'Set-ADTWidgetConfig'
+        @($r.Checks | Where-Object { $_.Name -eq 'Structure' -and $_.Status -eq 'WARN' }).Count | Should -Be 0
+    }
+
+    It 'still warns about a helper nothing reaches' {
+        $ext = @'
+function Get-ADTWidgetOrphan { 'x' }
+function Set-ADTWidgetConfig { Write-ADTLogEntry -Message 'ok' }
+'@
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $script:helperLauncher -Ext $ext -SupportFile 'widget.ini')
+        (@($r.Checks | Where-Object { $_.Detail -match 'Get-ADTWidgetOrphan' })[0]).Status | Should -Be 'WARN'
+    }
+
+    It 'is RED when a module function reads the launcher''s $adtSession' {
+        $ext = @'
+function Set-ADTWidgetConfig { Copy-ADTFile -Path "$($adtSession.DirSupportFiles)\widget.ini" -Destination 'C:\Widget' }
+'@
+        $r = & $script:pf -PackagePath (New-Pkg -Launcher $script:helperLauncher -Ext $ext -SupportFile 'widget.ini')
+        $r.Overall | Should -Be 'RED'
+        $c = @($r.Checks | Where-Object { $_.Status -eq 'FAIL' -and $_.Name -eq 'Structure' })[0]
+        $c.Detail | Should -Match 'Set-ADTWidgetConfig'
+        $c.Detail | Should -Match 'Get-ADTSession'
+    }
+
+    It 'accepts a function that fetches the session itself' {
+        $ext = @'
+function Set-ADTWidgetConfig { $adtSession = Get-ADTSession; Copy-ADTFile -Path "$($adtSession.DirSupportFiles)\widget.ini" -Destination 'C:\Widget' }
+'@
+        (& $script:pf -PackagePath (New-Pkg -Launcher $script:helperLauncher -Ext $ext -SupportFile 'widget.ini')).Overall | Should -Be 'GREEN'
+    }
+
+    It 'accepts a function that is handed the session as a parameter' {
+        $ext = @'
+function Set-ADTWidgetConfig { param($adtSession) Copy-ADTFile -Path "$($adtSession.DirSupportFiles)\widget.ini" -Destination 'C:\Widget' }
+'@
+        (& $script:pf -PackagePath (New-Pkg -Launcher $script:helperLauncher -Ext $ext -SupportFile 'widget.ini')).Overall | Should -Be 'GREEN'
+    }
+
+    It 'ignores $adtSession in comments and help text' {
+        $ext = @'
+function Set-ADTWidgetConfig {
+    <#
+    .EXAMPLE
+        Set-ADTWidgetConfig -Path "$($adtSession.DirSupportFiles)\widget.ini"
+    #>
+    # $adtSession belongs to the launcher; ask PSADT for it.
+    $s = Get-ADTSession
+    Write-ADTLogEntry -Message $s.DirSupportFiles
+}
+'@
+        (& $script:pf -PackagePath (New-Pkg -Launcher $script:helperLauncher -Ext $ext -SupportFile 'widget.ini')).Overall | Should -Be 'GREEN'
+    }
+
+    It 'passes the real package the helper-chain case was found on, without a warning' {
+        $real = 'C:\PSADT\Packages\CPU-Z_3.01'
+        if (-not (Test-Path (Join-Path $real 'psadt-package.json'))) { Set-ItResult -Skipped -Because 'the real package is not on this machine'; return }
+        # A copy: pre-flight records its verdict in the manifest, and a test never writes to a real package.
+        $pkg = Join-Path $TestDrive 'realcopy'
+        Copy-Item -LiteralPath $real -Destination $pkg -Recurse -Force
+        $r = & $script:pf -PackagePath $pkg
+        $r.Overall | Should -Be 'GREEN'
+        @($r.Checks | Where-Object { $_.Name -eq 'Structure' -and $_.Status -ne 'PASS' }).Count | Should -Be 0
+    }
+}

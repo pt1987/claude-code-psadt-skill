@@ -180,59 +180,63 @@ Describe 'New-PsadtReport -ManifestPath (0.21.0)' {
         $html | Should -Match 'Detect-MxMC\.ps1'
     }
 
-    It 'enforces the SYSTEM-test gate only when the package is meant to be uploaded' {
+    # 0.49.3: the dossier no longer ENFORCES the SYSTEM-test gate - it SHOWS it. It used to be the only
+    # place that did, and SKILL.md has it rendered while the sandbox is still running, so it refused at
+    # exactly the moment it is documented to run. The upload enforces the gate now (Get-PsadtPackageManifest
+    # .TestGate, checked before any token), and the dossier states it, from the same derivation.
+    It 'renders an upload package that is not tested yet, and says it is not ready to upload' {
         $m = $script:fullIdentity.Clone()
         $m.decisions = @{ upload = $true }
         & $script:writeMf $m
-        { & $script:gen -ManifestPath $script:mfPath -OutputPath $script:outHtml -ErrorAction Stop } |
-            Should -Throw -ExpectedMessage '*SYSTEM-test result*'
-
-        # Same manifest, upload not planned -> the dossier is produced without a SYSTEM test.
-        $m.decisions = @{ upload = $false }
-        & $script:writeMf $m
-        { & $script:gen -ManifestPath $script:mfPath -OutputPath $script:outHtml } | Should -Not -Throw
+        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml -ErrorAction Stop } |
+            Should -Not -Throw
+        $html = Get-Content $script:outHtml -Raw
+        $html | Should -Match 'Upload gesperrt'
+        $html | Should -Match 'Invoke-PsadtSandboxTest\.ps1'
     }
 
-    It 'refuses an upload dossier on a PARTIAL sandbox verdict' {
-        # Since Invoke-PsadtSandboxTest.ps1 defaults to the Install+Uninstall iteration pair, the usual
-        # result is now GREEN_PARTIAL - which renders a perfectly plausible table (Install passed,
-        # Uninstall passed) while Reinstall, Repair and the final Uninstall never ran. Without this,
-        # flipping that default would have quietly WEAKENED the upload gate instead of only making
-        # iteration cheaper. Only a full-gate GREEN may ship.
+    It 'marks a PARTIAL sandbox verdict as not ready, with the re-run command' {
+        # Since Invoke-PsadtSandboxTest.ps1 once defaulted to the Install+Uninstall pair, a GREEN_PARTIAL
+        # renders a plausible table while Reinstall, Repair and the final Uninstall never ran. Only a
+        # full-gate GREEN may ship - the upload refuses the rest, and the dossier says why.
         $m = $script:fullIdentity.Clone()
         $m.decisions = @{ upload = $true }
         $m.results = @{ sandboxTest = @{ verdict = 'GREEN_PARTIAL'; scenarios = @('Install', 'Uninstall') } }
         & $script:writeMf $m
         $st = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'OK' })
-        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml -ErrorAction Stop } |
-            Should -Throw -ExpectedMessage '*not GREEN*'
+        & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml
+        $html = Get-Content $script:outHtml -Raw
+        $html | Should -Match 'Upload blocked'
+        $html | Should -Match 'GREEN_PARTIAL'
+        $html | Should -Match 'the full gate is the default'
+    }
 
-        # The same package, once the full gate has actually run, ships.
+    It 'no longer calls a full-gate GREEN package not ready' {
+        $m = $script:fullIdentity.Clone()
+        $m.decisions = @{ upload = $true }
         $m.results = @{ sandboxTest = @{ verdict = 'GREEN'; scenarios = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall') } }
         & $script:writeMf $m
-        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml } |
-            Should -Not -Throw
+        $st = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'OK' })
+        & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml
+        (Get-Content $script:outHtml -Raw) | Should -Not -Match 'Upload gesperrt'
     }
 
-    It 'names the re-run command when it refuses a partial verdict' {
+    It 'reads the DEV-VM route from what Invoke-PsadtSystemTest.ps1 recorded' {
         $m = $script:fullIdentity.Clone()
         $m.decisions = @{ upload = $true }
-        $m.results = @{ sandboxTest = @{ verdict = 'GREEN_PARTIAL'; scenarios = @('Install', 'Uninstall') } }
+        $m.results = @{ systemTest = @(
+                @{ type = 'Install'; success = $true; exitCode = 0 },
+                @{ type = 'Uninstall'; success = $true; exitCode = 0 }) }
         & $script:writeMf $m
         $st = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'OK' })
-        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml -ErrorAction Stop } |
-            Should -Throw -ExpectedMessage '*the full gate is the default*'
+        & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml
+        (Get-Content $script:outHtml -Raw) | Should -Not -Match 'Upload gesperrt'
     }
 
-    It 'leaves the DEV-VM route alone, which has no sandbox verdict at all' {
-        # Invoke-PsadtSystemTest.ps1 produces no result.json and no verdict; a caller-supplied SystemTest
-        # is the whole evidence there. The new check must not turn that into an unshippable package.
-        $m = $script:fullIdentity.Clone()
-        $m.decisions = @{ upload = $true }
-        & $script:writeMf $m
-        $st = @(@{ StepDe = 'Install'; StepEn = 'Install'; Exit = '0'; Detection = 'installed'; Cls = 'b-ok'; Result = 'OK' })
-        { & $script:gen -ManifestPath $script:mfPath -Metadata @{ SystemTest = $st; DescMdDe = '**T**'; DescMdEn = '**T**' } -OutputPath $script:outHtml } |
-            Should -Not -Throw
+    It 'takes the gate from the one derivation the upload uses' {
+        $src = Get-Content -LiteralPath $script:gen -Raw
+        $src | Should -Match '\.TestGate'
+        $src | Should -Not -Match 'throw "decisions\.upload is true but no SYSTEM-test'
     }
 
     It 'accepts the upload gate once SYSTEM-test results are supplied' {
