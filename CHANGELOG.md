@@ -78,6 +78,17 @@ manifest, whose dossier then says what replaced it. The upload's closing line na
 instead of sending the operator to the portal. The tenant-writing scripts are now tested against a small
 fake tenant rather than only against their source.
 
+**The note on a superseded version stays true, and the step that changes it has a tool.** App. R.6 says to
+take Required off the old version once the new one is assigned; nothing in the skill could do that, so it
+was done by hand with a raw Graph call - and the note on the old app, written as a snapshot while Required
+still stood, went on saying "STILL assigned (... required ...)". A re-run could not repair it: it appended
+a second line under the false one. `Invoke-IntuneAppAssignment.ps1 -Remove` now takes the named intents off
+one app - only on the groups its naming scheme resolves, never a group, never another app, dry run first -
+records what is left, and rewrites the note through `Set-IntuneAppSupersedence.ps1 -RefreshNote`. The
+supersedence script replaces its own line instead of appending (an admin's note is kept), says per intent
+what the remaining assignments mean, and names the exact removal command when the old version is still
+Required.
+
 ## 0.49.2 - 2026-09-27 - A live two-version run found the skill contradicting itself
 
 A live run packaged one application twice, end to end - an older version first, then its successor:

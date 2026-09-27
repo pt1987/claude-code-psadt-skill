@@ -150,9 +150,10 @@ Describe 'the superseded app records what happened to it (0.47.0)' {
         $below = ($script:Src -split 'WRITES BELOW THIS LINE')[1]
         $below | Should -Match 'Invoke-Graph\s+PATCH\s+"\$GraphBase/deviceAppManagement/mobileApps/\$\(\$o\.id\)"'
     }
-    It 'reads the existing notes first and appends - a note is never overwritten' {
+    It 'reads the existing notes first - an admin''s note is kept, only this script''s own line is replaced' {
+        # 0.49.3: "appends" became "replaces its own line". Appending on a re-run left the old, now false,
+        # line in place above the new one. The behaviour is tested against a fake tenant below.
         $script:Src | Should -Match '\$existingNotes'
-        $script:Src | Should -Match 'notes\s*=.*\$existingNotes|\$existingNotes.*\+'
     }
     It 'records the date, the superseding version and its id' {
         $script:Src | Should -Match "yyyy-MM-dd"
@@ -243,5 +244,92 @@ Describe 'the supersedence names the versions and records itself on both package
         & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -ManifestPath $script:mfNew -GraphToken 'opaque' 6>$null | Out-Null
         (Get-Content $script:mfOld -Raw | ConvertFrom-Json).results.supersededBy | Should -BeNullOrEmpty
         @($global:PsadtFakeTenant.Calls | Where-Object { $_ -match '^(POST|PATCH|DELETE)' }).Count | Should -Be 0
+    }
+}
+
+Describe 'the note on the superseded app stays true (0.49.3)' {
+    # Measured 2026-09-27: the note was written as a snapshot - "STILL assigned (available, required,
+    # uninstall)" - and the very next step App. R.6 prescribes, taking Required off the old version, made
+    # it false. A re-run could not repair it: it APPENDED a second line under the false one.
+    BeforeAll {
+        . (Join-Path $PSScriptRoot '_helpers.ps1')
+        function Invoke-Graph { param([string]$Method, [string]$Uri, $Body, [hashtable]$Headers, [int]$Depth = 20) }
+        $script:OLD = '11111111-2222-3333-4444-555555555555'
+        $script:NEW = '99999999-2222-3333-4444-555555555555'
+        $script:ownLines = { @(([string]$global:PsadtFakeTenant.Apps[$script:OLD].notes -split "`r?`n") | Where-Object { $_ -match 'Superseded by' }) }
+    }
+    BeforeEach {
+        $script:oldHome = $env:PSADT_DEPLOY_HOME
+        $script:nHome = Join-Path $TestDrive ('nhome_' + [guid]::NewGuid().ToString('N'))
+        $script:root = Join-Path $script:nHome 'packages'
+        New-Item $script:root -ItemType Directory -Force | Out-Null
+        $env:PSADT_DEPLOY_HOME = $script:nHome
+        @{ version = 1; paths = @{ packageRoot = $script:root } } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $script:nHome 'config.json') -Encoding UTF8
+        $d = Join-Path $script:root 'Widget_1.0'; New-Item $d -ItemType Directory -Force | Out-Null
+        Set-Content (Join-Path $d 'Invoke-AppDeployToolkit.ps1') '# launcher'
+        $script:mfOld = Join-Path $d 'psadt-package.json'
+        @{ schema = 1; app = @{ vendor = 'ACME'; name = 'Widget'; version = '1.0'; arch = 'x64' }; package = @{ type = 'installer' }
+           results = @{ upload = @{ appId = $script:OLD } } } | ConvertTo-Json -Depth 6 | Set-Content $script:mfOld -Encoding UTF8
+        $global:PsadtFakeTenant = New-FakeIntuneTenant
+        Add-FakeApp -Id $script:OLD -Name 'Widget' -Version '1.0' -Notes 'Owned by the desktop team.'
+        Add-FakeApp -Id $script:NEW -Name 'Widget' -Version '2.0'
+        $script:gReq = Add-FakeGroup -Name 'grp-required-Widget'
+        $script:gAv = Add-FakeGroup -Name 'grp-available-Widget'
+        foreach ($app in $script:OLD, $script:NEW) {
+            Add-FakeAssignment -AppId $app -Intent 'available' -GroupId $script:gAv
+            Add-FakeAssignment -AppId $app -Intent 'required' -GroupId $script:gReq
+        }
+        Mock Invoke-Graph { Invoke-FakeGraph -Method $Method -Uri $Uri -Body $Body }
+    }
+    AfterEach { $env:PSADT_DEPLOY_HOME = $script:oldHome; Remove-Variable -Name PsadtFakeTenant -Scope Global -ErrorAction SilentlyContinue }
+
+    It 'keeps a note an admin wrote, and adds its own line' {
+        & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        [string]$global:PsadtFakeTenant.Apps[$script:OLD].notes | Should -Match 'Owned by the desktop team\.'
+        @(& $script:ownLines).Count | Should -Be 1
+    }
+
+    It 'replaces its own line on a re-run instead of adding a second one' {
+        & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        $req = @($global:PsadtFakeTenant.Assignments[$script:OLD] | Where-Object intent -eq 'required')[0]
+        [void]$global:PsadtFakeTenant.Assignments[$script:OLD].Remove($req)
+        & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        $lines = @(& $script:ownLines)
+        $lines.Count | Should -Be 1
+        $lines[0] | Should -Not -Match 'STILL assigned as required'
+        $lines[0] | Should -Match 'required is off'
+        [string]$global:PsadtFakeTenant.Apps[$script:OLD].notes | Should -Match 'Owned by the desktop team\.'
+    }
+
+    It 'says required is still assigned while it is, and what that means' {
+        & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        (@(& $script:ownLines))[0] | Should -Match 'STILL assigned as required'
+    }
+
+    It 'does not claim devices keep receiving a version that is only available or uninstalled' {
+        $req = @($global:PsadtFakeTenant.Assignments[$script:OLD] | Where-Object intent -eq 'required')[0]
+        [void]$global:PsadtFakeTenant.Assignments[$script:OLD].Remove($req)
+        & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        $line = (@(& $script:ownLines))[0]
+        $line | Should -Not -Match 'keep receiving'
+        $line | Should -Match 'required is off'
+    }
+
+    It '-RefreshNote rewrites only the note - the relationships are not re-sent' {
+        & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        $global:PsadtFakeTenant.Calls.Clear()
+        & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -GraphToken 'opaque' -RefreshNote -Execute 6>$null | Out-Null
+        @($global:PsadtFakeTenant.Calls | Where-Object { $_ -match 'updateRelationships' }).Count | Should -Be 0
+        @($global:PsadtFakeTenant.Calls | Where-Object { $_ -match '^PATCH' }).Count | Should -Be 0 -Because 'nothing changed, so the note is already current'
+    }
+
+    It '-RefreshNote refuses an app that is not superseded yet' {
+        { & $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -GraphToken 'opaque' -RefreshNote -Execute -ErrorAction Stop 6>$null } |
+            Should -Throw -ExpectedMessage '*not superseded*'
+    }
+
+    It 'names the exact command that takes Required off the old version' {
+        $out = (& $script:Sup -AppId $script:NEW -SupersedesAppId $script:OLD -GraphToken 'opaque' 6>&1 | ForEach-Object { [string]$_ }) -join "`n"
+        $out | Should -Match ([regex]::Escape("Invoke-IntuneAppAssignment.ps1 -ManifestPath '$($script:mfOld)' -Intents required -Remove"))
     }
 }

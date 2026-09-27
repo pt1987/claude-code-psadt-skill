@@ -113,6 +113,11 @@ pwsh scripts/Invoke-IntuneAppAssignment.ps1 -ManifestPath '<pkg>\psadt-package.j
 After `-Execute` the dossier renders the recorded assignments and marks the section as set and read back
 from Intune, instead of a suggestion - regenerate it (`rule:dossier-always`).
 
+`-Remove -Intents <list>` is the reverse, and narrow on purpose: it takes those intents off THIS app, on the
+groups the naming scheme resolves, and nothing else - no group is deleted, no other app is touched, and an
+assignment on a group outside the scheme is reported and kept. Its use is App. R.6 (the old version's
+Required, once the new one is assigned); it rewrites the supersedence note on that app to match.
+
 > **Array parameters and the `-File` binder (bit us on 2026-09-06).** `pwsh script.ps1 -Intents a,b` uses
 > `-File` semantics, and that binder passes `a,b` as a SINGLE array element - it does not split on commas.
 > `-Intents` therefore no longer carries a `[ValidateSet]` (which fires at bind time and produced an error

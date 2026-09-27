@@ -33,7 +33,7 @@ the others are granted only when their flag is passed.
 
 | Permission | Needed | Flag | What the skill does with it | Scripts |
 |---|---|---|---|---|
-| `DeviceManagementApps.ReadWrite.All` | for any upload | default | create the Win32 app and upload its content, read existing versions, set supersedence and record it on the old version, assign the app | `Invoke-IntuneWin32Upload.ps1`, `Get-IntuneAppVersions.ps1`, `Set-IntuneAppSupersedence.ps1`, `Invoke-IntuneAppAssignment.ps1` |
+| `DeviceManagementApps.ReadWrite.All` | for any upload | default | create the Win32 app and upload its content, read existing versions, set supersedence and record it on the old version, assign the app, and take a named intent off it again (`-Remove`, App. R.6) | `Invoke-IntuneWin32Upload.ps1`, `Get-IntuneAppVersions.ps1`, `Set-IntuneAppSupersedence.ps1`, `Invoke-IntuneAppAssignment.ps1` |
 | `Group.Create` | opt-in | `-IncludeGroupManagement` | create an assignment group, which the app then owns. Deliberately not the tenant-wide `Group.ReadWrite.All` | `Invoke-IntuneAppAssignment.ps1` |
 | `GroupMember.Read.All` | opt-in | `-IncludeGroupManagement` | find an existing group by name | `Invoke-IntuneAppAssignment.ps1` |
 | `DeviceManagementConfiguration.ReadWrite.All` | opt-in | `-IncludeConfigurationManagement` | create a firewall-rule policy or a trusted-certificate profile | `New-IntuneFirewallPolicy.ps1`, `New-IntuneTrustedCertPolicy.ps1` |
@@ -157,7 +157,7 @@ Upload, group assignment and certificate/firewall policies write to the tenant.
 | **Every Intune write path dry-runs first**, prints the exact `-Execute` action, and waits for confirmation. The one-time Entra bootstrap is the exception and says so - see [Entra permissions](#entra-permissions) | `scripts/Invoke-IntuneWin32Upload.ps1`, `scripts/Invoke-IntuneAppAssignment.ps1`, `scripts/New-IntuneTrustedCertPolicy.ps1`, `scripts/New-IntuneFirewallPolicy.ps1` |
 | Required roles are asserted **before** the first write, instead of discovering a 403 halfway through an upload | `scripts/Test-PsadtIntuneAccess.ps1` |
 | Access state is three-valued - `verified` / `refused` / **`unknown`**. Unknown is never treated as permitted | `scripts/Test-PsadtIntuneAccess.ps1` |
-| Nothing is deleted: no app version, no group, no other app's assignment. Ambiguous names are skipped, not guessed | `scripts/Invoke-IntuneAppAssignment.ps1` |
+| Nothing is deleted: no app version, no group, no other app's assignment. Ambiguous names are skipped, not guessed. The one removal is `Invoke-IntuneAppAssignment.ps1 -Remove`: only the `-Intents` named, only on the app named, only on the groups its naming scheme resolves - dry run first, and it rewrites the supersedence note to match | `scripts/Invoke-IntuneAppAssignment.ps1` |
 | Organisational choices are never imposed: no category, no featured flag, no branded notes | `SKILL.md`, Conventions |
 
 ### 6. Credentials at rest
