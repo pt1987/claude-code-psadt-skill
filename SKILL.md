@@ -248,7 +248,8 @@ two can never differ (`-Metadata DescMdDe/DescMdEn` still overrides). The report
 it when `decisions.upload = true`, and marks it as missing otherwise. It is not a field the generator can
 invent for you. The hooks (with the launcher's `##` rationale), the cmdlet list and the pre-flight checks
 it reads itself.
-Structure: App. F.2, keys: F.0. Logo: `Get-PsadtAppLogo.ps1` first (App. J.0), then verify + MSI-icon
+Structure: App. F.2, keys: F.0. Logo: `Get-PsadtAppLogo.ps1 -ManifestPath <pkg>\psadt-package.json`
+first (App. J.0 - found by app identity, so the next version finds it too), then verify + MSI-icon
 fallback: App. J. WinGet dossier
 additions (WinGet >= 1.7.10582 requirement, registry/file detection note): App. I.6.
 
