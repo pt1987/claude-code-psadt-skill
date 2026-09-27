@@ -234,12 +234,17 @@ machine, and Phase 2 used to pay three parallel sub-agents to go looking for the
 
 **Run the ladder FIRST - before any query below, and before dispatching anything:**
 ```
-pwsh scripts/Get-PsadtLocalEvidence.ps1 -Path <installer>
+pwsh scripts/Get-PsadtLocalEvidence.ps1 -Path <installer> -AppVendor '<Vendor>' -AppName '<App>' -AppVersion '<x.y>'
 ```
+`-AppVendor` / `-AppName` / `-AppVersion` are the identity YOU chose (they become `app.vendor`, `app.name`,
+`app.version`), not what the binary says about itself - many a ProductName carries its version and never
+matches its own successor. Rung 3 finds the previous package of the application by them. Once the
+installer sits in `<pkg>\Files\` beside a manifest, the ladder takes them from that manifest.
+
 **Before the installer exists**, which is the normal Phase 1 state, run it on identity alone - it still
 reads the registry and the corpus, and rung 1 can close the uninstall question outright:
 ```
-pwsh scripts/Get-PsadtLocalEvidence.ps1 -ProductName '<App>' -Publisher '<Vendor>' -ProductVersion '<x.y>'
+pwsh scripts/Get-PsadtLocalEvidence.ps1 -ProductName '<App>' -Publisher '<Vendor>' -ProductVersion '<x.y>' -AppVendor '<Vendor>' -AppName '<App>' -AppVersion '<x.y>'
 ```
 **Re-run it the moment the binary lands in `Files\`.** Everything rung 2 would have answered comes back
 as `recheck-after-binary` in `Deferred[]` until then, and nothing else in the workflow goes back for it.
@@ -250,7 +255,7 @@ Four rungs, all deterministic, all offline (rung 0 is the toolchain check from 1
 |---|---|---|
 | 1 | **Is it already installed here?** | the Uninstall registry (HKLM 64-bit + 32-bit views, HKCU). A `QuietUninstallString` is not a claim - it is the vendor's own registration of a silent uninstall that works. `UninstallString`, `InstallLocation`, `InstallSource`, the ProductCode in the key name and `HelpLink` come with it. |
 | 2 | **Is the binary here?** | probe it, never search for it: `Get-PsadtSwitchCandidates.ps1` (engine, verified-switch store, ranked candidates - L.0) and, for an MSI, `Get-PsadtMsiFacts.ps1` - identity, signature, SHA256, features, decoded upgrade flags, shortcuts, file versions, registry rows and the Icon table in ONE call. Never hand-roll either (App. G). |
-| 3 | **Is it already written down?** | this skill's own corpus (App. A / B / G / L), plus a vendor documentation URL taken from `HelpLink`, `URLInfoAbout` or the MSI's `ARPHELPLINK`. The ladder NAMES that URL and never fetches it - one direct fetch by you is the cheap middle step between the ladder and an agent. |
+| 3 | **Is it already written down?** | this skill's own corpus (App. A / B / G / L), plus a vendor documentation URL taken from `HelpLink`, `URLInfoAbout` or the MSI's `ARPHELPLINK`. The ladder NAMES that URL and never fetches it - one direct fetch by you is the cheap middle step between the ladder and an agent. And the previous package of this application (`Get-PsadtPriorPackage.ps1`, by the identity above): every question it answered as `research.answers.<id>` comes back `confirm-carried` instead of going to an agent. |
 
 Rung 2 has two outcomes and both are useful. **Candidates returned** - the remaining search confirms a
 specific switch on this build instead of discovering one from scratch. **No candidate** - the output
@@ -264,10 +269,17 @@ The ladder returns every question in one of three states - `Closed` (local evide
 - `OpenQuestions[]` - the questions a sub-agent is the right tool for
 - `AgentBudget` - their count
 - `Deferred[]` - still open, but not worth an agent of its own: `probe-run`, `recheck-after-binary`,
-  `accept-unanswered`, `folded`. Nothing is dropped silently.
+  `accept-unanswered`, `folded`, `confirm-carried`. Nothing is dropped silently.
+
+`Carried[]` is a view of `Deferred[]`: the questions the previous version answered, each with
+`CarriedAnswer` and `CarriedFrom`. They are `Provisional` at confidence `low` - last version's finding,
+not this version's - so they cost no agent but are NOT settled: confirm each for the new version (a vendor
+changes installers between versions), then record it as `research.answers.<id>`. Measured 2026-09-27 on a
+real second version: the carry took `AgentBudget` from 2 to 0.
 
 **The answers come back BEFORE the scaffold - and the pipeline checks it.** Every question the ladder
-sends to an agent (or folds into one) is recorded per installer SHA256 in
+sends to an agent (or folds into one), and every answer it carried from the previous version, is
+recorded per installer SHA256 in
 `%LOCALAPPDATA%\psadt-deploy\evidence\<sha256>.json`. Record each finding with its source as
 `research.answers.<id>` in the manifest:
 
@@ -278,11 +290,13 @@ Set-PsadtPackageManifest.ps1 -PackagePath <pkg> -Updates @{ 'research.answers.se
 Until every recorded question has one, pre-flight's `Research` check is FAIL, and with it packing and the
 sandbox refuse to start. Measured on Chrome 154 (2026-09-23): scaffold, pack and a full sandbox gate ran
 while the pitfall researcher was still out; its answer rewrote all three hooks and the detection, and the
-gate had tested the wrong package. **Wait for the researchers. Do not scaffold "in the meantime".**
+gate had tested the wrong package. **Wait for the researchers. Do not scaffold "in the meantime".** A
+carried answer has no researcher to wait for; the check names it as one to confirm instead.
 
 The **`self-updating`** question (0.44.0) asks whether the app updates itself and ships a new
 ProductCode per build. It shares the `intune` family with the pitfalls, so it costs no extra agent; a
-previous package of the same product with a different ProductCode goes to that agent as KnownContext. A
+previous package of the same product with a different ProductCode goes to that agent as KnownContext
+(found by the app identity too since 0.49.2 - a versioned ProductName never matched `app.name`). A
 yes means `New-MsiPackage.ps1 -SelfUpdatingBinary` (phase 4.3).
 
 **`AgentBudget` is the dispatch rule** (`rule:research-gate`, anchored in SKILL.md). Zero open

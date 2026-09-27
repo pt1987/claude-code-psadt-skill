@@ -392,9 +392,18 @@ if ($instPath -and (Test-Path -LiteralPath $instPath -PathType Leaf)) {
     if ($evFile -and (Test-Path -LiteralPath $evFile)) {
         $ev = Get-Content -LiteralPath $evFile -Raw -Encoding UTF8 | ConvertFrom-Json
         $answers = $mf.Manifest.research.answers
-        $unanswered = @(@($ev.MustAnswer) | Where-Object { $_ -and -not ($answers -and [string]$answers.($_.Id)) } | ForEach-Object { $_.Id })
+        $unansweredItems = @(@($ev.MustAnswer) | Where-Object { $_ -and -not ($answers -and [string]$answers.($_.Id)) })
+        $unanswered = @($unansweredItems | ForEach-Object { $_.Id })
         if ($unanswered.Count) {
-            Add-Check 'Research' 'FAIL' ("open research without a recorded answer: $($unanswered -join ', '). Wait for the researcher, then record it: Set-PsadtPackageManifest.ps1 -Updates @{ 'research.answers.$($unanswered[0])' = '<finding + source>' }. A package built before its findings is tested against the wrong question.") 'psadt-package.json'
+            # Two kinds, two instructions. A dispatched question waits for its researcher; a CARRIED one
+            # (0.49.2) has no researcher out - it is the previous version's answer, and the operator
+            # confirms or corrects it. Telling them to wait for it would leave them waiting for nobody.
+            $waitFor = @($unansweredItems | Where-Object { [string]$_.Resolution -ne 'confirm-carried' } | ForEach-Object { $_.Id })
+            $confirm = @($unansweredItems | Where-Object { [string]$_.Resolution -eq 'confirm-carried' } | ForEach-Object { "$($_.Id) (carried from $($_.CarriedFrom))" })
+            $parts = @()
+            if ($waitFor.Count) { $parts += "open research without a recorded answer: $($waitFor -join ', '). Wait for the researcher, then record it." }
+            if ($confirm.Count) { $parts += "answers carried from the previous version, not yet confirmed for this one: $($confirm -join ', '). Check each still holds - or correct it - and record it." }
+            Add-Check 'Research' 'FAIL' (($parts -join ' ') + " Record with: Set-PsadtPackageManifest.ps1 -Updates @{ 'research.answers.$($unanswered[0])' = '<finding + source>' }. A package built before its findings is tested against the wrong question.") 'psadt-package.json'
         } else {
             Add-Check 'Research' 'PASS' ("every question the ladder sent out has an answer ($(@($ev.MustAnswer).Count))") 'psadt-package.json'
         }

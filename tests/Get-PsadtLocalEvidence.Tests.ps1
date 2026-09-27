@@ -727,3 +727,157 @@ Describe 'a dispatched researcher is told what it may not do (0.46.0)' {
         $script:leSrc | Should -Match 'ConvertTo-HttpsUrl'
     }
 }
+
+Describe 'the ladder reads what the previous version learned (0.49.2)' {
+    # Measured 2026-09-27 on a real second version: the ladder returned AgentBudget 2 for questions the
+    # first version's manifest had answered word for word - Get-PsadtPriorPackage.ps1 found it, the
+    # ladder never asked. And its own MSI walk compared app.name with a ProductName that carries the
+    # version ("<name> 2.9.0"), so a previous build was never found that way either.
+    # A carried answer is NOT closed: it is last version's finding, and the operator confirms it for this
+    # one. Confidence 'low' keeps it Provisional; 'high' would close it and reset Resolution - a silent
+    # pass of the very question the evidence file exists to hold open.
+    BeforeAll {
+        # A real MSI database, written through the Windows Installer COM API: a ProductName that carries
+        # the version, exactly the shape that defeated the name match. Every COM handle is released, or
+        # the probes that follow find the file still locked and report it as not an MSI.
+        function New-TestMsi {
+            param([string]$Path, [string]$ProductName, [string]$ProductCode, [string]$Version, [string]$Manufacturer)
+            $inst = New-Object -ComObject WindowsInstaller.Installer
+            $db = $inst.OpenDatabase($Path, 3)
+            $run = {
+                param($sql)
+                $view = $db.OpenView($sql); [void]$view.Execute(); [void]$view.Close()
+                [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($view)
+            }
+            & $run 'CREATE TABLE `Property` (`Property` CHAR(72) NOT NULL, `Value` LONGCHAR NOT NULL LOCALIZABLE PRIMARY KEY `Property`)'
+            foreach ($p in @(@('ProductName', $ProductName), @('ProductCode', $ProductCode), @('ProductVersion', $Version),
+                    @('Manufacturer', $Manufacturer), @('UpgradeCode', '{77777777-8888-9999-AAAA-BBBBBBBBBBBB}'))) {
+                & $run ("INSERT INTO ``Property`` (``Property``, ``Value``) VALUES ('{0}', '{1}')" -f $p[0], $p[1])
+            }
+            $si = $db.SummaryInformation(4)
+            $si.Property(7) = 'x64;1033'; $si.Property(9) = $ProductCode; $si.Property(14) = 200
+            [void]$si.Persist()
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($si)
+            [void]$db.Commit()
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($db)
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($inst)
+            [GC]::Collect(); [GC]::WaitForPendingFinalizers()
+        }
+        function New-PriorPackage {
+            param([string]$Root, [string]$Folder, [string]$Version, [hashtable]$Answers)
+            $dir = Join-Path $Root $Folder
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            Set-Content (Join-Path $dir 'Invoke-AppDeployToolkit.ps1') '# launcher'
+            @{
+                schema = 1
+                app = @{ vendor = 'ACME'; name = 'Widget'; version = $Version; arch = 'x64' }
+                package = @{ productCode = '{11111111-2222-3333-4444-555555555555}' }
+                research = @{ answers = $Answers }
+            } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $dir 'psadt-package.json') -Encoding UTF8
+            return $dir
+        }
+        $script:answers10 = @{
+            'runtime-prerequisite' = 'none - statically linked (vendor build file)'
+            'intune-pitfalls'      = 'a custom action ends the running app without a prompt (vendor issue tracker)'
+            'self-updating'        = 'no in-app updater; every build ships a new ProductCode'
+            'dependency-installer' = 'none - a single file, no bootstrapper'
+        }
+    }
+    BeforeEach {
+        $script:oldHome = $env:PSADT_DEPLOY_HOME
+        $script:cHome = Join-Path ([System.IO.Path]::GetTempPath()) ('carry_' + [guid]::NewGuid().ToString('N'))
+        $env:PSADT_DEPLOY_HOME = Join-Path $script:cHome 'home'
+        New-Item -ItemType Directory -Path $env:PSADT_DEPLOY_HOME -Force | Out-Null
+        $script:cRoot = Join-Path $script:cHome 'packages'
+        New-Item -ItemType Directory -Path $script:cRoot -Force | Out-Null
+        $script:cStore = Join-Path $script:cHome 'evidence'
+        $script:cReg = 'TestRegistry:\UninstallCarry'
+        New-Item -Path $script:cReg -Force | Out-Null
+        $script:prior = New-PriorPackage -Root $script:cRoot -Folder 'Widget_1.0' -Version '1.0' -Answers $script:answers10
+        $script:msi = Join-Path $script:cHome 'Widget-2.0.msi'
+        New-TestMsi -Path $script:msi -ProductName 'Widget 2.0' -ProductCode '{22222222-3333-4444-5555-666666666666}' -Version '2.0.0' -Manufacturer 'ACME'
+        $script:ladderArgs = @{ Path = $script:msi; UninstallRoots = $script:cReg; PackageRoot = $script:cRoot; EvidenceStore = $script:cStore }
+    }
+    AfterEach {
+        $env:PSADT_DEPLOY_HOME = $script:oldHome
+        Remove-Item $script:cHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'changes nothing without the application identity' {
+        $r = & $script:src @script:ladderArgs 6>$null
+        $r.Identity.IsMsi | Should -BeTrue -Because 'the fixture must be read as an MSI, or this test proves nothing'
+        $r.AgentBudget | Should -Be 2
+        @($r.Questions | Where-Object Resolution -eq 'confirm-carried').Count | Should -Be 0
+    }
+
+    It 'carries a previous answer to every question it would otherwise send out, and dispatches no one' {
+        $r = & $script:src @script:ladderArgs -AppVendor 'ACME' -AppName 'Widget' -AppVersion '2.0' 6>$null
+        $r.AgentBudget | Should -Be 0
+        foreach ($id in 'runtime-prerequisite', 'intune-pitfalls', 'self-updating') {
+            $q = @($r.Questions | Where-Object Id -eq $id)[0]
+            $q.Resolution    | Should -Be 'confirm-carried' -Because "$id was answered for 1.0"
+            $q.Confidence    | Should -Be 'low' -Because 'a carried answer is Provisional until confirmed, never Closed'
+            $q.Status        | Should -Be 'Provisional'
+            $q.CarriedFrom   | Should -Be '1.0'
+            $q.CarriedAnswer | Should -Be $script:answers10[$id]
+            $e = @($q.Evidence | Where-Object Source -eq 'prior-package')[0]
+            $e.SourceRef | Should -Be (Join-Path $script:prior 'psadt-package.json')
+        }
+        @($r.Carried).Count | Should -Be 3
+        @($r.Deferred | Where-Object Resolution -eq 'confirm-carried').Count | Should -Be 3 -Because 'every question stays in exactly one list'
+    }
+
+    It 'attaches a carried answer to a question it would not dispatch as evidence only' {
+        $r = & $script:src @script:ladderArgs -AppVendor 'ACME' -AppName 'Widget' -AppVersion '2.0' 6>$null
+        $q = @($r.Questions | Where-Object Id -eq 'dependency-installer')[0]
+        $q.Resolution | Should -Be 'probe-run'
+        @($q.Evidence | Where-Object Source -eq 'prior-package').Count | Should -Be 1
+    }
+
+    It 'writes the carried questions into the evidence file, so pre-flight holds them open until confirmed' {
+        $r = & $script:src @script:ladderArgs -AppVendor 'ACME' -AppName 'Widget' -AppVersion '2.0' 6>$null
+        $ev = Get-Content (Join-Path $script:cStore ($r.Identity.Sha256.ToLowerInvariant() + '.json')) -Raw | ConvertFrom-Json
+        $must = @($ev.MustAnswer)
+        @($must.Id | Sort-Object) | Should -Be @('intune-pitfalls', 'runtime-prerequisite', 'self-updating')
+        foreach ($m in $must) {
+            $m.Resolution  | Should -Be 'confirm-carried'
+            $m.CarriedFrom | Should -Be '1.0'
+        }
+    }
+
+    It 'never carries from the version being packaged' {
+        Remove-Item $script:prior -Recurse -Force
+        New-PriorPackage -Root $script:cRoot -Folder 'Widget_2.0' -Version '2.0' -Answers $script:answers10 | Out-Null
+        $r = & $script:src @script:ladderArgs -AppVendor 'ACME' -AppName 'Widget' -AppVersion '2.0' 6>$null
+        @($r.Questions | Where-Object Resolution -eq 'confirm-carried').Count | Should -Be 0
+        $r.AgentBudget | Should -Be 2
+    }
+
+    It 'takes the identity from the package when the installer already sits in its Files\ folder' {
+        $pkg = New-PriorPackage -Root $script:cRoot -Folder 'Widget_2.0' -Version '2.0' -Answers @{}
+        New-Item -ItemType Directory -Path (Join-Path $pkg 'Files') -Force | Out-Null
+        $inPkg = Join-Path $pkg 'Files\Widget-2.0.msi'
+        Copy-Item -LiteralPath $script:msi -Destination $inPkg
+        $r = & $script:src -Path $inPkg -UninstallRoots $script:cReg -PackageRoot $script:cRoot -EvidenceStore $script:cStore 6>$null
+        $q = @($r.Questions | Where-Object Id -eq 'runtime-prerequisite')[0]
+        $q.Resolution  | Should -Be 'confirm-carried'
+        $q.CarriedFrom | Should -Be '1.0' -Because 'the package being built is never its own predecessor'
+    }
+
+    It 'finds a previous build by application identity when the ProductName carries the version' {
+        $r = & $script:src @script:ladderArgs -AppVendor 'ACME' -AppName 'Widget' -AppVersion '2.0' 6>$null
+        $q = @($r.Questions | Where-Object Id -eq 'self-updating')[0]
+        $h = @($q.Evidence | Where-Object Source -eq 'package-history')
+        $h.Count | Should -Be 1 -Because "ProductName 'Widget 2.0' never equals app.name 'Widget'; the app key does"
+        $h[0].Value | Should -Be '{11111111-2222-3333-4444-555555555555}'
+    }
+
+    It 'prints the carried answers as their own block, and not again as deferred' {
+        $out = (& $script:src @script:ladderArgs -AppVendor 'ACME' -AppName 'Widget' -AppVersion '2.0' 6>&1 |
+            Where-Object { $_ -is [System.Management.Automation.InformationRecord] } | ForEach-Object { [string]$_.MessageData }) -join "`n"
+        $out | Should -Match 'CARRIED from 1\.0'
+        $out | Should -Match 'research\.answers\.runtime-prerequisite'
+        $deferredBlock = ($out -split 'Deferred - still open')[1]
+        if ($deferredBlock) { $deferredBlock | Should -Not -Match 'confirm-carried' }
+    }
+}

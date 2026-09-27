@@ -125,6 +125,31 @@ Describe 'Learning 2 - research must be answered before the package moves' {
         @($r.Checks | Where-Object Name -eq 'Research')[0].Status | Should -Be 'PASS'
     }
 
+    It 'pre-flight asks to CONFIRM an answer carried from the previous version, not to wait for a researcher (0.49.2)' {
+        # No researcher is out for a carried question - the ladder dispatched no one. "Wait for the
+        # researcher" would leave the operator waiting for nothing.
+        $pkg = New-GatePkg -InstallerBytes 'msi-carried'
+        @{ Sha256 = (Get-Sha $pkg); MustAnswer = @(
+                @{ Id = 'intune-pitfalls'; Question = 'q'; Severity = 'important'; Resolution = 'confirm-carried'; CarriedFrom = '1.0' }
+                @{ Id = 'self-updating'; Question = 'q2'; Severity = 'blocking'; Resolution = 'dispatch-agent' }) } | ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath (Join-Path $env:PSADT_DEPLOY_HOME "evidence\$(Get-Sha $pkg).json") -Encoding UTF8
+        $r = & (Join-Path $script:scripts 'Invoke-PsadtPreflight.ps1') -PackagePath $pkg
+        $c = @($r.Checks | Where-Object Name -eq 'Research')[0]
+        $c.Status | Should -Be 'FAIL'
+        $c.Detail | Should -Match 'intune-pitfalls \(carried from 1\.0\)'
+        $c.Detail | Should -Match 'confirm'
+        $c.Detail | Should -Match 'self-updating'
+        ($c.Detail -split 'carried from')[0] | Should -Match 'Wait for the researcher' -Because 'the dispatched question still waits for its agent'
+    }
+
+    It 'pre-flight passes once a carried answer is recorded for this version (0.49.2)' {
+        $pkg = New-GatePkg -InstallerBytes 'msi-carried-ok' -Manifest @{ research = @{ answers = @{ 'intune-pitfalls' = 'still holds for 2.0 (vendor issue tracker)' } } }
+        @{ Sha256 = (Get-Sha $pkg); MustAnswer = @(@{ Id = 'intune-pitfalls'; Question = 'q'; Severity = 'important'; Resolution = 'confirm-carried'; CarriedFrom = '1.0' }) } | ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath (Join-Path $env:PSADT_DEPLOY_HOME "evidence\$(Get-Sha $pkg).json") -Encoding UTF8
+        $r = & (Join-Path $script:scripts 'Invoke-PsadtPreflight.ps1') -PackagePath $pkg
+        @($r.Checks | Where-Object Name -eq 'Research')[0].Status | Should -Be 'PASS'
+    }
+
     It 'pre-flight warns when the ladder never ran for this installer' {
         $pkg = New-GatePkg -InstallerBytes 'msi-c'
         $r = & (Join-Path $script:scripts 'Invoke-PsadtPreflight.ps1') -PackagePath $pkg
