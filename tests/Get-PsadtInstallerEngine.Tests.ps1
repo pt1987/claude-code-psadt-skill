@@ -182,3 +182,43 @@ Describe 'Get-PsadtInstallerEngine' {
         $r.ProductVersion | Should -Not -BeNullOrEmpty
     }
 }
+
+Describe 'identity strings come out trimmed (0.49.3)' {
+    # Measured 2026-09-27 on a real Inno Setup installer: its version resource pads ProductName,
+    # ProductVersion and CompanyName to a fixed width with trailing spaces - the product name was followed
+    # by 49 of them. FileVersionInfo hands that over verbatim, and every consumer inherited it: the switch
+    # candidates, the research ladder (whose search queries then carried the padding), the verified-switch
+    # store and the logo lookup's miss message. Trimmed once, here, where the value enters the skill.
+    BeforeAll {
+        . ([scriptblock]::Create((Get-ScriptFunctionText -Path $script:src -Name 'Get-Identity')))
+    }
+
+    It 'trims a padded version-resource value' {
+        $msiProps = @{}
+        Get-Identity 'ProductName' ('Widget Pro' + (' ' * 49)) | Should -BeExactly 'Widget Pro'
+    }
+
+    It 'trims a padded MSI property' {
+        $msiProps = @{ ProductName = "  Widget`t " }
+        Get-Identity 'ProductName' $null | Should -BeExactly 'Widget'
+    }
+
+    It 'falls back to the version resource when the MSI property is only whitespace' {
+        $msiProps = @{ ProductName = '    ' }
+        Get-Identity 'ProductName' 'Widget ' | Should -BeExactly 'Widget'
+    }
+
+    It 'returns nothing for a value that is only whitespace' {
+        $msiProps = @{}
+        Get-Identity 'ProductName' '     ' | Should -BeNullOrEmpty
+    }
+
+    It 'trims the real installer it was found on' {
+        $exe = 'C:\PSADT\Packages\CPU-Z_3.01\Files\cpu-z_3.01-en.exe'
+        if (-not (Test-Path $exe)) { Set-ItResult -Skipped -Because 'the real installer is not on this machine'; return }
+        $r = & $script:src -Path $exe
+        $r.ProductName | Should -BeExactly 'CPUID CPU-Z'
+        $r.ProductVersion | Should -BeExactly '3.01'
+        $r.Publisher | Should -BeExactly 'CPUID, Inc.'
+    }
+}

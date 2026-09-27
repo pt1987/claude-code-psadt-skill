@@ -361,4 +361,21 @@ Describe 'Set-PsadtVerifiedSwitch' {
             (Get-Content $script:store -Raw) | Should -Match 'not json'
         }
     }
+
+    Context 'no researched return codes (0.49.3)' {
+        # Measured 2026-09-27: a package whose manifest records no research.returnCodes wrote
+        # "returnCodes": [null] into the store - @($null) is an array with one element - and every later
+        # reader served that null as a return code.
+        It 'writes an empty list, never a list holding null' {
+            $pkg = New-FixturePackage
+            $mfPath = Join-Path $pkg 'psadt-package.json'
+            $mf = Get-Content $mfPath -Raw | ConvertFrom-Json
+            $mf.research.PSObject.Properties.Remove('returnCodes')
+            $mf | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $mfPath -Encoding UTF8
+            & $script:src -PackagePath $pkg -Verdict 'GREEN' -Scenarios $script:AllFive | Out-Null
+            $raw = Get-Content $script:store -Raw
+            $raw | Should -Not -Match '"returnCodes":\s*\[\s*null\s*\]'
+            @((ConvertFrom-Json $raw).entries[0].returnCodes | Where-Object { $null -ne $_ }).Count | Should -Be 0
+        }
+    }
 }

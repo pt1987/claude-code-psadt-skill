@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS  Returns prioritised silent-switch candidates for an installer, from local sources first, so Phase 2 stops guessing before it starts searching.
 .DESCRIPTION
   Phase 2 used to reach for the web as soon as an installer was not an MSI. That is slow, it is
@@ -67,6 +67,10 @@ param(
     [string]$ShippedStorePath
 )
 $ErrorActionPreference = 'Stop'
+
+# A caller can hand over the padded value a version resource carries (0.49.3, Get-PsadtInstallerEngine.ps1).
+if ($ProductName) { $ProductName = $ProductName.Trim() }
+if ($Publisher) { $Publisher = $Publisher.Trim() }
 
 if (-not (Test-Path -LiteralPath $Path)) { throw "Installer not found: $Path" }
 $Path = (Resolve-Path -LiteralPath $Path).ProviderPath
@@ -179,7 +183,7 @@ if ($stagesRequested -contains 0) {
                     InstallLog = $hit.installLog
                     NoReboot   = $hit.noReboot
                     DetectHint = $hit.detectHint
-                    ReturnCodes = @($hit.returnCodes)
+                    ReturnCodes = @($hit.returnCodes | Where-Object { $null -ne $_ })
                     Notes      = $hitNotes
                     # The scenarios the gate actually covered, as data. They were rendered into the
                     # Evidence sentence below and nowhere else, which left a caller wanting to act on
@@ -221,7 +225,7 @@ if ($stagesRequested -contains 0) {
                         InstallLog = $sameProduct.installLog
                         NoReboot   = $sameProduct.noReboot
                         DetectHint = $sameProduct.detectHint
-                        ReturnCodes = @($sameProduct.returnCodes)
+                        ReturnCodes = @($sameProduct.returnCodes | Where-Object { $null -ne $_ })
                         Scenarios  = @($sameProduct.scenarios)
                         Notes      = @("Proven on a DIFFERENT build of this product - vendors change switches between versions.") +
                                      @(Get-SupportFilesNote $sameProduct.install $sameProduct.uninstall)
@@ -266,7 +270,7 @@ if ($stagesRequested -contains 1) {
                     InstallLog = $entry.installLog
                     NoReboot   = $entry.noReboot
                     DetectHint = $entry.detectHint
-                    ReturnCodes = @($entry.returnCodes)
+                    ReturnCodes = @($entry.returnCodes | Where-Object { $null -ne $_ })
                     Notes      = @($entry.notes)
                     Evidence   = "engine '$($entry.engine)' identified with confidence $($engineInfo.Confidence) from marker '$firstMarker'"
                 })

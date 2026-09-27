@@ -112,6 +112,13 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+# Identity hints arrive the way a version resource wrote them, padding included (0.49.3). Trimmed before
+# anything matches on them - the ARP row comparison below is an exact one.
+foreach ($idParam in 'ProductName', 'Publisher', 'ProductVersion', 'ProductCode', 'AppVendor', 'AppName', 'AppVersion') {
+    $idValue = Get-Variable -Name $idParam -ValueOnly
+    if ($idValue) { Set-Variable -Name $idParam -Value ([string]$idValue).Trim() }
+}
+
 # ---------------------------------------------------------------------------------------------------
 # Collections and small helpers
 # ---------------------------------------------------------------------------------------------------
@@ -137,7 +144,12 @@ function Get-Prop($Object, [string]$Name) {
     return $null
 }
 function Resolve-Field([object[]]$Values) {
-    foreach ($v in $Values) { if ($v -and [string]$v -ne '') { return $v } }
+    # Trimmed: a version resource can pad its strings to a fixed width, and a caller may pass that on
+    # (0.49.3). The padding otherwise ends up in the search queries handed to a researcher.
+    foreach ($v in $Values) {
+        $t = ([string]$v).Trim()
+        if ($t) { return $t }
+    }
     return $null
 }
 
@@ -681,9 +693,17 @@ if ($isMsi) {
 }
 
 # --- installer log ---------------------------------------------------------------------------------
-if ($topCand -and (Get-Prop $topCand 'InstallLog')) {
-    Set-Answer $qLog ([string](Get-Prop $topCand 'InstallLog')) 'high' 2 'engine-catalog' `
-        ([string](Get-Prop $topCand 'SourceRef')) 'an engine property, and we choose the value we pass'
+# From the first candidate that carries one, not from the top candidate only. A verified store entry
+# outranks the engine default and records what its gate ran - which need not include a log switch - so
+# reading the top candidate alone reported "no engine resolved" for an installer identified with high
+# confidence, while the engine's own log switch sat one row down (2026-09-27).
+$logCand = @(Get-Prop $sc 'Candidates') | Where-Object { Get-Prop $_ 'InstallLog' } | Select-Object -First 1
+if ($logCand) {
+    Set-Answer $qLog ([string](Get-Prop $logCand 'InstallLog')) 'high' 2 'engine-catalog' `
+        ([string](Get-Prop $logCand 'SourceRef')) 'an engine property, and we choose the value we pass'
+} elseif ($engine -and $engine -ne 'unknown') {
+    Set-Open $qLog "engine '$engine' documents no log argument" 'accept-unanswered'
+    $qLog.FoldInto = 'silent-install'
 } else {
     Set-Open $qLog 'no engine resolved, so no documented log argument' 'accept-unanswered'
     $qLog.FoldInto = 'silent-install'

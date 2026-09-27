@@ -19,6 +19,25 @@ offer came out as one intent per option. Gate 2 now recommends upload plus all t
 required and uninstall) and never one intent alone; nothing is assigned without that choice. Phase 10
 and Appendix M show `-Intents available,required,uninstall`.
 
+**What an installer says about itself arrives trimmed.** A version resource can pad its strings to a fixed
+width: a real Inno Setup installer followed its product name with 49 spaces, and the switch candidates,
+the research ladder (its search queries included), the verified-switch store and the logo lookup's miss
+message all carried them. `Get-PsadtInstallerEngine.ps1` now trims where the value enters the skill, and
+the ladder, the switch candidates and the logo lookup also trim what a caller hands them.
+
+**The installer log switch survives a proven switch.** When a verified store entry outranked the engine
+default, the ladder read the log switch off that entry alone - which records what its gate ran - and
+reported "no engine resolved" for an installer identified with high confidence. It now takes the log
+switch from the first candidate that carries one, and says that the engine documents none when that is
+the case. The store no longer writes `"returnCodes": [null]` for a manifest without researched codes, and
+the reader drops such nulls from entries written before.
+
+**An opaque tile is not a defect.** For an app icon that is a coloured tile, the logo lookup advised
+`border-key`, which floods the tile away. A catalog entry's `transparent: false` without a `postProcess`
+now means that the opaque ground is the mark, and the lookup raises no warning; a render that loses the
+transparency its entry promised, or a `border-key` that did not clear the corners, is named as such. The
+catalog gains the entry the case was found on, keyed by its app identity.
+
 ## 0.49.2 - 2026-09-27 - A live two-version run found the skill contradicting itself
 
 A live run packaged one application twice, end to end - an older version first, then its successor:

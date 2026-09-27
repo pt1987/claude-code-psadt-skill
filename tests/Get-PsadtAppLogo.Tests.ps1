@@ -386,3 +386,52 @@ Describe 'the logo lookup finds the next version and checks what it rendered (0.
         }
     }
 }
+
+Describe 'an opaque tile is not a defect, and a padded name is not a name (0.49.3)' {
+    # Measured 2026-09-27 on a real app whose icon IS a coloured tile: the catalog entry said
+    # transparent:false, no postProcess, and a note explaining that the tile is the mark. The lookup
+    # still warned "the corners are not transparent ... add postProcess border-key" - advice that, taken,
+    # floods the tile away and leaves a chip floating on nothing. `transparent` describes the SOURCE: with
+    # border-key it says "opaque, key it"; without one it says "opaque by design, keep it".
+    BeforeAll {
+        . ([scriptblock]::Create((Get-ScriptFunctionText -Path $script:src -Name 'Get-LogoGroundWarning')))
+    }
+
+    It 'says nothing about an opaque result when the entry declares the tile opaque by design' {
+        Get-LogoGroundWarning -Entry ([pscustomobject]@{ transparent = $false; postProcess = $null }) -Transparent $false |
+            Should -BeNullOrEmpty
+    }
+
+    It 'still recommends border-key for an entry that says nothing about its ground' {
+        Get-LogoGroundWarning -Entry ([pscustomobject]@{ postProcess = $null }) -Transparent $false |
+            Should -Match 'border-key'
+    }
+
+    It 'names a render that lost the transparency its entry promised' {
+        $w = Get-LogoGroundWarning -Entry ([pscustomobject]@{ transparent = $true; postProcess = $null }) -Transparent $false
+        $w | Should -Match 'transparent'
+        $w | Should -Not -Match 'add postProcess'
+    }
+
+    It 'names a border-key that did not clear the corners' {
+        Get-LogoGroundWarning -Entry ([pscustomobject]@{ transparent = $false; postProcess = 'border-key' }) -Transparent $false |
+            Should -Match 'border-key did not'
+    }
+
+    It 'is silent when the result is transparent' {
+        Get-LogoGroundWarning -Entry ([pscustomobject]@{ postProcess = $null }) -Transparent $true | Should -BeNullOrEmpty
+    }
+
+    It 'reports a padded product name without its padding' {
+        $r = & $script:src -ProductName ('No Such Product' + (' ' * 49)) -CatalogPath (New-Catalog @())
+        $r.ProductName | Should -BeExactly 'No Such Product'
+        ($r.Misses -join ' ') | Should -Match "product 'No Such Product'"
+    }
+
+    It 'ships the entry the tile case was found on, found by its app key' {
+        $r = & $script:src -Vendor 'CPUID' -Name 'CPU-Z' -CatalogPath $script:catalog
+        $r.Found | Should -BeTrue
+        $r.MatchedBy | Should -Be 'appKey'
+        $r.Fetch | Should -Be 'svg-rasterize'
+    }
+}

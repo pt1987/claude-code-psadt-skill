@@ -42,6 +42,7 @@ once **and the trap that made it worth recording**. Two keys, matched in this or
 | `url` | taken verbatim; the script never builds one from a product name |
 | `fetch` | `svg-rasterize` (headless Edge) / `png-direct` / `webp-decode` (WIC) |
 | `postProcess` | `border-key`, for a mark published on an opaque ground |
+| `transparent` | describes the SOURCE. With `border-key`, `false` means "opaque, key it". Without a `postProcess`, `false` means the opaque ground IS the mark - an app icon that is a coloured tile - and the result stays opaque without a warning: keying such a tile floods it away (0.49.3) |
 | `note` | why THIS file and not the neighbouring one - the part a later reader cannot see |
 
 **No source is reliably right, which is the whole point of recording them one at a time.**

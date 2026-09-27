@@ -335,6 +335,27 @@ function Save-LogoOutput {
     finally { if (Test-Path -LiteralPath $staged) { Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue } }
 }
 
+function Get-LogoGroundWarning {
+    <#
+        What to say about the corners of the rendered image, or nothing. The entry's `transparent` describes
+        the SOURCE: with postProcess 'border-key' it means "opaque, key it"; without one, false means "the
+        opaque ground IS the mark" - an app icon that is a coloured tile. Advising border-key for that
+        floods the tile away (measured 2026-09-27), so the entry's own statement is respected.
+    #>
+    param($Entry, [bool]$Transparent)
+    if ($Transparent) { return $null }
+    $post = [string]$Entry.postProcess
+    $declared = if ($Entry -and $Entry.PSObject.Properties['transparent']) { $Entry.transparent } else { $null }
+    if ($post -eq 'border-key') {
+        return 'border-key did not clear the corners - the ground may not be uniform; LOOK at the image before it ships'
+    }
+    if ($declared -eq $false) { return $null }
+    if ($declared -eq $true) {
+        return 'the entry promises a transparent source, but the render has opaque corners - check the url and the fetch mode'
+    }
+    return 'the corners are not transparent - this mark sits on an opaque ground; add postProcess "border-key" to its catalog entry, or "transparent": false when the opaque tile IS the mark'
+}
+
 # --- identity ---------------------------------------------------------------------------------------
 if ($ManifestPath) {
     if (-not (Test-Path -LiteralPath $ManifestPath)) { throw "ManifestPath not found: $ManifestPath" }
@@ -351,6 +372,9 @@ if (-not $ProductName -and $Path) {
 . (Join-Path $PSScriptRoot '_AppKey.ps1')
 $appKey = ConvertTo-PsadtAppKey -Vendor $Vendor -Name $Name
 if (-not $ProductName -and $Name) { $ProductName = $Name }
+# A caller can hand over the padded value a version resource carries; the miss message and the result
+# name the product, not its padding (0.49.3).
+if ($ProductName) { $ProductName = ([string]$ProductName).Trim() }
 $result.ProductName = $ProductName
 $result.AppKey = $(if ($appKey) { $appKey } else { $null })
 if (-not $ProductName -and -not $appKey) { throw 'Nothing to go on: pass -ProductName, -Path, -Vendor/-Name or -ManifestPath.' }
@@ -505,9 +529,8 @@ try {
     if ([math]::Min($result.Width, $result.Height) -lt 512) {
         Add-Warn "the logo is $($result.Width)x$($result.Height); App. J wants at least 512px for the Intune tile"
     }
-    if (-not $result.Transparent) {
-        Add-Warn 'the corners are not transparent - this mark sits on an opaque ground; add postProcess "border-key" to its catalog entry'
-    }
+    $groundWarning = Get-LogoGroundWarning -Entry $entry -Transparent ([bool]$result.Transparent)
+    if ($groundWarning) { Add-Warn $groundWarning }
     if ([math]::Abs($result.Width - $result.Height) -gt [math]::Max($result.Width, $result.Height) * 0.34) {
         Add-Warn 'the image is far from square, which the Intune tile crops badly'
     }

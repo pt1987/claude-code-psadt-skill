@@ -25,7 +25,10 @@
     "",
     "fetch:      'svg-rasterize' (render via headless Edge), 'png-direct', 'webp-decode' (WIC -> PNG)",
     "postProcess: 'border-key' floods transparency in from the edges, for a mark published on an opaque",
-    "             ground. It is NOT a global white key: that would eat white INSIDE the artwork."
+    "             ground. It is NOT a global white key: that would eat white INSIDE the artwork.",
+    "transparent: describes the SOURCE. With border-key, false means 'opaque, key it'. Without a",
+    "             postProcess, false means the opaque ground IS the mark - an app icon that is a coloured",
+    "             tile - and the result stays opaque with no warning. Keying such a tile floods it away."
   ],
   "entries": [
     {
@@ -63,6 +66,19 @@
       "renderedSize": 1024,
       "transparent": true,
       "note": "The vendor's own colour mark from its source tree, pinned to a release tag so the file cannot change under this entry. The SVG has width/height but NO viewBox: before 0.49.2 it rendered 68 px inside the 1024 px canvas and passed every check; Repair-SvgViewBox now adds the viewBox. The MSI ProductName carries the version ('WinDirStat 2.9.0'), so the entry is found by appKey.",
+      "verifiedAt": "2026-09-27"
+    },
+    {
+      "appKey": "cpuid cpu-z",
+      "productName": "CPUID CPU-Z",
+      "publisher": "CPUID",
+      "source": "wikimedia",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/2/2a/CPU-Z_Icon.svg",
+      "fetch": "svg-rasterize",
+      "postProcess": null,
+      "renderedSize": 1024,
+      "transparent": false,
+      "note": "The app's own icon: a purple tile with a white chip, compared against the icon in the vendor's portable build. The tile IS the mark, so the corners are opaque by design and border-key must not be applied. Commons also has a 256 px PNG of the same mark - too small for the tile. The version resource pads the product name with trailing spaces; the lookup trims it, and the appKey matches across versions.",
       "verifiedAt": "2026-09-27"
     }
   ]
