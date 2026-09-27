@@ -262,7 +262,8 @@ is the separate opt-in Phase 10); never DELETE (`-OnExisting CreateNewCoexist`, 
 explicit in-place, optional `-SupersedesAppId` + `-SupersedenceType update|replace` = supersedence only, not
 dependencies; `update` is the default, `replace` UNINSTALLS the old version first - App. R.2 derives it from
 the MSI Upgrade table). Get the predecessor's id from `Get-IntuneAppVersions.ps1` (read-only) instead of
-retyping it, or wire the chain on its own with `Set-IntuneAppSupersedence.ps1` (dry-run, then `-Execute`). An
+retyping it, or wire the chain on its own with `Set-IntuneAppSupersedence.ps1` (dry-run, then `-Execute`) -
+the only route that writes the old version's note, so run it after an upload-time `-SupersedesAppId` too. An
 unassigned superseding app is ignored by the agent, so Phase 10 is a precondition here, not a follow-up.
 `-MinWindowsRelease`
 takes backend IDs `1607..2004` only. The script refuses the PSADT default logo unless `-AllowDefaultLogo`.

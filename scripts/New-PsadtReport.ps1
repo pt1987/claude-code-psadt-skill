@@ -180,7 +180,10 @@ if ($ManifestPath) {
                             StepDe    = $labelDe[$name] + $secs
                             StepEn    = $labelEn[$name] + $secs
                             Exit      = "$($step.exitCode)"
-                            Detection = $(if ($null -eq $det) { '&ndash;' } elseif ($det) { 'erkannt / detected' } else { 'nicht erkannt / absent' })
+                            # One value per language: a single bilingual string ("erkannt / detected") could not
+                            # follow the dossier's language switch and showed German in the English view.
+                            DetectionDe = $(if ($null -eq $det) { '&ndash;' } elseif ($det) { 'erkannt' } else { 'nicht erkannt' })
+                            DetectionEn = $(if ($null -eq $det) { '&ndash;' } elseif ($det) { 'detected' } else { 'absent' })
                             Cls       = $(if ($ok) { 'b-ok' } else { 'b-bad' })
                             Result    = $(if ($ok) { 'pass' } else { 'fail' })
                         }
@@ -679,7 +682,9 @@ $defaultSt = @(
 )
 $st = Get-Val 'SystemTest' $defaultSt
 $stRows = @(foreach ($s in $st) {
-    "            <tr><td data-de=`"$(AttrHtml $s.StepDe)`" data-en=`"$(AttrHtml $s.StepEn)`">$($s.StepDe)</td><td><code>$(Esc $s.Exit)</code></td><td>$($s.Detection)</td><td><span class=`"badge $($s.Cls)`">$(Esc $s.Result)</span></td></tr>"
+    # Rows built from result.json carry DetectionDe/DetectionEn; a caller-supplied row keeps its single cell.
+    $detCell = if ($s.DetectionDe) { "<td data-de=`"$(AttrHtml $s.DetectionDe)`" data-en=`"$(AttrHtml $s.DetectionEn)`">$($s.DetectionDe)</td>" } else { "<td>$($s.Detection)</td>" }
+    "            <tr><td data-de=`"$(AttrHtml $s.StepDe)`" data-en=`"$(AttrHtml $s.StepEn)`">$($s.StepDe)</td><td><code>$(Esc $s.Exit)</code></td>$detCell<td><span class=`"badge $($s.Cls)`">$(Esc $s.Result)</span></td></tr>"
 }) -join "`n"
 $stNoteDe = Get-Val 'SystemTestNoteDe' 'Keine SYSTEM-Test-Ergebnisse &uuml;bergeben &ndash; der SYSTEM-Test wurde nicht ausgef&uuml;hrt (kein Beleg).'
 $stNoteEn = Get-Val 'SystemTestNoteEn' 'No SYSTEM-test results supplied &ndash; the SYSTEM test was not run (no evidence).'

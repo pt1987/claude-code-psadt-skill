@@ -95,8 +95,9 @@ async function main() {
   }
 
   // --- which ref ----------------------------------------------------------------------------------
-  // Without --ref this installs the newest RELEASE TAG. The tag list is the only source: this repository
-  // publishes tags rather than GitHub Releases, so /releases/latest answers 404 here.
+  // Without --ref this installs the newest RELEASE TAG. The tag list is the only source: GitHub Releases
+  // exist only from v0.46.0 on and are published on top of the tag, so /releases/latest would not see the
+  // tags before them and is deliberately not read.
   async function newestReleaseTag() {
     try {
       const res = await fetch(`https://api.github.com/repos/${REPO}/tags?per_page=100`, {

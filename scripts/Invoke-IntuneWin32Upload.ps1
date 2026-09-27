@@ -562,10 +562,17 @@ if ($SupersedesAppId -and -not $UpdateAppId) {
 
 Write-Host "`nDone. App is in Intune (NOT assigned to groups - assign to Entra groups manually)." -ForegroundColor Green
 Write-Host "  Portal: $portal" -ForegroundColor White
+# Both hints name Set-IntuneAppSupersedence.ps1: it is the only route that writes the old version's note
+# (SKILL.md, rule supersedence-recorded). The relationship wired above carries no note, and the portal
+# records nothing at all - which is where this hint used to send the operator.
+if ($supersededWired) {
+    Write-Host "  Supersedence: in place. Record it on the old version: pwsh scripts/Set-IntuneAppSupersedence.ps1 -AppId $appId -SupersedesAppId $supersededWired -SupersedenceType $SupersedenceType -Execute (keeps this relationship, adds the note)." -ForegroundColor Gray
+}
 if ($existing -and -not $UpdateAppId) {
     Write-Host "  Coexistence: the existing version(s) [$(($existing | ForEach-Object { $_.id }) -join ', ')] were left intact." -ForegroundColor Gray
     if (-not $supersededWired) {
-        Write-Host "  Supersedence: set it in the portal (new app > Supersedence > add the old app), or re-run with -SupersedesAppId <oldId>." -ForegroundColor Gray
+        $old = if (@($existing).Count -eq 1) { [string]@($existing)[0].id } else { '<oldId>' }
+        Write-Host "  Supersedence: pwsh scripts/Set-IntuneAppSupersedence.ps1 -AppId $appId -SupersedesAppId $old (dry run first, then -Execute). It also records the change on the old version." -ForegroundColor Gray
     }
 }
 

@@ -70,6 +70,8 @@ a folder containing `Invoke-AppDeployToolkit.ps1`.
   `scripts/New-PsadtEntraApp.ps1` (WAM sign-in as Global Admin / Privileged Role Admin, device-code
   fallback). Check what is actually in place with `scripts/Test-PsadtIntuneAccess.ps1`. Full permission
   matrix and the manual portal route: [`references/app-registration.md`](../references/app-registration.md).
+  What each permission is for, what the script creates and how to revoke it:
+  [`SECURITY.md`](../SECURITY.md#entra-permissions).
 - For **Pester tests**: Pester 5+ (`Install-Module Pester -MinimumVersion 5.0 -Scope CurrentUser`)
 - For **Phase 6, the default route**: Windows Sandbox (`Containers-DisposableClientVM`). Home editions
   and VMs without nested virtualisation take the per-action DEV-VM route instead - the setup doctor says

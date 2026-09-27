@@ -122,5 +122,5 @@ The app's **native installer is always the default**. Everything else is opt-in 
 - **Self-update** - `scripts/Update-PsadtSkill.ps1` compares against GitHub, shows what changed, and
   updates in place on your confirmation (`git pull --ff-only` for a clone, otherwise a branch-zip overwrite
   of tracked files only). Machine-local state is never touched. Say *"psadt update"*.
-- **968 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
+- **987 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
   disagree - one of them reads the published landing page and compares its figures against the repository.

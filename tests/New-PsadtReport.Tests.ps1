@@ -552,6 +552,48 @@ Describe 'The dossier reads the sandbox verdict instead of asking for it (0.32.0
         ([regex]::Matches($html, '>pass<')).Count | Should -Be 2
     }
 
+    It 'gives the detection column one value per language, not both languages in one cell (0.49.1)' {
+        # The English view of a real 7-Zip dossier still read "erkannt / detected": the value was one
+        # hard-coded bilingual string, so no language switch could reach it.
+        Set-SandboxResult -Verdict 'GREEN' -Steps @(
+            @{ step = 'Install'; exitCode = 0; seconds = 18; success = $true }
+            @{ step = 'DetectionAfterInstall'; detected = $true }
+            @{ step = 'Uninstall'; exitCode = 0; seconds = 18; success = $true }
+            @{ step = 'DetectionAfterUninstall'; detected = $false }
+        )
+        & $script:gen -ManifestPath $script:mf2 -OutputPath $script:out2 -WarningAction SilentlyContinue
+        $html = Get-Content $script:out2 -Raw
+
+        $html | Should -Match 'data-de="erkannt" data-en="detected"'
+        $html | Should -Match 'data-de="nicht erkannt" data-en="absent"'
+        $html | Should -Not -Match 'erkannt / detected'
+        $html | Should -Not -Match 'nicht erkannt / absent'
+    }
+
+    It 'labels the SYSTEM test with the phase the skill gives it (0.49.1)' {
+        # The section said "Phase 5.5" - a number from an older phase plan. In SKILL.md the SYSTEM test is
+        # Phase 6, and 5.5 is the leftover-v3-cmdlets step of the pre-flight.
+        Set-SandboxResult -Verdict 'GREEN' -Steps @(
+            @{ step = 'Install'; exitCode = 0; seconds = 18; success = $true }
+            @{ step = 'DetectionAfterInstall'; detected = $true }
+        )
+        & $script:gen -ManifestPath $script:mf2 -OutputPath $script:out2 -WarningAction SilentlyContinue
+        $html = Get-Content $script:out2 -Raw
+
+        $html | Should -Not -Match 'Phase 5\.5'
+        $html | Should -Match 'data-en="Phase 6 &middot; mandatory before upload"'
+    }
+
+    It 'gives the browser tab title an English form too (0.49.1)' {
+        # The <title> was fixed to "Paket-Report" and carried no data-en, so the language switch - which
+        # walks every [data-de] element - never reached it.
+        Set-SandboxResult -Verdict 'GREEN' -Steps @(@{ step = 'Install'; exitCode = 0; seconds = 18; success = $true })
+        & $script:gen -ManifestPath $script:mf2 -OutputPath $script:out2 -WarningAction SilentlyContinue
+        $html = Get-Content $script:out2 -Raw
+
+        $html | Should -Match '<title data-de="Paket-Report &middot; [^"]+" data-en="Package report &middot; [^"]+">'
+    }
+
     It 'fails a row whose detection contradicts the action that succeeded' {
         # exit 0 plus "absent" right after an install is the per-user-install signature, not a pass.
         Set-SandboxResult -Verdict 'RED' -Steps @(
