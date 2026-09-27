@@ -1,8 +1,13 @@
 {
   "schemaVersion": 1,
   "_comment": [
-    "Where a product's REAL logo comes from, keyed by productName - the same key Get-PsadtSwitchCandidates.ps1",
-    "already falls back on, and the one Get-PsadtInstallerEngine.ps1 reads out of the binary.",
+    "Where a product's REAL logo comes from, keyed by appKey and/or productName.",
+    "  appKey       app.vendor + ' ' + app.name, lowercased and whitespace-collapsed (_AppKey.ps1) - the",
+    "               identity the operator chose, which survives a version bump. Matched FIRST. Give every",
+    "               new entry one: many binaries carry their version in the product name (measured",
+    "               2026-09-27: an MSI ProductName '<name> 2.9.0' never matched its catalog entry).",
+    "  productName  what Get-PsadtInstallerEngine.ps1 reads out of the binary, compared with padding and",
+    "               doubled spaces ignored - the key Get-PsadtSwitchCandidates.ps1 also falls back on.",
     "",
     "Why this exists: acquiring one logo cost about as long as the whole Phase 6 SYSTEM test (Thunderbird,",
     "2026-09-21: ~4 minutes against 3.8 for the gate), and it is the same search, the same two traps and the",
@@ -46,6 +51,19 @@
       "transparent": false,
       "note": "The current 'Supernova' mark, and Wikimedia publishes it ONLY as webp on an opaque white ground. logo.wine has a clean transparent SVG for Thunderbird but it is the pre-2023 bird, so it is wrong for any recent build. Keying white globally would erase the white envelope inside the mark; border-key floods in from the edges and stops at the artwork.",
       "verifiedAt": "2026-09-21"
+    },
+    {
+      "appKey": "windirstat team windirstat",
+      "productName": "WinDirStat",
+      "publisher": "WinDirStat Team",
+      "source": "vendor repository (GitHub)",
+      "url": "https://raw.githubusercontent.com/windirstat/windirstat/release/v2.9.0/windirstat/logos/logo_color.svg",
+      "fetch": "svg-rasterize",
+      "postProcess": null,
+      "renderedSize": 1024,
+      "transparent": true,
+      "note": "The vendor's own colour mark from its source tree, pinned to a release tag so the file cannot change under this entry. The SVG has width/height but NO viewBox: before 0.49.2 it rendered 68 px inside the 1024 px canvas and passed every check; Repair-SvgViewBox now adds the viewBox. The MSI ProductName carries the version ('WinDirStat 2.9.0'), so the entry is found by appKey.",
+      "verifiedAt": "2026-09-27"
     }
   ]
 }

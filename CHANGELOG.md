@@ -94,6 +94,26 @@ a read-only check keeps `<vendor> <name>` when the tenant holds older versions o
 new version does not start a second, unrelated app; `Get-IntuneAppVersions.ps1` searches every name the
 app has carried. The upload says where its name and its command lines came from before anything else.
 
+**The logo lookup reported a failure that was still rendering, and passed a stamp as a logo.** Three
+defects in `Get-PsadtAppLogo.ps1`, all from one real run:
+
+- Headless Edge's launcher returned after 169 ms and wrote the screenshot about 1.5 s later, so the script
+  reported "no screenshot". It now waits until the file has stopped growing and can be opened
+  exclusively, tracks the Edge processes it started by their private profile folder (never by name), and
+  stops what is left of them before cleaning up.
+- A vendor SVG with width and height but no `viewBox` rendered 68 px inside the 1024 px canvas and passed
+  every check - size, squareness and corner alpha all describe the canvas. `Repair-SvgViewBox` gives such
+  a root its `viewBox`, and `Measure-ContentBox` reports the content box and how much of the canvas it
+  fills: a warning below 60 % or far off centre, a refusal for an image with nothing in it.
+- The catalog matched the binary's product name exactly, and that MSI's product name carries the
+  version. Entries can now carry an `appKey` (vendor + name), matched first, from `-ManifestPath` or
+  `-Vendor` / `-Name`; the product name is compared with padding ignored, and still never fuzzily.
+
+`-OutFile` is no longer written before those checks: fetch, decode and keying run in a scratch folder,
+and the file is committed once with a replace that throws, where `Move-Item -Force` deleted the
+destination first. Re-run on the real source: found by app key despite the versioned product name, the
+`viewBox` added, the mark filling 98 % of the canvas, no Edge process left behind.
+
 ## 0.49.1 - 2026-09-27 - The permissions it asks for were written down nowhere a reader looks
 
 Anyone deciding whether to let this skill into a tenant asks one question first: which Entra permissions

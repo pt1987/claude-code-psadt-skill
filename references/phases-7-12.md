@@ -117,7 +117,7 @@ The XML must contain `<SetupFile>Invoke-AppDeployToolkit.exe</SetupFile>`. If so
   the previous version was uploaded under, `app.name`.
 - Description: Markdown-capable, the first paragraph readable standalone (~200 characters are the short preview in the Company Portal)
 - Category: choose it semantically correct (Development, Productivity, ...)
-- Logo: `<pkg>\Assets\<App>-Logo.png` (the REAL downloaded application logo - NOT the PSADT default `AppIcon.png`), >=256x256 PNG
+- Logo: `<pkg>\Assets\<App>-Logo.png` (the REAL downloaded application logo - NOT the PSADT default `AppIcon.png`), >=512x512 PNG (App. J)
 
 ### 8.2 Program
 - **Install command**: `package.installCommand` - `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent`, or `-DeployMode Auto` when Gate 2 chose the close prompt (phase 1.2)

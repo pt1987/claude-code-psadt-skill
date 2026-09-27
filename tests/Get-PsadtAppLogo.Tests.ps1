@@ -116,10 +116,12 @@ Describe 'Get-PsadtAppLogo' {
             @($c.entries).Count | Should -BeGreaterThan 0
         }
 
-        It 'gives every entry a product name, a url, a fetch mode and a date it was checked' {
+        It 'gives every entry a key to be found by, a url, a fetch mode and a date it was checked' {
+            # A product name, an app key (0.49.2: vendor + name, the identity that survives a version
+            # bump), or both. An entry with neither can never be matched.
             $c = Get-Content -LiteralPath $script:catalog -Raw | ConvertFrom-Json
             foreach ($e in $c.entries) {
-                $e.productName | Should -Not -BeNullOrEmpty
+                ([string]$e.productName + [string]$e.appKey) | Should -Not -BeNullOrEmpty
                 $e.url | Should -Match '^https://'
                 $e.fetch | Should -BeIn @('svg-rasterize', 'png-direct', 'webp-decode')
                 $e.verifiedAt | Should -Match '^\d{4}-\d{2}-\d{2}$'
@@ -136,10 +138,20 @@ Describe 'Get-PsadtAppLogo' {
             }
         }
 
-        It 'names no product twice' {
+        It 'names no product twice, and no app key twice' {
             $c = Get-Content -LiteralPath $script:catalog -Raw | ConvertFrom-Json
-            $names = @($c.entries | ForEach-Object { $_.productName })
+            $names = @($c.entries | Where-Object { $_.productName } | ForEach-Object { $_.productName })
             @($names | Sort-Object -Unique).Count | Should -Be $names.Count
+            $keys = @($c.entries | Where-Object { $_.appKey } | ForEach-Object { $_.appKey })
+            @($keys | Sort-Object -Unique).Count | Should -Be $keys.Count
+        }
+
+        It 'stores every app key in the normalised form the lookup computes' {
+            . (Join-Path $PSScriptRoot '..\scripts\_AppKey.ps1')
+            $c = Get-Content -LiteralPath $script:catalog -Raw | ConvertFrom-Json
+            foreach ($e in @($c.entries | Where-Object { $_.appKey })) {
+                $e.appKey | Should -BeExactly ($e.appKey.ToLowerInvariant() -replace '\s+', ' ').Trim()
+            }
         }
     }
 
@@ -217,6 +229,160 @@ Describe 'Get-PsadtAppLogo' {
 
         It 'never calls exit' {
             $script:code | Should -Not -Match '(?m)^\s*exit\b'
+        }
+    }
+}
+
+Describe 'the logo lookup finds the next version and checks what it rendered (0.49.2)' {
+    # Measured 2026-09-27 on a real second version:
+    #   * headless Edge's launcher returned after 169 ms and the screenshot landed ~1.5 s later, so the
+    #     script reported "no screenshot" for a render that was still running;
+    #   * the vendor SVG had width/height but no viewBox, rendered 68 px inside a 1024 px canvas, and
+    #     passed every check - size, squareness, corner alpha - because none of them looks at the content;
+    #   * the catalog matched productName exactly, and the MSI ProductName carries the version.
+    BeforeAll {
+        foreach ($fn in 'Repair-SvgViewBox', 'Measure-ContentBox', 'Wait-FileStable', 'Find-LogoCatalogEntry') {
+            . ([scriptblock]::Create((Get-ScriptFunctionText -Path $script:src -Name $fn)))
+        }
+        . (Join-Path $PSScriptRoot '..\scripts\_AppKey.ps1')
+        Add-Type -AssemblyName System.Drawing.Common
+        function New-Canvas {
+            param([int]$Size, [System.Drawing.Color]$Ground, [int]$SquareAt = -1, [int]$SquareSize = 0)
+            $bmp = New-Object System.Drawing.Bitmap $Size, $Size, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.Clear($Ground)
+            if ($SquareSize -gt 0) { $g.FillRectangle([System.Drawing.Brushes]::Blue, $SquareAt, $SquareAt, $SquareSize, $SquareSize) }
+            $g.Dispose()
+            $p = Join-Path $TestDrive ([guid]::NewGuid().ToString('N') + '.png')
+            $bmp.Save($p, [System.Drawing.Imaging.ImageFormat]::Png)
+            $bmp.Dispose()
+            return $p
+        }
+    }
+
+    Context 'the catalog entry is found across versions' {
+        It 'matches on the app identity when the product name carries the version' {
+            $c = New-Catalog @(@{ appKey = 'acme widget'; productName = 'Widget'; source = 'fixture'; url = 'https://example.invalid/w.svg'; fetch = 'svg-rasterize' })
+            $r = & $script:src -ProductName 'Widget 2.1' -Vendor 'ACME' -Name 'Widget' -CatalogPath $c
+            $r.Found     | Should -BeTrue
+            $r.MatchedBy | Should -Be 'appKey'
+            $r.AppKey    | Should -Be 'acme widget'
+        }
+
+        It 'takes the identity from a package manifest' {
+            $c = New-Catalog @(@{ appKey = 'acme widget'; source = 'fixture'; url = 'https://example.invalid/w.svg'; fetch = 'svg-rasterize' })
+            $mf = Join-Path $TestDrive 'psadt-package.json'
+            @{ schema = 1; app = @{ vendor = 'ACME'; name = 'Widget'; version = '2.1' } } | ConvertTo-Json | Set-Content $mf -Encoding UTF8
+            $r = & $script:src -ManifestPath $mf -CatalogPath $c
+            $r.Found     | Should -BeTrue
+            $r.MatchedBy | Should -Be 'appKey'
+        }
+
+        It 'ignores padding and doubled spaces in the product name' {
+            $c = New-Catalog @(@{ productName = 'Widget Pro'; source = 'fixture'; url = 'https://example.invalid/w.svg'; fetch = 'svg-rasterize' })
+            $r = & $script:src -ProductName '  Widget   Pro      ' -CatalogPath $c
+            $r.Found     | Should -BeTrue
+            $r.MatchedBy | Should -Be 'productName'
+        }
+
+        It 'still refuses to guess: a versioned name without an identity is a miss' {
+            $c = New-Catalog @(@{ productName = 'Widget'; source = 'fixture'; url = 'https://example.invalid/w.svg'; fetch = 'svg-rasterize' })
+            (& $script:src -ProductName 'Widget 2.1' -CatalogPath $c).Found | Should -BeFalse
+        }
+    }
+
+    Context 'an SVG without a viewBox is given one' {
+        It 'adds viewBox from numeric width and height, so the mark scales to the canvas' {
+            $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="68.26667" height="68.26667" id="svg1" version="1.1"><rect width="10" height="10"/></svg>'
+            $out = Repair-SvgViewBox -SvgText $svg
+            $out | Should -Match 'viewBox="0 0 68\.26667 68\.26667"'
+            ([xml]$out).svg.viewBox | Should -Be '0 0 68.26667 68.26667'
+        }
+        It 'accepts a px unit on the dimensions' {
+            (Repair-SvgViewBox -SvgText '<svg width="512px" height="256px"></svg>') | Should -Match 'viewBox="0 0 512 256"'
+        }
+        It 'leaves an SVG that already has a viewBox alone' {
+            $svg = '<svg viewBox="0 0 10 10" width="68" height="68"></svg>'
+            Repair-SvgViewBox -SvgText $svg | Should -BeExactly $svg
+        }
+        It 'leaves relative dimensions alone - a percentage says nothing about the drawing' {
+            $svg = '<svg width="100%" height="100%"></svg>'
+            Repair-SvgViewBox -SvgText $svg | Should -BeExactly $svg
+        }
+        It 'touches only the root element, never a nested svg' {
+            $svg = '<svg viewBox="0 0 10 10"><svg width="5" height="5"></svg></svg>'
+            Repair-SvgViewBox -SvgText $svg | Should -BeExactly $svg
+        }
+    }
+
+    Context 'what the picture actually holds is measured' {
+        It 'measures a small mark in a large canvas and warns about it' {
+            $p = New-Canvas -Size 1024 -Ground ([System.Drawing.Color]::Transparent) -SquareAt 476 -SquareSize 72
+            $m = Measure-ContentBox -Path $p
+            $m.Fill | Should -BeGreaterThan 0.06
+            $m.Fill | Should -BeLessThan 0.08
+            $m.Warning | Should -Match 'fills'
+        }
+        It 'accepts a mark that fills the tile' {
+            $p = New-Canvas -Size 512 -Ground ([System.Drawing.Color]::Transparent) -SquareAt 32 -SquareSize 448
+            $m = Measure-ContentBox -Path $p
+            $m.Fill | Should -BeGreaterThan 0.8
+            $m.Warning | Should -BeNullOrEmpty
+        }
+        It 'measures against the ground colour on an opaque image' {
+            $p = New-Canvas -Size 400 -Ground ([System.Drawing.Color]::White) -SquareAt 100 -SquareSize 200
+            $m = Measure-ContentBox -Path $p
+            $m.ContentBox.Width | Should -Be 200
+            $m.ContentBox.X     | Should -Be 100
+        }
+        It 'warns about a mark that sits far off centre' {
+            $p = New-Canvas -Size 512 -Ground ([System.Drawing.Color]::Transparent) -SquareAt 0 -SquareSize 330
+            (Measure-ContentBox -Path $p).Warning | Should -Match 'centre'
+        }
+        It 'refuses an image with nothing in it' {
+            $p = New-Canvas -Size 256 -Ground ([System.Drawing.Color]::Transparent)
+            { Measure-ContentBox -Path $p } | Should -Throw -ExpectedMessage '*nothing visible*'
+        }
+    }
+
+    Context 'the render is waited for, not assumed' {
+        It 'returns only once a file that arrives late has stopped growing' {
+            $p = Join-Path $TestDrive 'late.png'
+            $job = Start-ThreadJob -ScriptBlock {
+                param($p)
+                Start-Sleep -Milliseconds 700
+                $fs = [System.IO.File]::Open($p, 'Create', 'Write', 'Read')
+                try { foreach ($i in 1..4) { $fs.Write((New-Object byte[] 4096), 0, 4096); $fs.Flush(); Start-Sleep -Milliseconds 300 } }
+                finally { $fs.Dispose() }
+            } -ArgumentList $p
+            try {
+                Wait-FileStable -Path $p -TimeoutSeconds 20 | Should -BeTrue
+                (Get-Item -LiteralPath $p).Length | Should -Be 16384 -Because 'a half-written screenshot must not count'
+            } finally { $job | Wait-Job | Remove-Job }
+        }
+        It 'gives up after its timeout for a file that never comes' {
+            Wait-FileStable -Path (Join-Path $TestDrive 'never.png') -TimeoutSeconds 1 | Should -BeFalse
+        }
+    }
+
+    Context 'the output is written once, after the checks' {
+        It 'does all fetching and post-processing in its scratch folder, never in -OutFile' {
+            $script:code | Should -Not -Match 'Invoke-WebRequest[^\r\n]*-OutFile \$OutFile'
+            $script:code | Should -Not -Match 'Copy-Item[^\r\n]*-Destination \$OutFile'
+            $script:code | Should -Not -Match 'Invoke-BorderKey -Path \$OutFile'
+        }
+        It 'commits with a replace that throws, instead of Move-Item -Force' {
+            # \b: -Match ignores case, and 'Remove-Item' ends in 'move-Item'.
+            $script:code | Should -Not -Match '\bMove-Item[^\r\n]*-Force'
+            $script:code | Should -Match 'File\]::Replace'
+        }
+        It 'measures the content before the file is committed' {
+            $script:code.IndexOf('Measure-ContentBox -Path') | Should -BeLessThan $script:code.IndexOf('Save-LogoOutput -Source')
+        }
+        It 'waits for the screenshot and cleans up the Edge processes it started' {
+            $script:code | Should -Match 'Wait-FileStable -Path \$shot'
+            $script:code | Should -Match 'Win32_Process'
+            $script:code | Should -Match 'Stop-Process'
         }
     }
 }

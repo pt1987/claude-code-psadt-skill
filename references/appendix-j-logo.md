@@ -18,19 +18,27 @@ default `Assets\AppIcon.png`/`Banner.Classic.png` (see H.10 - the upload script 
 
 ### J.0 The catalog route - look it up once, never again
 
-`pwsh scripts/Get-PsadtAppLogo.ps1 -ProductName '<as the binary reports it>' -OutFile '<pkg>\Assets\<App>-Logo.png'`
+`pwsh scripts/Get-PsadtAppLogo.ps1 -ManifestPath '<pkg>\psadt-package.json' -ProductName '<as the binary reports it>' -OutFile '<pkg>\Assets\<App>-Logo.png'`
 
 Acquiring one logo cost about as long as the entire Phase 6 gate. Measured on Thunderbird 156.0
 (2026-09-21): roughly four minutes - a Commons search over twelve hits, three metadata calls, a webp
 decode, a background removal and two visual checks - against 3.8 minutes for the five-scenario SYSTEM
 test. None of that work changes between versions, so none of it belongs in a packaging run.
 
-`references/switch-catalog/logo-sources.json` records, per `productName`, the source that was checked
-once **and the trap that made it worth recording**. The key is the product name the binary reports, the
-same one the verified-switch store falls back on.
+`references/switch-catalog/logo-sources.json` records, per application, the source that was checked
+once **and the trap that made it worth recording**. Two keys, matched in this order (0.49.2):
+
+- `appKey` - `app.vendor` + `app.name`, lowercased and whitespace-collapsed (`_AppKey.ps1`), from
+  `-ManifestPath` or `-Vendor` / `-Name`. It survives a version bump. Give every new entry one: many
+  binaries carry their version in the product name, and an MSI ProductName `<name> 2.9.0` never matched
+  its own entry (measured 2026-09-27).
+- `productName` - what the binary reports, the key the verified-switch store falls back on; padding and
+  doubled spaces are ignored, nothing else is. No fuzzy match: a near miss served with confidence is how a
+  wrong logo reaches a tile nobody inspects.
 
 | field | |
 |---|---|
+| `appKey` / `productName` | the keys above; at least one, each unique in the catalog |
 | `url` | taken verbatim; the script never builds one from a product name |
 | `fetch` | `svg-rasterize` (headless Edge) / `png-direct` / `webp-decode` (WIC) |
 | `postProcess` | `border-key`, for a mark published on an opaque ground |
@@ -50,7 +58,23 @@ Thunderbird's current Supernova mark is published by Commons only as webp on whi
 **SVG is rasterised by headless Edge**, which ships with Windows:
 `--headless=new --default-background-color=00000000 --window-size=N,N --screenshot=out.png`. That one
 background flag is the difference between a transparent PNG in three seconds and an opaque one that needs
-keying out by hand afterwards.
+keying out by hand afterwards. Three things the render needed, all measured 2026-09-27 (0.49.2):
+
+- **Wait for the file, not for the call.** Edge's launcher returned after 169 ms and the screenshot landed
+  about 1.5 s later. The script waits until the file has stopped growing and can be opened exclusively,
+  and it tracks the Edge processes it started by their private user-data folder (never by name - the
+  operator's own Edge is running), stopping what is left before the scratch folder goes.
+- **Give a viewBox-less SVG its viewBox.** A root with `width="68.26667"` and no `viewBox` has no
+  coordinate system to scale: it drew a 68 px stamp in the corner of the 1024 px canvas and passed every
+  check. `viewBox="0 0 W H"` is added from numeric width/height; percentages and physical units are left
+  alone.
+- **Measure the content, not the canvas.** Size, squareness and corner alpha all describe the canvas.
+  The script now scans for the content box and reports `Fill` (the larger share of width or height the
+  mark spans); below 0.6, or far off centre, it warns, and an image with nothing in it is refused.
+
+Nothing touches `-OutFile` before those checks: fetching, decoding and keying happen in a scratch folder,
+and the file is committed once, with a replace that throws instead of a `Move-Item -Force` that deleted
+the destination first.
 
 **`border-key` is not a white key.** It floods transparency in from the image border and stops where the
 artwork starts, because the background is only the white CONNECTED TO THE EDGE. Keying every white pixel
@@ -61,8 +85,8 @@ edge scans would leave filled.
 minute; one that RESOLVES hands over a confident wrong logo, and nothing downstream looks at the picture.
 The miss names both routes below; add the entry after seeing the image.
 
-**Measured is not seen.** The script returns size, squareness and real corner alpha, and says so - the
-verification below still has to happen with your eyes.
+**Measured is not seen.** The script returns size, squareness, real corner alpha and the content box
+with its `Fill`, and says so - the verification below still has to happen with your eyes.
 
 ### J.1 License-clear sources, in priority order
 
