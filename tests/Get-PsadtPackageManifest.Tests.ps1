@@ -164,3 +164,95 @@ Describe 'ConvertTo-PsadtAppKey - the identity that survives a version bump (0.4
         Get-PsadtAppKeyFromManifest -Manifest ([pscustomobject]@{}) | Should -BeNullOrEmpty
     }
 }
+
+Describe 'the launcher command lines come from the manifest, parsed once (0.49.2)' {
+    # Measured 2026-09-27: Gate 2 chose "close the app with a prompt", and the command line that went to
+    # Intune was a hard-coded default in the upload and another in the dossier - '-DeployMode Silent',
+    # which never shows a prompt. The generators now record package.installCommand / uninstallCommand,
+    # and this reader is the one place that parses them. The manifest is DATA and the command runs as
+    # SYSTEM on every device, so only the launcher's own shape is accepted.
+    BeforeEach {
+        $script:cp = New-TempPackage
+        $script:cmdOf = { param($Install, $Uninstall)
+            $m = New-CompleteManifest
+            if ($Install) { $m.package.installCommand = $Install }
+            if ($Uninstall) { $m.package.uninstallCommand = $Uninstall }
+            Set-Manifest $script:cp $m
+            (& $script:Get -PackagePath $script:cp).Commands }
+    }
+    AfterEach { Remove-Item $script:cp -Recurse -Force -ErrorAction SilentlyContinue }
+
+    It 'falls back to Silent, and says it did, when nothing is recorded' {
+        $c = & $script:cmdOf $null $null
+        $c.Install.Command    | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+        $c.Install.DeployMode | Should -Be 'Silent'
+        $c.Install.Recorded   | Should -BeFalse
+        $c.Install.Valid      | Should -BeTrue
+        $c.Uninstall.Command  | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
+    }
+
+    It 'reads a recorded Auto command and its DeployMode' {
+        $c = & $script:cmdOf 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto' 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode auto'
+        $c.Install.DeployMode   | Should -Be 'Auto'
+        $c.Install.Recorded     | Should -BeTrue
+        $c.Uninstall.DeployMode | Should -Be 'Auto' -Because 'the mode is normalised to the launcher''s own spelling'
+        $c.Uninstall.Command    | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto'
+    }
+
+    It 'refuses anything that is not the launcher''s own command line' {
+        $c = & $script:cmdOf 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent & calc.exe' 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+        $c.Install.Valid        | Should -BeFalse -Because 'a second command must never ride along to every device'
+        $c.Install.DeployMode   | Should -BeNullOrEmpty
+        $c.Uninstall.Valid      | Should -BeFalse -Because 'an uninstall command that installs is not an uninstall command'
+    }
+
+    It 'refuses a DeployMode the launcher does not have' {
+        (& $script:cmdOf 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Loud' $null).Install.Valid | Should -BeFalse
+    }
+}
+
+Describe 'Resolve-PsadtDisplayName - one derivation of the Intune name (0.49.2)' {
+    # The upload named an app "<vendor> <name>" while phases-7-12.md and the dossier said app.name, and
+    # Get-IntuneAppVersions.ps1 copied the upload. Measured 2026-09-27: a real upload whose vendor name
+    # already contained the app name came out with the name twice, and was renamed by hand. One helper,
+    # one order.
+    BeforeAll { . (Join-Path $PSScriptRoot '..\scripts\_AppKey.ps1') }
+
+    It 'uses app.name, not vendor plus name' {
+        $m = [pscustomobject]@{ app = [pscustomobject]@{ vendor = 'ACME'; name = 'Widget' } }
+        $r = Resolve-PsadtDisplayName -Manifest $m
+        $r.Name       | Should -Be 'Widget'
+        $r.Source     | Should -Be 'app.name'
+        $r.LegacyName | Should -Be 'ACME Widget' -Because 'what older uploads were named, for the tenant check'
+    }
+
+    It 'lets an explicit name win over everything' {
+        $m = [pscustomobject]@{ app = [pscustomobject]@{ vendor = 'ACME'; name = 'Widget'; displayName = 'Widget Pro' } }
+        (Resolve-PsadtDisplayName -Manifest $m -Explicit 'Chosen').Source | Should -Be 'explicit'
+        (Resolve-PsadtDisplayName -Manifest $m -Explicit 'Chosen').Name   | Should -Be 'Chosen'
+    }
+
+    It 'prefers a recorded app.displayName over the name' {
+        $m = [pscustomobject]@{ app = [pscustomobject]@{ vendor = 'ACME'; name = 'Widget'; displayName = 'Widget Pro' } }
+        (Resolve-PsadtDisplayName -Manifest $m).Name | Should -Be 'Widget Pro'
+    }
+
+    It 'keeps the name this package was already uploaded under' {
+        $m = [pscustomobject]@{ app = [pscustomobject]@{ vendor = 'ACME'; name = 'Widget' }
+                                results = [pscustomobject]@{ upload = [pscustomobject]@{ displayName = 'ACME Widget' } } }
+        $r = Resolve-PsadtDisplayName -Manifest $m -PriorUploadName 'Something Else'
+        $r.Name   | Should -Be 'ACME Widget'
+        $r.Source | Should -Be 'results.upload'
+    }
+
+    It 'takes the previous version''s uploaded name before falling back to app.name' {
+        $m = [pscustomobject]@{ app = [pscustomobject]@{ vendor = 'ACME'; name = 'Widget' } }
+        $r = Resolve-PsadtDisplayName -Manifest $m -PriorUploadName 'Widget (ACME)'
+        $r.Name   | Should -Be 'Widget (ACME)'
+        $r.Source | Should -Be 'predecessor'
+    }
+
+    It 'returns no name for a manifest without one, instead of inventing one' {
+        (Resolve-PsadtDisplayName -Manifest ([pscustomobject]@{ app = [pscustomobject]@{ vendor = 'ACME' } })).Name | Should -BeNullOrEmpty
+    }
+}

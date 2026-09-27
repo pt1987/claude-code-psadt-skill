@@ -305,3 +305,54 @@ Describe 'the installer hash is recorded, so the manifest can be joined to the s
         $script:genSrc | Should -Match "'package\.processesToClose'"
     }
 }
+
+Describe 'New-MsiPackage: the running app and the command line (0.49.2)' {
+    # Measured 2026-09-27: Gate 2 offered "close the app with a prompt", the command line stayed the
+    # fixed '-DeployMode Silent', which never prompts, and it was recorded nowhere - the upload and the
+    # dossier each carried their own default. And the Install prompt had no countdown: an Interactive
+    # prompt without one waits UI.DefaultTimeout (3300 s) and then exits 1618.
+    BeforeAll { $script:s3 = Get-Content -LiteralPath $script:src -Raw }
+    It 'offers -DeployMode Silent or Auto, Silent by default' {
+        $script:s3 | Should -Match "\[ValidateSet\('Silent', 'Auto'\)\]\[string\]\`$DeployMode = 'Silent'"
+    }
+    It 'records the install and uninstall command lines in the manifest' {
+        $script:s3 | Should -Match "'package\.installCommand'\s*=\s*`"Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode \`$DeployMode`""
+        $script:s3 | Should -Match "'package\.uninstallCommand'\s*=\s*`"Invoke-AppDeployToolkit\.exe -DeploymentType Uninstall -DeployMode \`$DeployMode`""
+    }
+    It 'gives the Install close prompt a countdown - inside the if, because the countdown needs -CloseProcesses' {
+        # Every PSADT parameter set that carries -CloseProcessesCountdown also requires -CloseProcesses, so
+        # in the splat literal it would fail binding (60001) for every app with nothing to close.
+        $script:s3 | Should -Match "(?s)if \(\`$adtSession\.AppProcessesToClose\.Count -gt 0\)\s*\{\s*\`$saiwParams\.Add\('CloseProcesses', \`$adtSession\.AppProcessesToClose\)\s*\`$saiwParams\.Add\('CloseProcessesCountdown', 60\)\s*\}"
+    }
+}
+
+Describe 'New-MsiPackage: a generated Auto package (0.49.2)' -Skip:(-not $script:hasPsadt) {
+    BeforeAll {
+        $script:g3 = Join-Path $PSScriptRoot '..\scripts\New-MsiPackage.ps1'
+        $script:r3 = Join-Path $TestDrive 'pk3'
+        $msi3 = Join-Path $TestDrive 'dummy3.msi'
+        Set-Content -LiteralPath $msi3 -Value 'x'
+        $c3 = @{
+            AppVendor = 'ACME'; AppName = 'Widget'; AppVersion = '2.0'; AppArch = 'x64'
+            ProductCode = '{11111111-2222-3333-4444-555555555555}'; InstallerFile = 'widget.msi'; InstallerPath = $msi3
+            Author = 'Test'; Changelog = 'c'; PackageRoot = $script:r3
+        }
+        & $script:g3 -Name 'Auto' -DeployMode Auto -ProcessesToClose @('widget') @c3 | Out-Null
+        & $script:g3 -Name 'Plain' @c3 | Out-Null
+        $script:autoM  = Get-Content (Join-Path $script:r3 'Auto\psadt-package.json') -Raw | ConvertFrom-Json
+        $script:plainM = Get-Content (Join-Path $script:r3 'Plain\psadt-package.json') -Raw | ConvertFrom-Json
+        $script:autoL  = Get-Content (Join-Path $script:r3 'Auto\Invoke-AppDeployToolkit.ps1') -Raw
+    }
+    It 'records the Auto command lines' {
+        $script:autoM.package.installCommand   | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
+        $script:autoM.package.uninstallCommand | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto'
+    }
+    It 'records Silent by default, so nothing changes for an existing flow' {
+        $script:plainM.package.installCommand | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+    }
+    It 'writes the Install countdown into the launcher, and the launcher parses' {
+        $script:autoL | Should -Match "\`$saiwParams\.Add\('CloseProcessesCountdown', 60\)"
+        $e = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($script:autoL, [ref]$null, [ref]$e)
+        @($e).Count | Should -Be 0
+    }
+}

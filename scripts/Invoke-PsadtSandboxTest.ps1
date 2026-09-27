@@ -209,6 +209,19 @@ $cfg = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')
 $mf = & (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -PackagePath $PackagePath
 $stem = if ($mf.Stem) { $mf.Stem } else { Split-Path $PackagePath -Leaf }
 
+# The command lines the package ships (0.49.2) - the sandbox tests THOSE, each action with its own
+# DeployMode, instead of a fixed Silent. Usually the same outcome: Auto falls back to Silent in session 0
+# with no user signed in. But an installer that leaves the app running turns Auto into Interactive, and
+# that is the path a device will take. A recorded line that is not the launcher's own is refused here,
+# before a VM exists - the upload refuses the same line.
+foreach ($c in @(@('installCommand', $mf.Commands.Install), @('uninstallCommand', $mf.Commands.Uninstall))) {
+    if (-not $c[1].Valid) {
+        throw "package.$($c[0]) is not the launcher's own command line, so it can be neither tested nor uploaded: '$($c[1].Command)'. Expected: Invoke-AppDeployToolkit.exe -DeploymentType <Install|Uninstall> -DeployMode <Silent|Auto|Interactive|NonInteractive>."
+    }
+}
+$installDeployMode = [string]$mf.Commands.Install.DeployMode
+$uninstallDeployMode = [string]$mf.Commands.Uninstall.DeployMode
+
 # The mapped folder appears inside the VM as C:\Users\WDAGUtilityAccount\Desktop\<leaf>, so the two leaf
 # names must differ or the second mapping shadows the first.
 $packageLeaf = Split-Path $PackagePath -Leaf
@@ -296,6 +309,10 @@ $pathsAbsentAfterInstall   = __PATHSABSENTINSTALL__
 $pathsAbsentAfterUninstall = __PATHSABSENTUNINSTALL__
 $scenarios = __SCENARIOS__
 $keepSandboxOpen = __KEEPSANDBOXOPEN__
+# The package's own command lines (package.installCommand / uninstallCommand): Uninstall runs with the
+# uninstall line's mode, Install, Reinstall and Repair with the install line's.
+$installDeployMode   = '__INSTALLDEPLOYMODE__'
+$uninstallDeployMode = '__UNINSTALLDEPLOYMODE__'
 
 $report = [ordered]@{ startedUtc = (Get-Date).ToUniversalTime().ToString('o'); steps = @(); verdict = 'UNKNOWN'; failedAssertions = @() }
 $assertions = @()
@@ -849,7 +866,8 @@ function Invoke-AsSystem {
 function Invoke-Deployment {
     param([string]$Label, [string]$DeploymentType)
     $exe = Join-Path $pkg 'Invoke-AppDeployToolkit.exe'
-    $r = Invoke-AsSystem -Label $Label -CommandLine "`"$exe`" -DeploymentType $DeploymentType -DeployMode Silent" -TimeoutSeconds $actionTimeout
+    $mode = if ($DeploymentType -eq 'Uninstall') { $uninstallDeployMode } else { $installDeployMode }
+    $r = Invoke-AsSystem -Label $Label -CommandLine "`"$exe`" -DeploymentType $DeploymentType -DeployMode $mode" -TimeoutSeconds $actionTimeout
     $ok = (-not $r.TimedOut) -and ($successExitCodes -contains $r.ExitCode)
     $step = @{ exitCode = $r.ExitCode; timedOut = $r.TimedOut; success = $ok; seconds = $r.Seconds }
 
@@ -863,7 +881,7 @@ function Invoke-Deployment {
     if (-not $r.TimedOut -and $r.ExitCode -eq 60008) {
         $ps1 = Join-Path $pkg 'Invoke-AppDeployToolkit.ps1'
         $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        $d = Invoke-AsSystem -Label "$Label.Diagnostic" -CommandLine "`"$psExe`" -NoProfile -ExecutionPolicy Bypass -File `"$ps1`" -DeploymentType $DeploymentType -DeployMode Silent" -TimeoutSeconds $actionTimeout
+        $d = Invoke-AsSystem -Label "$Label.Diagnostic" -CommandLine "`"$psExe`" -NoProfile -ExecutionPolicy Bypass -File `"$ps1`" -DeploymentType $DeploymentType -DeployMode $mode" -TimeoutSeconds $actionTimeout
         $diag = (('' + $d.Output) -replace '\s+', ' ').Trim()
         if ($diag.Length -gt 1200) { $diag = $diag.Substring(0, 1200) + ' ...' }
         $step.diagnostic = "$Label exited 60008 (initialization failed, nothing deployed). Re-run via powershell.exe -File said: $diag"
@@ -1425,6 +1443,8 @@ $runner = $runnerTemplate.
     Replace('__STEM__', ($stem -replace "'", "''")).
     Replace('__PACKAGELEAF__', ($packageLeaf -replace "'", "''")).
     Replace('__KEEPSANDBOXOPEN__', $(if ($KeepSandboxOpen) { '$true' } else { '$false' })).
+    Replace('__INSTALLDEPLOYMODE__', $installDeployMode).
+    Replace('__UNINSTALLDEPLOYMODE__', $uninstallDeployMode).
     Replace('__DETECTIONSCRIPT__', ($DetectionScript -replace "'", "''")).
     Replace('__SUCCESSCODES__', ('@(' + ($SuccessExitCodes -join ', ') + ')')).
     Replace('__ACTIONTIMEOUT__', [string]$ActionTimeoutSeconds).

@@ -154,6 +154,11 @@ $carry = [pscustomobject]@{
     # Lets the caller tell a genuine new build from a re-pack of the same bytes: identical hash means
     # the switches proven last time apply exactly, not merely probably.
     installerSha256  = [string]$m.package.installerSha256
+    # The Gate 2 running-app choice lives in the command line (-DeployMode), and the Intune name has to
+    # stay the same across versions or the version list and the supersedence lose each other (0.49.2).
+    installCommand    = [string]$m.package.installCommand
+    uninstallCommand  = [string]$m.package.uninstallCommand
+    uploadDisplayName = [string]$m.results.upload.displayName
 }
 
 Out-Result ([pscustomobject]@{

@@ -89,7 +89,7 @@ The upload already sees the old version during its idempotency check and prints 
 cannot hand that id back to itself. Ask first:
 
 ```powershell
-pwsh scripts/Get-IntuneAppVersions.ps1 -DisplayName '<Vendor> <App>'
+pwsh scripts/Get-IntuneAppVersions.ps1 -DisplayName '<name in Intune>'
 pwsh scripts/Get-IntuneAppVersions.ps1 -ManifestPath '<pkg>\psadt-package.json' -Json
 ```
 

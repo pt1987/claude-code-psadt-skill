@@ -111,14 +111,17 @@ The XML must contain `<SetupFile>Invoke-AppDeployToolkit.exe</SetupFile>`. If so
 ## Phase 8: Intune app configuration
 
 ### 8.1 App Information
-- Name / Version / Publisher: matches `$adtSession.AppName / AppVersion / AppVendor`
+- Name / Version / Publisher: the name is `app.name` (or a recorded `app.displayName`), the same for every
+  version; version and publisher match `$adtSession.AppVersion / AppVendor`. The upload derives the name
+  once (`Resolve-PsadtDisplayName`): an explicit `-DisplayName`, `app.displayName`, the name this package or
+  the previous version was uploaded under, `app.name`.
 - Description: Markdown-capable, the first paragraph readable standalone (~200 characters are the short preview in the Company Portal)
 - Category: choose it semantically correct (Development, Productivity, ...)
 - Logo: `<pkg>\Assets\<App>-Logo.png` (the REAL downloaded application logo - NOT the PSADT default `AppIcon.png`), >=256x256 PNG
 
 ### 8.2 Program
-- **Install command**: `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent`
-- **Uninstall command**: `Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent` (case does not matter, the ValidateSet is case-insensitive)
+- **Install command**: `package.installCommand` - `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent`, or `-DeployMode Auto` when Gate 2 chose the close prompt (phase 1.2)
+- **Uninstall command**: `package.uninstallCommand`, the same `-DeployMode` (case does not matter, the ValidateSet is case-insensitive). The upload, the dossier and the sandbox all read these two from the manifest; a recorded line that is not the launcher's own is refused
 - **Install behavior**: `System` (default; the SYSTEM context is correct for Win32 apps)
 - **Device restart behavior**:
   - `App install may force a device restart` - when the installer can return 1641
@@ -189,7 +192,10 @@ pwsh scripts/Invoke-IntuneWin32Upload.ps1 -ManifestPath '<pkg>\psadt-package.jso
 ```
 
 `-ManifestPath` supplies DisplayName / Publisher / AppVersion / Architecture, so the app in Intune carries
-the same identity as the artifact and the dossier; anything passed explicitly still wins. It
+the same identity as the artifact and the dossier; anything passed explicitly still wins. The name is
+`app.name` unless something recorded says otherwise (8.1), and a read-only check keeps `<Vendor> <App>`
+when the tenant holds older versions only under that form (0.49.2). The install and uninstall command
+lines come from `package.installCommand` / `uninstallCommand`. It
 also supplies the `.intunewin` (`artifacts.intunewin`, 0.43.0), the logo (`artifacts.logo`) and the
 Company-Portal description (`app.description.<language.dossier>` - the same text the dossier renders,
 recorded once; 0.44.0). For a `package.detection = versionFloor` package it takes `artifacts.detection` as

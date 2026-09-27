@@ -68,6 +68,32 @@ the version (`<name> 2.9.0`), so it never matched. It now matches on the app ide
 real run found the predecessor and its ProductCode. Tests build a real MSI database through the Windows
 Installer API, so both paths run in CI.
 
+**Gate 2 offered a close prompt the package could never show.** For an app with processes to close, the
+operator chose "close with a prompt", and the command line stayed the fixed `-DeployMode Silent`, which
+never prompts - recorded nowhere, and typed twice: once as the upload's default, once as the dossier's.
+The MSI and EXE generators now take `-DeployMode Silent|Auto` (Silent by default, so nothing changes for
+an existing flow) and all five generators record `package.installCommand` / `uninstallCommand`.
+`Get-PsadtPackageManifest.ps1` parses them in one place and accepts only the launcher's own shape - the
+line runs as SYSTEM on every device, and one with anything chained to it is refused by the upload, the
+sandbox and the per-action test alike. The upload and the dossier read the recorded line; the sandbox and
+`Invoke-PsadtSystemTest.ps1` now run each action with the mode the package ships (the harness's own PSADT
+probe stays Silent). What `Auto` does is PSADT's rule (4.1.8): Silent during OOBE and the ESP, in session 0
+with no user, and when none of the processes is running; otherwise the close prompt. Phase 1.2 has the
+option table.
+
+**The close prompt at Install had no countdown.** Uninstall and Repair closed with a 60-second countdown;
+Install did not, and an interactive prompt without one waits 3300 seconds and then exits 1618. The
+countdown is added only when there are processes to close - every PSADT parameter set that takes it also
+requires `-CloseProcesses`.
+
+**The Intune name was derived three ways.** The upload built `<vendor> <name>`, `phases-7-12.md` and the
+dossier said the app name, and a real upload whose vendor already contained the app name came out with it
+twice. One helper (`Resolve-PsadtDisplayName`) now decides: an explicit `-DisplayName`, `app.displayName`,
+the name this package or the previous version was uploaded under, then `app.name`. Before creating an app,
+a read-only check keeps `<vendor> <name>` when the tenant holds older versions only under that form, so a
+new version does not start a second, unrelated app; `Get-IntuneAppVersions.ps1` searches every name the
+app has carried. The upload says where its name and its command lines came from before anything else.
+
 ## 0.49.1 - 2026-09-27 - The permissions it asks for were written down nowhere a reader looks
 
 Anyone deciding whether to let this skill into a tenant asks one question first: which Entra permissions

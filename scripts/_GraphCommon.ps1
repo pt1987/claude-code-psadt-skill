@@ -261,3 +261,56 @@ function Merge-AppRelationships {
 
     return @($out)
 }
+
+function Get-IntuneWin32AppsByName {
+    <#
+        Every win32LobApp carrying any of -Names, each app once. The one filter every script uses to find
+        an app by name (0.49.2): the upload's name check and Get-IntuneAppVersions.ps1.
+
+        The apostrophe is doubled because an OData string literal ends at the first unescaped quote -
+        "Igor's" would 400, or worse match a different filter, and a supersedence would then be wired to
+        whatever that returned. isof() keeps a Store app of the same name out.
+    #>
+    param(
+        [string[]]$Names,
+        [hashtable]$Headers,
+        [string]$GraphBase = 'https://graph.microsoft.com/beta'
+    )
+    $seen = New-Object System.Collections.Generic.HashSet[string]
+    $out = @()
+    foreach ($n in @($Names | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+        $escaped = ([string]$n).Replace("'", "''")
+        $page = Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps?`$filter=isof('microsoft.graph.win32LobApp') and displayName eq '$escaped'" -Headers $Headers
+        foreach ($a in @($page.value)) {
+            if ($a -and $seen.Add([string]$a.id)) { $out += $a }
+        }
+    }
+    return $out
+}
+
+function Resolve-IntuneUploadName {
+    <#
+        The last step of the display-name derivation, the one that needs the tenant. Until 0.49.2 the
+        upload named an app "<vendor> <name>"; it now uses app.name (Resolve-PsadtDisplayName in
+        _AppKey.ps1). A tenant that holds earlier versions only under the old name would otherwise get a
+        second, unrelated app - two version lists, and a supersedence nobody finds. So: when the name was
+        merely DERIVED (Source 'app.name'), the tenant has nothing under it, and it does have apps under
+        the old form, keep the old form and say why. A name that was chosen or recorded is never changed.
+    #>
+    param(
+        [string]$Name,
+        [string]$Source,
+        [string]$LegacyName,
+        [hashtable]$Headers,
+        [string]$GraphBase = 'https://graph.microsoft.com/beta'
+    )
+    $keep = [pscustomobject]@{ Name = $Name; Reason = $null }
+    if ($Source -ne 'app.name' -or -not $LegacyName -or $LegacyName -eq $Name) { return $keep }
+    if (@(Get-IntuneWin32AppsByName -Names @($Name) -Headers $Headers -GraphBase $GraphBase).Count -gt 0) { return $keep }
+    $old = @(Get-IntuneWin32AppsByName -Names @($LegacyName) -Headers $Headers -GraphBase $GraphBase)
+    if ($old.Count -eq 0) { return $keep }
+    return [pscustomobject]@{
+        Name   = $LegacyName
+        Reason = "older versions of this app are in the tenant under '$LegacyName' ($($old.Count)) and none under '$Name', so this version keeps that name. Record app.displayName to choose one for good."
+    }
+}

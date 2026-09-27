@@ -23,11 +23,14 @@
     Permission: DeviceManagementApps.ReadWrite.All, already required for upload. Nothing new to consent.
 
 .PARAMETER DisplayName
-    The Intune app display name, e.g. 'Google LLC Google Chrome'. Mutually exclusive with -ManifestPath.
+    The Intune app display name, exactly as it appears in the tenant. Mutually exclusive with
+    -ManifestPath.
 
 .PARAMETER ManifestPath
-    A package's psadt-package.json; the display name is derived from app.vendor + app.name exactly as
-    Invoke-IntuneWin32Upload.ps1 derives it, so both scripts look for the same app.
+    A package's psadt-package.json; the display name is derived exactly as Invoke-IntuneWin32Upload.ps1
+    derives it (Resolve-PsadtDisplayName: app.displayName, the uploaded name of this package or its
+    predecessor, else app.name), and the older "<vendor> <name>" form is searched as well - so both
+    scripts find the same app, including versions uploaded before 0.49.2.
 
 .PARAMETER Json
     Emit JSON to stdout instead of the object.
@@ -42,11 +45,11 @@
     Config home override; default = the resolved config home.
 
 .OUTPUTS
-    PSCustomObject: DisplayName, Count, Versions(@{ id, displayVersion, publishingState, isAssigned,
+    PSCustomObject: DisplayName, SearchedNames, Count, Versions(@{ id, displayVersion, publishingState, isAssigned,
     createdDateTime, lastModifiedDateTime, supersedes[], supersededBy[] }), GraphNodeCount
 
 .EXAMPLE
-    pwsh scripts/Get-IntuneAppVersions.ps1 -DisplayName 'Google LLC Google Chrome'
+    pwsh scripts/Get-IntuneAppVersions.ps1 -DisplayName 'Widget'
 
 .EXAMPLE
     pwsh scripts/Get-IntuneAppVersions.ps1 -ManifestPath 'C:\PSADT\Packages\Chrome\psadt-package.json' -Json
@@ -76,16 +79,28 @@ if ($DisplayName -and $ManifestPath) {
     throw "Pass -DisplayName or -ManifestPath, not both - two sources of identity cannot be reconciled."
 }
 if (-not $DisplayName -and -not $ManifestPath) {
-    throw "Name the app: pass -DisplayName '<Vendor> <App>', or -ManifestPath <pkg>\psadt-package.json to take it from the package."
+    throw "Name the app: pass -DisplayName '<name in Intune>', or -ManifestPath <pkg>\psadt-package.json to take it from the package."
 }
 if ($ManifestPath) {
     if (-not (Test-Path -LiteralPath $ManifestPath)) { throw "ManifestPath not found: $ManifestPath" }
     try { $mf = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json }
     catch { throw "psadt-package.json is malformed: $($_.Exception.Message)" }
     if (-not $mf.app.name) { throw "The manifest has no app.name, so the Intune display name cannot be derived: $ManifestPath" }
-    # Same derivation as Invoke-IntuneWin32Upload.ps1:136. If these two ever disagree, this script
-    # reports "no versions found" for an app that is plainly in the tenant.
-    $DisplayName = if ($mf.app.vendor) { "$($mf.app.vendor) $($mf.app.name)" } else { [string]$mf.app.name }
+    # The SAME derivation as Invoke-IntuneWin32Upload.ps1 (Resolve-PsadtDisplayName, _AppKey.ps1). If the
+    # two ever disagree, this script reports "no versions found" for an app that is plainly in the tenant.
+    # And every name the app may carry is searched: the derived one, the older "<vendor> <name>" the
+    # upload used until 0.49.2, and the name the previous version was uploaded under.
+    . (Join-Path $PSScriptRoot '_AppKey.ps1')
+    $priorName = $null
+    try {
+        $pp = & (Join-Path $PSScriptRoot 'Get-PsadtPriorPackage.ps1') -ManifestPath $ManifestPath -SkillRoot $SkillRoot
+        if ($pp -and $pp.Found) { $priorName = [string]$pp.Carry.uploadDisplayName }
+    } catch { }
+    $nameInfo = Resolve-PsadtDisplayName -Manifest $mf -PriorUploadName $priorName
+    $DisplayName = [string]$nameInfo.Name
+    $searchNames = @(@($DisplayName, $nameInfo.LegacyName, $priorName) | Where-Object { $_ } | Select-Object -Unique)
+} else {
+    $searchNames = @($DisplayName)
 }
 
 # --- Token ---------------------------------------------------------------------------------------
@@ -96,12 +111,10 @@ Assert-GraphRole -Token $token -Role 'DeviceManagementApps.ReadWrite.All' `
     -Hint 'Run New-PsadtEntraApp.ps1, then Test-PsadtIntuneAccess.ps1 to verify.' | Out-Null
 
 # --- The apps ------------------------------------------------------------------------------------
-Write-Step "Find win32LobApp versions named '$DisplayName'"
-# Apostrophe doubling is not cosmetic: an OData string literal ends at the first unescaped quote, so
-# "Igor's" would either 400 or - worse - match a different filter than the one intended, and a
-# supersedence would then be wired to whatever that returned.
-$escaped = $DisplayName.Replace("'", "''")
-$apps = @((Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps?`$filter=isof('microsoft.graph.win32LobApp') and displayName eq '$escaped'" -Headers $H).value)
+Write-Step ("Find win32LobApp versions named " + (($searchNames | ForEach-Object { "'$_'" }) -join ' or '))
+# Get-IntuneWin32AppsByName (_GraphCommon.ps1) doubles the apostrophe and keeps the filter on win32LobApp;
+# it returns each app once, whichever of the names it carries.
+$apps = @(Get-IntuneWin32AppsByName -Names $searchNames -Headers $H -GraphBase $GraphBase)
 
 if (-not $apps) {
     Write-Info "No win32LobApp with that display name is in the tenant."
@@ -158,6 +171,7 @@ foreach ($r in $rows) {
 
 $result = [pscustomobject]@{
     DisplayName        = $DisplayName
+    SearchedNames      = @($searchNames)
     Count              = $rows.Count
     Versions           = @($rows)
     GraphNodeCountFloor = $nodeIds.Count

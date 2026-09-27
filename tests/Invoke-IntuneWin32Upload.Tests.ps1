@@ -76,7 +76,12 @@ Describe '-ManifestPath (0.21.0): identity comes from the package, not the comma
         $script:pkgDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
         New-Item $script:pkgDir -ItemType Directory -Force | Out-Null
         $script:mf = Join-Path $script:pkgDir 'psadt-package.json'
+        # The upload looks up the previous package (0.49.2); keep that lookup off the real config home.
+        $script:oldHome = $env:PSADT_DEPLOY_HOME
+        $env:PSADT_DEPLOY_HOME = Join-Path $TestDrive ('home_' + [guid]::NewGuid().ToString('N'))
+        New-Item $env:PSADT_DEPLOY_HOME -ItemType Directory -Force | Out-Null
     }
+    AfterEach { $env:PSADT_DEPLOY_HOME = $script:oldHome }
 
     It 'still accepts the explicit form without a manifest' {
         # Reaches the .intunewin parse step, i.e. binding succeeded in the Explicit set.
@@ -187,7 +192,11 @@ Describe '-ManifestPath alone (0.43.0): the .intunewin comes from artifacts.intu
         $script:pkgDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
         New-Item $script:pkgDir -ItemType Directory -Force | Out-Null
         $script:mf = Join-Path $script:pkgDir 'psadt-package.json'
+        $script:oldHome = $env:PSADT_DEPLOY_HOME
+        $env:PSADT_DEPLOY_HOME = Join-Path $TestDrive ('home_' + [guid]::NewGuid().ToString('N'))
+        New-Item $env:PSADT_DEPLOY_HOME -ItemType Directory -Force | Out-Null
     }
+    AfterEach { $env:PSADT_DEPLOY_HOME = $script:oldHome }
 
     It 'no longer marks -IntuneWinPath as Mandatory' {
         $attrs = (Get-Command $script:Upload).Parameters['IntuneWinPath'].Attributes |
@@ -283,5 +292,81 @@ Describe 'the supersedence hints lead to the script that records it (0.49.1)' {
     }
     It 'says after a wired supersedence that the old version still needs its note' {
         $script:hint | Should -Match 'Set-IntuneAppSupersedence\.ps1 -AppId \$appId -SupersedesAppId \$supersededWired'
+    }
+}
+
+Describe 'name and command line come from what the package recorded (0.49.2)' {
+    # Measured 2026-09-27: Gate 2 chose a close prompt, the upload sent its hard-coded
+    # '-DeployMode Silent' anyway, and it named the app "<vendor> <name>" while the docs and the dossier
+    # say app.name. Everything below runs up to the .intunewin step, before any token.
+    BeforeEach {
+        $script:oldHome = $env:PSADT_DEPLOY_HOME
+        $script:uHome = Join-Path $TestDrive ('uhome_' + [guid]::NewGuid().ToString('N'))
+        $env:PSADT_DEPLOY_HOME = $script:uHome
+        $script:uRoot = Join-Path $script:uHome 'packages'
+        New-Item $script:uRoot -ItemType Directory -Force | Out-Null
+        @{ version = 1; paths = @{ packageRoot = $script:uRoot; outputRoot = (Join-Path $script:uHome 'out') } } |
+            ConvertTo-Json -Depth 5 | Set-Content (Join-Path $script:uHome 'config.json') -Encoding UTF8
+        $script:newPkg = { param([string]$Folder, [string]$Version, [hashtable]$Extra)
+            $d = Join-Path $script:uRoot $Folder
+            New-Item $d -ItemType Directory -Force | Out-Null
+            Set-Content (Join-Path $d 'Invoke-AppDeployToolkit.ps1') '# launcher'
+            $m = @{ schema = 1; app = @{ vendor = 'ACME'; name = 'Widget'; version = $Version; arch = 'x64' }; package = @{} }
+            if ($Extra) { foreach ($k in $Extra.Keys) { $m[$k] = $Extra[$k] } }
+            $m | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $d 'psadt-package.json') -Encoding UTF8
+            Join-Path $d 'psadt-package.json' }
+        $script:run = { param([string]$Manifest)
+            $lines = New-Object System.Collections.Generic.List[string]
+            $err = $null
+            try { & $script:Upload -ManifestPath $Manifest -IntuneWinPath $script:DummyWin -ErrorAction Stop 6>&1 | ForEach-Object { $lines.Add([string]$_) } }
+            catch { $err = $_.Exception.Message }
+            [pscustomobject]@{ Text = ($lines -join "`n"); Error = $err } }
+    }
+    AfterEach { $env:PSADT_DEPLOY_HOME = $script:oldHome }
+
+    It 'names the app app.name, not vendor plus name' {
+        $r = & $script:run (& $script:newPkg 'Widget_2.0' '2.0' $null)
+        $r.Error | Should -Match 'Not found' -Because 'the run must reach the artifact step'
+        $r.Text  | Should -Match 'Intune Win32 upload \(Graph\) - Widget(\r?\n|$)'
+        $r.Text  | Should -Not -Match 'ACME Widget'
+    }
+
+    It 'keeps the name the previous version was uploaded under' {
+        & $script:newPkg 'Widget_1.0' '1.0' @{ results = @{ upload = @{ displayName = 'Widget (ACME)' } } } | Out-Null
+        $r = & $script:run (& $script:newPkg 'Widget_2.0' '2.0' $null)
+        $r.Text | Should -Match 'Intune Win32 upload \(Graph\) - Widget \(ACME\)'
+        $r.Text | Should -Match 'predecessor'
+    }
+
+    It 'takes the recorded command lines, and says so' {
+        $r = & $script:run (& $script:newPkg 'Widget_2.0' '2.0' @{ package = @{
+                    installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
+                    uninstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto' } })
+        $r.Text | Should -Match 'Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode Auto'
+        $r.Text | Should -Match 'from the manifest'
+    }
+
+    It 'says when no command line was recorded and the Silent default is used' {
+        $r = & $script:run (& $script:newPkg 'Widget_2.0' '2.0' $null)
+        $r.Text | Should -Match 'none recorded'
+    }
+
+    It 'refuses a recorded command line that is not the launcher''s own, before anything reaches the tenant' {
+        $r = & $script:run (& $script:newPkg 'Widget_2.0' '2.0' @{ package = @{
+                    installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent & calc.exe' } })
+        $r.Error | Should -Match 'package\.installCommand'
+    }
+
+    Context 'source contract' {
+        BeforeAll { $script:us2 = Get-Content -LiteralPath $script:Upload -Raw }
+        It 'lets an explicit -InstallCommandLine / -UninstallCommandLine win' {
+            $script:us2 | Should -Match "PSBoundParameters\.ContainsKey\('InstallCommandLine'\)"
+            $script:us2 | Should -Match "PSBoundParameters\.ContainsKey\('UninstallCommandLine'\)"
+        }
+        It 'derives the name with the shared helper, and checks the tenant for the older name before creating' {
+            $script:us2 | Should -Match 'Resolve-PsadtDisplayName'
+            $script:us2 | Should -Match 'Resolve-IntuneUploadName'
+            $script:us2.IndexOf('Resolve-IntuneUploadName') | Should -BeLessThan $script:us2.IndexOf('# 2. Idempotency check')
+        }
     }
 }

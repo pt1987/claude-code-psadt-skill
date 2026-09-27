@@ -166,6 +166,26 @@ Describe 'what it carries forward' {
             Should -Be 'abc123'
     }
 
+    It 'carries the command lines and the name the previous version was uploaded under (0.49.2)' {
+        # The Gate 2 running-app choice lives in the command line (-DeployMode), and the Intune name has to
+        # stay the same across versions or supersedence and the version list lose each other.
+        $dir = Join-Path $script:root 'WithCmd'
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Set-Content (Join-Path $dir 'Invoke-AppDeployToolkit.ps1') -Value '# stub' -Encoding UTF8
+        @{
+            schema  = 1
+            app     = @{ vendor = 'ACME'; name = 'Widget'; version = '1.0'; arch = 'x64' }
+            package = @{ type = 'installer'
+                         installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
+                         uninstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto' }
+            results = @{ upload = @{ displayName = 'Widget (ACME)' } }
+        } | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $dir 'psadt-package.json') -Encoding UTF8
+        $c = (& $script:Prior -Vendor 'ACME' -Name 'Widget' -Version '2.0' -PackageRoot $script:root).Carry
+        $c.installCommand    | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
+        $c.uninstallCommand  | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto'
+        $c.uploadDisplayName | Should -Be 'Widget (ACME)'
+    }
+
     It 'carries nothing at all when there is no prior package' {
         $r = & $script:Prior -Vendor 'Nobody' -Name 'Nothing' -PackageRoot $script:root
         $r.Carry | Should -BeNullOrEmpty

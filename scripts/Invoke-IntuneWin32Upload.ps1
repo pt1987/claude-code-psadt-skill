@@ -144,8 +144,44 @@ if ($ManifestPath) {
     catch { throw "psadt-package.json is malformed: $($_.Exception.Message)" }
     $manifestPackagePath = Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath).Path
 
-    if (-not $PSBoundParameters.ContainsKey('DisplayName') -and $mfUp.app.name) {
-        $DisplayName = if ($mfUp.app.vendor) { "$($mfUp.app.vendor) $($mfUp.app.name)" } else { [string]$mfUp.app.name }
+    # The Intune name, ONE derivation (Resolve-PsadtDisplayName in _AppKey.ps1, 0.49.2): an explicit
+    # -DisplayName; app.displayName; the name this package or the PREVIOUS version was uploaded under;
+    # app.name. Until 0.49.2 this was "<vendor> <name>", which neither the docs nor the dossier said - a
+    # vendor name that already contains the app name uploaded it with the name twice (2026-09-27).
+    . (Join-Path $PSScriptRoot '_AppKey.ps1')
+    $priorUploadName = $null
+    if (-not $PSBoundParameters.ContainsKey('DisplayName')) {
+        try {
+            $priorUp = & (Join-Path $PSScriptRoot 'Get-PsadtPriorPackage.ps1') -ManifestPath $ManifestPath -SkillRoot $SkillRoot
+            if ($priorUp -and $priorUp.Found) { $priorUploadName = [string]$priorUp.Carry.uploadDisplayName }
+        } catch { }   # no predecessor lookup is no reason to stop an upload; app.name remains
+    }
+    $explicitName = if ($PSBoundParameters.ContainsKey('DisplayName')) { $DisplayName } else { '' }
+    $nameInfo = Resolve-PsadtDisplayName -Explicit $explicitName -Manifest $mfUp -PriorUploadName $priorUploadName
+    if ($nameInfo.Name) { $DisplayName = [string]$nameInfo.Name }
+    $displayNameSource = $nameInfo.Source
+    $legacyDisplayName = $nameInfo.LegacyName
+
+    # The command lines Intune runs (0.49.2): what the package recorded, parsed by
+    # Get-PsadtPackageManifest.ps1 - the value the dossier documents and the sandbox tested. Until 0.49.2
+    # this script sent its own '-DeployMode Silent' default whatever Gate 2 had chosen. An explicit
+    # -InstallCommandLine / -UninstallCommandLine still wins. A recorded line that is not the launcher's
+    # own is refused HERE, before a token exists: it would run as SYSTEM on every device.
+    $commandSource = 'none recorded, so the Silent default'
+    if (Test-Path -LiteralPath (Join-Path $manifestPackagePath 'Invoke-AppDeployToolkit.ps1')) {
+        $mfCmds = (& (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -PackagePath $manifestPackagePath).Commands
+        if (-not $PSBoundParameters.ContainsKey('InstallCommandLine')) {
+            if (-not $mfCmds.Install.Valid) {
+                throw "package.installCommand is not the launcher's own command line and would run as SYSTEM on every device: '$($mfCmds.Install.Command)'. Fix it in the manifest, or pass -InstallCommandLine."
+            }
+            if ($mfCmds.Install.Recorded) { $InstallCommandLine = $mfCmds.Install.Command; $commandSource = 'from the manifest' }
+        }
+        if (-not $PSBoundParameters.ContainsKey('UninstallCommandLine')) {
+            if (-not $mfCmds.Uninstall.Valid) {
+                throw "package.uninstallCommand is not the launcher's own command line and would run as SYSTEM on every device: '$($mfCmds.Uninstall.Command)'. Fix it in the manifest, or pass -UninstallCommandLine."
+            }
+            if ($mfCmds.Uninstall.Recorded) { $UninstallCommandLine = $mfCmds.Uninstall.Command; $commandSource = 'from the manifest' }
+        }
     }
     if (-not $PSBoundParameters.ContainsKey('Publisher')  -and $mfUp.app.vendor)  { $Publisher  = [string]$mfUp.app.vendor }
     # Installer-specific codes researched in Phase 1.3 and recorded once in the manifest, so the dossier
@@ -208,6 +244,13 @@ $script:step = 0
 
 # =====================================================================================================
 Write-Host "Intune Win32 upload (Graph) - $DisplayName" -ForegroundColor White
+if ($ManifestPath) {
+    # Where the name and the command lines came from, said before anything else happens: both used to be
+    # silent defaults that disagreed with what the package had recorded (0.49.2).
+    Write-Info "name      : from $displayNameSource"
+    Write-Info "install   : $InstallCommandLine ($commandSource)"
+    Write-Info "uninstall : $UninstallCommandLine"
+}
 
 # 1. Parse the .intunewin --------------------------------------------------------------------------
 Write-Step "Parse .intunewin"
@@ -260,6 +303,18 @@ Assert-GraphRole -Token $tok.Token -Role 'DeviceManagementApps.ReadWrite.All' `
 Write-Step "Probe permission (read-only)"
 try { $null = Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps?`$top=1" -Headers $H; Write-Ok "DeviceManagementApps.ReadWrite.All effective." }
 catch { $e = Get-GraphErr $_; throw "Graph probe failed ($($e.code)): $($e.message). Check app consent." }
+
+# --- The name, checked against the tenant (0.49.2) ---------------------------------------------------
+# A derived app.name meets a tenant whose earlier versions still carry the old "<vendor> <name>": keep
+# that name rather than start a second, unrelated app (Resolve-IntuneUploadName, _GraphCommon.ps1). A
+# name that was passed or recorded is never second-guessed. Read-only.
+if ($displayNameSource) {
+    $nameCheck = Resolve-IntuneUploadName -Name $DisplayName -Source $displayNameSource -LegacyName $legacyDisplayName -Headers $H -GraphBase $GraphBase
+    if ($nameCheck.Reason) {
+        Write-Warn2 "Display name '$($nameCheck.Name)' instead of '$DisplayName': $($nameCheck.Reason)"
+        $DisplayName = [string]$nameCheck.Name
+    }
+}
 
 # 2. Idempotency check -----------------------------------------------------------------------------
 Write-Step "Check for existing app named '$DisplayName'"

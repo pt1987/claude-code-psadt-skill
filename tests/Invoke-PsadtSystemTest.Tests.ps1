@@ -122,3 +122,13 @@ Describe 'Get-FreshSessionLog (which log belongs to THIS run)' {
         Get-FreshSessionLog -LogDirectory (Join-Path $script:dir 'nope') -DeploymentType 'Install' -Since $script:since | Should -BeNullOrEmpty
     }
 }
+
+Describe 'the per-action SYSTEM test runs the command line the package ships (0.49.2)' {
+    BeforeAll { $script:st3 = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\scripts\Invoke-PsadtSystemTest.ps1') -Raw }
+    It 'takes the DeployMode from the manifest, per deployment type' {
+        $script:st3 | Should -Match 'Get-PsadtPackageManifest\.ps1'
+        $script:st3 | Should -Match '\.Commands\.'
+        $script:st3 | Should -Match '-DeployMode \$Mode'
+        $script:st3 | Should -Not -Match '-DeploymentType \$Dt -DeployMode Silent'
+    }
+}

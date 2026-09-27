@@ -736,3 +736,35 @@ Describe 'the dossier reports the supersedence that was actually wired (0.47.0)'
         Get-Content $script:out -Raw | Should -Match 'DEINSTALLIERT'
     }
 }
+
+Describe 'New-PsadtReport documents the command line the package recorded (0.49.2)' {
+    # The dossier printed its own default ('-DeployMode Silent') while the package could ship Auto.
+    BeforeEach {
+        $script:pd3 = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item $script:pd3 -ItemType Directory -Force | Out-Null
+        $script:mf3 = Join-Path $script:pd3 'psadt-package.json'
+        $script:out3 = Join-Path $script:pd3 'Intune-Dossier.html'
+        $script:m3 = @{ schema = 1; app = @{ vendor = 'ACME'; name = 'Widget'; version = '2.0'; arch = 'x64' }; package = @{ type = 'installer' } }
+        Set-Content (Join-Path $script:pd3 'Invoke-AppDeployToolkit.ps1') '# launcher'
+    }
+    It 'shows the recorded install and uninstall command lines' {
+        $script:m3.package.installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
+        $script:m3.package.uninstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto'
+        $script:m3 | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $script:mf3 -Encoding UTF8
+        & $script:gen -ManifestPath $script:mf3 -OutputPath $script:out3
+        $html = Get-Content $script:out3 -Raw
+        $html | Should -Match 'Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode Auto'
+        $html | Should -Match 'Invoke-AppDeployToolkit\.exe -DeploymentType Uninstall -DeployMode Auto'
+    }
+    It 'shows the Silent default when nothing is recorded' {
+        $script:m3 | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $script:mf3 -Encoding UTF8
+        & $script:gen -ManifestPath $script:mf3 -OutputPath $script:out3
+        (Get-Content $script:out3 -Raw) | Should -Match 'Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode Silent'
+    }
+    It 'lets an explicit -Metadata InstallCmd win' {
+        $script:m3.package.installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
+        $script:m3 | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $script:mf3 -Encoding UTF8
+        & $script:gen -ManifestPath $script:mf3 -Metadata @{ InstallCmd = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Interactive' } -OutputPath $script:out3
+        (Get-Content $script:out3 -Raw) | Should -Match 'DeployMode Interactive'
+    }
+}
