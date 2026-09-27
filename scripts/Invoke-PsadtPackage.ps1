@@ -208,25 +208,31 @@ try {
             $idxHome = [string](& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')).Home
             if ($idxHome) {
                 $idxPath = Join-Path $idxHome 'package-index.json'
-                $idxDoc = if (Test-Path -LiteralPath $idxPath) {
-                    try { Get-Content -LiteralPath $idxPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null }
-                } else { $null }
-                $entries = @()
-                if ($idxDoc -and $idxDoc.entries) { $entries = @($idxDoc.entries) }
                 $mfPath = Join-Path $PackagePath 'psadt-package.json'
-                # One entry per package folder: a re-pack of the same version updates rather than doubles.
-                $entries = @($entries | Where-Object { [string]$_.manifestPath -ne $mfPath })
-                $entries = @([pscustomobject]@{
-                        appKey       = $idxKey
-                        vendor       = [string]$mf.Manifest.app.vendor
-                        name         = [string]$mf.Manifest.app.name
-                        version      = [string]$mf.Manifest.app.version
-                        manifestPath = $mfPath
-                        packagePath  = $PackagePath
-                        packedAt     = (Get-Date).ToUniversalTime().ToString('o')
-                    }) + $entries
+                # Read and write under one lock: two packaging runs finishing together must not both read
+                # the old index and keep only the entry of whichever replaces last.
                 . (Join-Path $PSScriptRoot '_JsonStore.ps1')
-                Write-JsonAtomic -Path $idxPath -Object ([ordered]@{ schemaVersion = 1; entries = $entries }) -Depth 6
+                Update-JsonAtomic -Path $idxPath -Depth 6 -Mutate {
+                    param($rawText)
+                    # A damaged index is rebuilt rather than a reason to fail: it is a cache, and
+                    # Get-PsadtPriorPackage.ps1 falls back to a scan.
+                    $idxDoc = $null
+                    if ($null -ne $rawText) { try { $idxDoc = $rawText | ConvertFrom-Json } catch { $idxDoc = $null } }
+                    $entries = @()
+                    if ($idxDoc -and $idxDoc.entries) { $entries = @($idxDoc.entries) }
+                    # One entry per package folder: a re-pack of the same version updates rather than doubles.
+                    $entries = @($entries | Where-Object { [string]$_.manifestPath -ne $mfPath })
+                    $entries = @([pscustomobject]@{
+                            appKey       = $idxKey
+                            vendor       = [string]$mf.Manifest.app.vendor
+                            name         = [string]$mf.Manifest.app.name
+                            version      = [string]$mf.Manifest.app.version
+                            manifestPath = $mfPath
+                            packagePath  = $PackagePath
+                            packedAt     = (Get-Date).ToUniversalTime().ToString('o')
+                        }) + $entries
+                    [ordered]@{ schemaVersion = 1; entries = $entries }
+                } | Out-Null
             }
         }
     } catch { Write-Warning "Packaged, but the package index was not updated: $($_.Exception.Message)" }

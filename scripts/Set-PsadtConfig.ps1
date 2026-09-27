@@ -62,35 +62,43 @@ function ConvertTo-HashtableDeep($obj) {
     }
     return $obj
 }
-$config = if (Test-Path -LiteralPath $configPath) {
-    try { ConvertTo-HashtableDeep (Get-Content $configPath -Raw | ConvertFrom-Json) }
-    catch { throw "config.json is malformed and cannot be safely updated: $($_.Exception.Message). Fix or delete it, then re-run." }
-} else { @{ version = 1 } }
-if (-not $config.ContainsKey('version')) { $config['version'] = 1 }
-
-foreach ($key in $Updates.Keys) {
-    $segs = $key -split '\.'
-    $node = $config
-    for ($i = 0; $i -lt $segs.Count - 1; $i++) {
-        if (-not ($node[$segs[$i]] -is [hashtable])) { $node[$segs[$i]] = @{} }
-        $node = $node[$segs[$i]]
-    }
-    $node[$segs[-1]] = $Updates[$key]
-}
-
-foreach ($key in $Remove) {
-    if ([string]::IsNullOrWhiteSpace($key)) { continue }
-    $segs = $key -split '\.'
-    $node = $config
-    for ($i = 0; $i -lt $segs.Count - 1; $i++) {
-        if (-not ($node[$segs[$i]] -is [hashtable])) { $node = $null; break }
-        $node = $node[$segs[$i]]
-    }
-    if ($node -is [hashtable]) { $node.Remove($segs[-1]) }
-}
-
+# Read, change and replace under ONE lock (_JsonStore.ps1): two sessions sharing a config home must not
+# read the same config.json and erase each other's change.
 . (Join-Path $PSScriptRoot '_JsonStore.ps1')
-Write-JsonAtomic -Path $configPath -Object $config -Depth 8
+Update-JsonAtomic -Path $configPath -Depth 8 -Mutate {
+    param($rawText)
+    $c = if ($null -ne $rawText) {
+        try {
+            $parsed = ConvertTo-HashtableDeep ($rawText | ConvertFrom-Json)
+            if ($parsed -isnot [hashtable]) { throw 'the file holds no JSON object' }
+            $parsed
+        }
+        catch { throw "config.json is malformed and cannot be safely updated: $($_.Exception.Message). Fix or delete it, then re-run." }
+    } else { @{ version = 1 } }
+    if (-not $c.ContainsKey('version')) { $c['version'] = 1 }
+
+    foreach ($key in $Updates.Keys) {
+        $segs = $key -split '\.'
+        $node = $c
+        for ($i = 0; $i -lt $segs.Count - 1; $i++) {
+            if (-not ($node[$segs[$i]] -is [hashtable])) { $node[$segs[$i]] = @{} }
+            $node = $node[$segs[$i]]
+        }
+        $node[$segs[-1]] = $Updates[$key]
+    }
+
+    foreach ($key in $Remove) {
+        if ([string]::IsNullOrWhiteSpace($key)) { continue }
+        $segs = $key -split '\.'
+        $node = $c
+        for ($i = 0; $i -lt $segs.Count - 1; $i++) {
+            if (-not ($node[$segs[$i]] -is [hashtable])) { $node = $null; break }
+            $node = $node[$segs[$i]]
+        }
+        if ($node -is [hashtable]) { $node.Remove($segs[-1]) }
+    }
+    $c
+} | Out-Null
 
 if ($Secret) {
     $enc = ConvertFrom-SecureString $Secret

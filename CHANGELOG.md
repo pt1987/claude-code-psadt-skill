@@ -2,6 +2,53 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## Unreleased
+
+**The sandbox no longer locks the package it tests.** While a Windows Sandbox run was up, the package's
+own `psadt-package.json` could not be written: `File.Replace` failed with "the file to be replaced cannot
+be removed" (live run, 2026-09-27) - at exactly the moment `SKILL.md` tells the agent to run Phases 7 and
+8, both of which write that manifest. The `.wsb` mapped the live package folder for the VM's whole
+lifetime, although the guest reads it once. `Invoke-PsadtSandboxTest.ps1` now copies the package into its
+work root first and maps that snapshot (23 MB took 0.3 s). Re-run on a real package the same day:
+packaging, the dossier and a direct manifest write all succeeded while the guest was installing as SYSTEM,
+and the harness's own results were appended afterwards without losing any of them.
+
+**An edit during the run is named instead of tested around.** At the end the harness compares the
+snapshot with the live folder over the files the pre-flight freshness gate judges (launcher, Extensions
+module, detection scripts, `Files\`, `SupportFiles\` - not the manifest or `Assets\`, which Phases 7 and 8
+write meanwhile). A difference is warned about, recorded as `results.sandboxTest.packageChangedDuringRun`
+with the changed files, and keeps the switch out of the verified-switch store. The first real run of that
+comparison reported the right file under a mangled name: `%TEMP%` was an 8.3 short path and
+`Get-ChildItem` hands back long ones. Fixed, and covered by a test with a short-path root.
+
+**The read now happens inside the lock.** `Write-JsonAtomic` serialised the writes, but every caller read
+the store before it asked for the lock, so two writers could read the same text and the second replace
+erased the first one's change - atomically, so nothing ever looked broken. Two processes appending 15
+times each to one manifest did not even get that far on the old writer: one process's read hit the other's
+replace and was reported as a malformed manifest. `Update-JsonAtomic` (`scripts/_JsonStore.ps1`) reads,
+hands the text to a `-Mutate` block and replaces the file under one mutex, throws when the lock is not
+granted instead of writing without it, and retries a short sharing violation. `Set-PsadtPackageManifest.ps1`,
+`Set-PsadtConfig.ps1` and the package-index writer in `Invoke-PsadtPackage.ps1` use it; the
+verified-switch store still reads before it locks and says so in the include's header. The readers take no
+lock, and `Get-PsadtPackageManifest.ps1` and `Get-PsadtConfig.ps1` reported a read that landed in another
+process's replace as a malformed file - the failure the append test hit first. Both now retry a busy file
+briefly and call it busy, not malformed, if it stays that way.
+
+**`-KeepSandboxOpen` keeps the sandbox open.** The guest ran `shutdown.exe` regardless, so the flag only
+spared the viewer. The guest now skips its shutdown when asked, and the host leaves the work folder to the
+VM that still maps it. Checked on a real run: VM up after the verdict, manifest still writable, VM stopped
+cleanly afterwards.
+
+**A package folder with an apostrophe in its name broke the guest runner.** The folder name, and the stem
+derived from it, went into single-quoted strings unescaped. Both are escaped; a test generates the runner
+for such a folder and parses it.
+
+**Two tests that could not fail.** The canary-order check measured against a `Copy-Item` the runner no
+longer contains: `IndexOf` returned -1, and "greater than -1" held for any order. The `.wsb` escaping
+check matched `$PackagePath` in the source - the variable that stopped reaching the `.wsb` with this
+change. The first now asserts that its anchor exists; the second generates a `.wsb` for a folder whose
+name holds an ampersand and parses it.
+
 ## 0.49.1 - 2026-09-27 - The permissions it asks for were written down nowhere a reader looks
 
 Anyone deciding whether to let this skill into a tenant asks one question first: which Entra permissions

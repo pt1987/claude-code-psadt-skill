@@ -160,6 +160,19 @@ Describe 'Invoke-PsadtSandboxTest' {
             $script:sbxCode | Should -Match 'Remove-Item -LiteralPath \$workRoot -Recurse -Force'
         }
 
+        It 'leaves the work folder of a VM kept open alone - the VM still maps it' {
+            # -KeepSandboxOpen now really keeps the guest running (0.49.2), so the snapshot and the work
+            # folder stay mapped. A cleanup there only burns its ten retries and then warns.
+            $script:sbxCode | Should -Match '-not \$KeepWorkFolder -and \$evidenceFolder -and -not \$KeepSandboxOpen'
+        }
+
+        It 'records no proven switch when the package changed while the VM ran (0.49.2)' {
+            # The VM tested the snapshot. When the live folder no longer matches it, a GREEN is a verdict
+            # about files that are not the package any more - evidence, but not proof of THIS package.
+            $script:sbxCode | Should -Match 'packageChangedDuringRun'
+            $script:sbxCode | Should -Match "(?s)if \(\`$packageDrift\.Count -gt 0\)\s*\{[^}]*not recorded[^}]*\}\s*else\s*\{\s*try\s*\{\s*\`$vs = & \(Join-Path \`$PSScriptRoot 'Set-PsadtVerifiedSwitch\.ps1'\)"
+        }
+
         It 'offers -KeepWorkFolder for the investigate-by-hand case' {
             (Get-Command $script:sbxSrc).Parameters.Keys | Should -Contain 'KeepWorkFolder'
         }
@@ -380,8 +393,12 @@ Describe 'Invoke-PsadtSandboxTest' {
             # the canary's own log must not end up in the package evidence
             $script:sysRunner | Should -Match 'PsadtSandboxCanary\.log'
             $script:sysRunner | Should -Match 'Remove-Item -LiteralPath \(Join-Path \$env:WinDir .Logs\\Software\\PsadtSandboxCanary\.log'
-            # and it runs after the copy (it imports from the copied package) but before the first action
-            $script:sysRunner.IndexOf("Label 'PsadtModuleCanary'") | Should -BeGreaterThan $script:sysRunner.IndexOf('Copy-Item -LiteralPath $pkgSrc')
+            # and it runs after the copy (it imports from the copied package) but before the first action.
+            # The anchor must EXIST: it named a Copy-Item the runner no longer has, IndexOf returned -1,
+            # and "greater than -1" passed for every order (found 2026-09-27).
+            $copyAt = $script:sysRunner.IndexOf('robocopy.exe $pkgSrc $pkg')
+            $copyAt | Should -BeGreaterOrEqual 0 -Because 'the staging copy is the anchor of this ordering check'
+            $script:sysRunner.IndexOf("Label 'PsadtModuleCanary'") | Should -BeGreaterThan $copyAt
             $script:sysRunner.IndexOf("Label 'PsadtModuleCanary'") | Should -BeLessThan $script:sysRunner.IndexOf("Invoke-Deployment -Label 'Install'")
         }
 
@@ -422,6 +439,56 @@ Describe 'Invoke-PsadtSandboxTest' {
         }
     }
 
+    Context 'the VM runs a snapshot of the package (0.49.2)' {
+        It 'copies the package into the work root under its own folder name, before the VM exists' {
+            # Same leaf name, so the guest still finds it at Desktop\<package folder> and the runner is
+            # unchanged. Under the config home, so the test-run override above keeps it out of the real one.
+            $gen = & $script:script -PackagePath $script:pkg -GenerateOnly
+            $gen.PackageSnapshot | Should -BeLike "$($env:PSADT_DEPLOY_HOME)*"
+            Split-Path $gen.PackageSnapshot -Leaf | Should -Be (Split-Path $script:pkg -Leaf)
+            (Join-Path $gen.PackageSnapshot 'Invoke-AppDeployToolkit.exe') | Should -Exist
+            (Join-Path $gen.PackageSnapshot 'Detect-MyPackage.ps1') | Should -Exist
+        }
+
+        It 'is a copy: the live package can be written while the snapshot stays what was tested' {
+            $gen = & $script:script -PackagePath $script:pkg -GenerateOnly
+            Set-Content (Join-Path $script:pkg 'Invoke-AppDeployToolkit.ps1') '# edited after the snapshot'
+            Get-Content (Join-Path $gen.PackageSnapshot 'Invoke-AppDeployToolkit.ps1') -Raw | Should -Match 'stub launcher'
+        }
+
+        It 'lets the guest shut itself down by default, and keeps it running with -KeepSandboxOpen' {
+            # Until 0.49.2 the guest ran shutdown.exe unconditionally, so -KeepSandboxOpen only spared the
+            # viewer while the VM went down anyway - the flag did nothing its help text promised.
+            $default = Get-Content -LiteralPath (& $script:script -PackagePath $script:pkg -GenerateOnly).RunnerPath -Raw
+            $default | Should -Match '\$keepSandboxOpen = \$false'
+            $kept = Get-Content -LiteralPath (& $script:script -PackagePath $script:pkg -GenerateOnly -KeepSandboxOpen).RunnerPath -Raw
+            $kept | Should -Match '\$keepSandboxOpen = \$true'
+            # The shutdown sits inside the guard, not beside it.
+            $ast = [System.Management.Automation.Language.Parser]::ParseInput($kept, [ref]$null, [ref]$null)
+            $shutdown = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'shutdown.exe' }, $true) | Select-Object -First 1
+            $shutdown | Should -Not -BeNullOrEmpty
+            $guard = $shutdown.Parent
+            while ($guard -and $guard -isnot [System.Management.Automation.Language.IfStatementAst]) { $guard = $guard.Parent }
+            $guard | Should -Not -BeNullOrEmpty -Because 'shutdown.exe must be conditional'
+            $guard.Clauses[0].Item1.Extent.Text | Should -Match '-not \$keepSandboxOpen'
+        }
+
+        It 'generates a runner that still parses when the package folder name holds an apostrophe' {
+            # The leaf is substituted into a single-quoted literal. "Dev's App" ended the string early and
+            # the guest runner failed to parse - a run that dies before its first line of output.
+            $odd = Join-Path $script:root "Dev's App"
+            New-Item $odd -ItemType Directory -Force | Out-Null
+            Copy-Item (Join-Path $script:pkg '*') $odd
+            $gen = & $script:script -PackagePath $odd -GenerateOnly
+            $raw = Get-Content -LiteralPath $gen.RunnerPath -Raw
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseInput($raw, [ref]$null, [ref]$errors) | Out-Null
+            @($errors).Count | Should -Be 0 -Because "the runner must parse: $(@($errors | ForEach-Object Message) -join '; ')"
+            $raw | Should -Match ([regex]::Escape("Desktop\Dev''s App'"))
+            (Join-Path $gen.PackageSnapshot 'Invoke-AppDeployToolkit.exe') | Should -Exist
+        }
+    }
+
     Context 'generated .wsb' {
         BeforeEach { $script:gen = & $script:script -PackagePath $script:pkg -GenerateOnly }
 
@@ -429,11 +496,18 @@ Describe 'Invoke-PsadtSandboxTest' {
             { [xml](Get-Content -LiteralPath $script:gen.WsbPath -Raw) } | Should -Not -Throw
         }
 
-        It 'maps the package read-only and the work folder read-write' {
+        It 'maps a snapshot of the package read-only - never the live folder - and the work folder read-write' {
+            # Measured 2026-09-27: while the VM ran, the host could not replace <pkg>\psadt-package.json
+            # ("the file to be replaced cannot be removed") - the mapping holds the live folder for the
+            # VM's whole lifetime, although the guest reads it exactly once. SKILL.md Phase 6 tells the
+            # agent to run Phases 7 and 8 precisely then, and both write that manifest.
             $xml = [xml](Get-Content -LiteralPath $script:gen.WsbPath -Raw)
             $folders = @($xml.Configuration.MappedFolders.MappedFolder)
             $folders.Count | Should -Be 2
-            ($folders | Where-Object { $_.HostFolder -eq $script:pkg }).ReadOnly | Should -Be 'true'
+            @($folders.HostFolder) | Should -Not -Contain $script:pkg -Because 'the live package must stay writable while the VM runs'
+            $snap = $folders | Where-Object { $_.HostFolder -eq $script:gen.PackageSnapshot }
+            $snap | Should -Not -BeNullOrEmpty
+            $snap.ReadOnly | Should -Be 'true'
             ($folders | Where-Object { $_.HostFolder -like '*_PsadtSandboxTest' }).ReadOnly | Should -Be 'false'
         }
 
@@ -689,10 +763,101 @@ Describe 'the .wsb is valid XML whatever the package path contains (0.46.0)' {
     # 2026-09-21 audit B22, reproduced: a folder named "7 & Zip" produced a .wsb that fails to parse at
     # line 7. Windows Sandbox then starts WITHOUT the mapped folders and the run looks like a slow boot -
     # the exact 0.28.0 symptom. LogonCommand was escaped; the two HostFolder values were not.
+    # 0.49.2: executed, not source-matched. The regex this replaces named $PackagePath, and the mapped
+    # folder stopped being $PackagePath the day the VM started running a snapshot - a source match would
+    # have kept passing on a variable that no longer reaches the .wsb.
+    BeforeEach {
+        $script:xRoot = New-TempSkillRoot
+        $script:xPrevHome = $env:PSADT_DEPLOY_HOME
+        $env:PSADT_DEPLOY_HOME = Join-Path $script:xRoot 'confighome'
+        New-Item -ItemType Directory -Path $env:PSADT_DEPLOY_HOME -Force | Out-Null
+        $script:xPkg = Join-Path $script:xRoot 'ACME & Widget'
+        New-Item $script:xPkg -ItemType Directory -Force | Out-Null
+        Set-Content (Join-Path $script:xPkg 'Invoke-AppDeployToolkit.ps1') '# stub launcher'
+        Set-Content (Join-Path $script:xPkg 'Invoke-AppDeployToolkit.exe') 'stub'
+        Set-Content (Join-Path $script:xPkg 'Detect-Widget.ps1') 'exit 0'
+        Mock -CommandName Get-CimInstance -MockWith { [pscustomobject]@{ Name = 'Containers-DisposableClientVM'; InstallState = 1 } }
+        Mock -CommandName Get-Process -MockWith { @() }
+    }
+    AfterEach {
+        if ($null -eq $script:xPrevHome) { Remove-Item Env:\PSADT_DEPLOY_HOME -ErrorAction SilentlyContinue }
+        else { $env:PSADT_DEPLOY_HOME = $script:xPrevHome }
+        Remove-TempSkillRoot $script:xRoot
+    }
+
     It 'escapes the mapped host folders' {
-        $src = Get-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/Invoke-PsadtSandboxTest.ps1') -Raw
-        $src | Should -Match 'SecurityElement\]::Escape\(\$PackagePath\)'
-        $src | Should -Match 'SecurityElement\]::Escape\(\$workFolder\)'
+        $gen = & (Join-Path $script:xRoot 'scripts/Invoke-PsadtSandboxTest.ps1') -PackagePath $script:xPkg -GenerateOnly
+        $xml = [xml](Get-Content -LiteralPath $gen.WsbPath -Raw)
+        $hosts = @($xml.Configuration.MappedFolders.MappedFolder.HostFolder)
+        $hosts | Should -Contain $gen.PackageSnapshot
+        $hosts | Should -Contain $gen.SandboxWorkFolder
+        Split-Path $gen.PackageSnapshot -Leaf | Should -Be 'ACME & Widget'
+    }
+}
+
+Describe 'the verdict is checked against the live package after the run (0.49.2)' {
+    # The VM runs a snapshot, so an edit to the live folder during the run no longer corrupts the run -
+    # it makes its verdict stale. Get-PackageDrift names what changed, over the same file set the
+    # pre-flight freshness gate judges (Test-PsadtPreflightCurrent.ps1): the launcher, the Extensions
+    # module, the detection scripts, Files\ and SupportFiles\. The manifest and Assets\ are NOT in it -
+    # Phases 7 and 8 write exactly those while the VM runs, by design.
+    BeforeAll {
+        $script:sbxD = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\Invoke-PsadtSandboxTest.ps1')).ProviderPath
+        . ([scriptblock]::Create((Get-ScriptFunctionText -Path $script:sbxD -Name 'Get-PackageDrift')))
+    }
+    BeforeEach {
+        $script:dRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("drift_" + [guid]::NewGuid().ToString('N'))
+        $script:live = Join-Path $script:dRoot 'Widget'
+        foreach ($d in 'PSAppDeployToolkit.Extensions', 'Files\sub', 'SupportFiles', 'Assets') {
+            New-Item (Join-Path $script:live $d) -ItemType Directory -Force | Out-Null
+        }
+        Set-Content (Join-Path $script:live 'Invoke-AppDeployToolkit.ps1') '# launcher'
+        Set-Content (Join-Path $script:live 'PSAppDeployToolkit.Extensions\PSAppDeployToolkit.Extensions.psm1') '# ext'
+        Set-Content (Join-Path $script:live 'Detect-Widget.ps1') 'exit 0'
+        Set-Content (Join-Path $script:live 'Files\sub\setup.msi') 'msi'
+        Set-Content (Join-Path $script:live 'SupportFiles\a.reg') 'reg'
+        Set-Content (Join-Path $script:live 'Assets\AppIcon.png') 'png'
+        Set-Content (Join-Path $script:live 'psadt-package.json') '{}'
+        $script:snap = Join-Path $script:dRoot 'snap\Widget'
+        New-Item (Split-Path $script:snap -Parent) -ItemType Directory -Force | Out-Null
+        Copy-Item -LiteralPath $script:live -Destination $script:snap -Recurse
+    }
+    AfterEach { Remove-Item $script:dRoot -Recurse -Force -ErrorAction SilentlyContinue }
+
+    It 'finds nothing when the snapshot and the live folder agree' {
+        @(Get-PackageDrift -Snapshot $script:snap -Live $script:live).Count | Should -Be 0
+    }
+
+    It 'names a file under Files\ that changed after the snapshot' {
+        Set-Content (Join-Path $script:live 'Files\sub\setup.msi') 'a newer build'
+        @(Get-PackageDrift -Snapshot $script:snap -Live $script:live) | Should -Be @('Files\sub\setup.msi')
+    }
+
+    It 'names the launcher, a file added to the judged set and a file removed from it' {
+        (Get-Item (Join-Path $script:live 'Invoke-AppDeployToolkit.ps1')).LastWriteTimeUtc = [datetime]::UtcNow.AddMinutes(5)
+        Set-Content (Join-Path $script:live 'SupportFiles\new.cmd') 'new'
+        Remove-Item (Join-Path $script:live 'Detect-Widget.ps1')
+        $d = @(Get-PackageDrift -Snapshot $script:snap -Live $script:live)
+        $d | Should -Contain 'Invoke-AppDeployToolkit.ps1'
+        $d | Should -Contain 'SupportFiles\new.cmd'
+        $d | Should -Contain 'Detect-Widget.ps1'
+        $d.Count | Should -Be 3
+    }
+
+    It 'names the file relative to the package even when the root is given as an 8.3 short path' {
+        # Measured 2026-09-27 on the first real run: %TEMP% was C:\Users\PATRIC~1\..., Get-ChildItem hands
+        # back the LONG form, and cutting the root's length off the long path reported
+        # "2.9.0\SupportFiles\x.txt" - the tail of the package folder name glued to the file.
+        $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($script:live).ShortPath
+        if ($short -eq $script:live) { Set-ItResult -Skipped -Because 'this volume has no 8.3 names'; return }
+        Set-Content (Join-Path $script:live 'SupportFiles\new.cmd') 'new'
+        @(Get-PackageDrift -Snapshot $script:snap -Live $short) | Should -Be @('SupportFiles\new.cmd')
+    }
+
+    It 'ignores the manifest and Assets\, which Phases 7 and 8 write while the VM runs' {
+        Set-Content (Join-Path $script:live 'psadt-package.json') '{"results":{"package":{}}}'
+        Set-Content (Join-Path $script:live 'Assets\AppIcon.png') 'the real logo'
+        @(Get-PackageDrift -Snapshot $script:snap -Live $script:live).Count | Should -Be 0
     }
 }
 

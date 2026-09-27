@@ -828,8 +828,16 @@ the same failure a few minutes at a time. What actually ran is recorded, so any 
 When the sandbox is NOT the right host: the app needs domain join, a real TPM, GPU acceleration, a reboot
 to complete (the VM is discarded), or hardware the VM does not have. Then use 6.2.
 
-`-GenerateOnly` writes the runner and the `.wsb` without starting anything - for inspecting or hand-tuning
-the configuration.
+`-GenerateOnly` writes the runner, the `.wsb` and the package snapshot the `.wsb` maps, without starting
+anything - for inspecting or hand-tuning the configuration. `-KeepSandboxOpen` leaves the VM running after
+the verdict for a look by hand: the guest skips its own shutdown and the work folder stays; close the
+Windows Sandbox window yourself when done.
+
+**The VM runs a snapshot, never the live package.** A mapped folder is held for the VM's whole lifetime,
+although the guest reads it exactly once; until 0.49.2 that made the package's own `psadt-package.json`
+unwritable while a test ran ("the file to be replaced cannot be removed", measured 2026-09-27). The harness
+now copies the package to `<config home>\sandbox\<Stem>\<package folder>` first (a 23 MB package took
+0.3 s) and maps that copy read-only; it prints size and time on every run.
 
 **Do not re-implement this by hand.** Three bugs in a hand-rolled version each burned a full VM run on
 2026-09-05; all three surface as a timeout or a null-reference minutes after launch. Appendix G has them,
@@ -878,6 +886,14 @@ counter. Anything that does not need the verdict belongs in that window: the `.i
 return-code table, the Company-Portal description, the upload metadata. The harness prints the same
 reminder when it starts.
 
+**Why that is safe: the VM tests a snapshot (6.1).** Phases 7 and 8 write the package manifest and
+`Assets\` while the VM runs, and nothing in the VM holds either. What the snapshot does NOT make safe is
+editing the package itself mid-run - the launcher, the Extensions module, a detection script, anything
+under `Files\` or `SupportFiles\`. The run survives that edit but its verdict describes the old files, so
+the harness compares the snapshot with the live folder at the end: on a difference it warns, records
+`results.sandboxTest.packageChangedDuringRun = true` with the changed files, and does not store the
+switch as proven. Re-run the gate after such an edit.
+
 ### 6.4 The manual interactive test a GREEN verdict cannot replace
 
 **After a GREEN verdict, offer a manual interactive test.** Situational, not a fifth gate: skip it
@@ -899,5 +915,8 @@ pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg> -GenerateOnly
 
 Take the `.wsb` it writes, keep the package mapping, drop the work-folder mapping, and open it. The
 user installs and clicks around by hand. That is the check no assertion in this skill can make for them.
+The package mapping points at the snapshot `-GenerateOnly` left in place (`PackageSnapshot` in its
+result). Do not reuse the `.wsb` copied into the Output folder's `SandboxTest\` evidence: it names the
+snapshot of a finished run, which the harness removed with the work folder.
 
 ---

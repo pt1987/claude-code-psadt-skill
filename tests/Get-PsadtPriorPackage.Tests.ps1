@@ -234,7 +234,7 @@ Describe 'Invoke-PsadtPackage appends to the index (0.49.0)' {
         # Two packaging runs can finish close together; the index is shared state like the manifest and
         # the switch store, and _JsonStore.ps1 is what makes a torn write impossible.
         $script:pkgSrc | Should -Match 'package-index\.json'
-        $script:pkgSrc | Should -Match 'Write-JsonAtomic'
+        $script:pkgSrc | Should -Match 'Update-JsonAtomic' -Because 'read and write under one lock, or a packaging run finishing at the same time drops the other one''s entry'
     }
     It 'keys the entry by the app key, not by the folder name' {
         $script:pkgSrc | Should -Match 'ConvertTo-PsadtAppKey|Get-PsadtAppKeyFromManifest'

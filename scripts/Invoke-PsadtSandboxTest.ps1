@@ -113,6 +113,9 @@ param(
     [ValidateRange(0, 900)][int]$GuestSettleDelaySeconds = 0,
 
     # Leave the VM running at the end instead of shutting it down. For looking at a failure by hand.
+    # The guest skips its own shutdown, the host leaves the viewer alone and keeps the work folder
+    # (the VM still maps it); close the Windows Sandbox window yourself when done. Until 0.49.2 the guest
+    # shut down regardless, so the flag only spared the viewer.
     [switch]$KeepSandboxOpen,
 
     # Keep the scratch work folder (generated runner, .wsb, raw sandbox output). Off by default: the
@@ -292,6 +295,7 @@ $pathsPresentAfterInstall  = __PATHSPRESENTINSTALL__
 $pathsAbsentAfterInstall   = __PATHSABSENTINSTALL__
 $pathsAbsentAfterUninstall = __PATHSABSENTUNINSTALL__
 $scenarios = __SCENARIOS__
+$keepSandboxOpen = __KEEPSANDBOXOPEN__
 
 $report = [ordered]@{ startedUtc = (Get-Date).ToUniversalTime().ToString('o'); steps = @(); verdict = 'UNKNOWN'; failedAssertions = @() }
 $assertions = @()
@@ -1385,9 +1389,13 @@ finally {
     # itself down, the vmmemWindowsSandbox worker keeps holding the mapped folder, and the next run
     # is refused because Windows permits only one sandbox instance. Exactly that orphan blocked a
     # re-run on 2026-09-11.
-    & {
-        $ErrorActionPreference = 'Continue'
-        & shutdown.exe /s /t 0 2>&1 | Out-Null
+    # -KeepSandboxOpen skips it: the VM stays up for a look by hand. Safe since 0.49.2, because the VM
+    # maps a snapshot of the package, not the live folder the next phases write to.
+    if (-not $keepSandboxOpen) {
+        & {
+            $ErrorActionPreference = 'Continue'
+            & shutdown.exe /s /t 0 2>&1 | Out-Null
+        }
     }
 }
 '@
@@ -1414,8 +1422,9 @@ $guestRunner  = "$guestDesktop\$workLeaf\Run-PsadtSandboxTest.ps1"
 
 $runner = $runnerTemplate.
     Replace('__MAPPEDROOT__', "$guestDesktop\$workLeaf").
-    Replace('__STEM__', $stem).
-    Replace('__PACKAGELEAF__', $packageLeaf).
+    Replace('__STEM__', ($stem -replace "'", "''")).
+    Replace('__PACKAGELEAF__', ($packageLeaf -replace "'", "''")).
+    Replace('__KEEPSANDBOXOPEN__', $(if ($KeepSandboxOpen) { '$true' } else { '$false' })).
     Replace('__DETECTIONSCRIPT__', ($DetectionScript -replace "'", "''")).
     Replace('__SUCCESSCODES__', ('@(' + ($SuccessExitCodes -join ', ') + ')')).
     Replace('__ACTIONTIMEOUT__', [string]$ActionTimeoutSeconds).
@@ -1497,6 +1506,69 @@ if ($GuestSettleDelaySeconds -gt 0) {
     $logonCommand = "cmd.exe /c `"ping.exe -n $($GuestSettleDelaySeconds + 1) 127.0.0.1 > nul & $logonCommand`""
 }
 
+# --- 4c. Snapshot the package: the VM maps a COPY, never the live folder -----------------------------
+# A mapped folder stays held for the VM's whole lifetime, although the guest reads it exactly once (the
+# robocopy at the start of the runner). Measured 2026-09-27: while the VM ran, the host could not replace
+# <pkg>\psadt-package.json ("the file to be replaced cannot be removed") - and SKILL.md Phase 6 tells the
+# agent to run Phases 7 and 8, which both write that manifest, precisely then. On 2026-09-26 a
+# -KeepSandboxOpen run lost the manifest the same way, back when the writer still used Move-Item.
+# Same leaf name as the package, so the guest still finds it at Desktop\<package folder> and the runner
+# does not change; a sibling of the work folder, so it goes when the work root goes. /R:1 /W:1 because
+# robocopy's default retries a locked file a million times, 30 seconds apart. Taken after every guard
+# above, so a refused run never pays for the copy.
+$snapshotPath = Join-Path $workRoot $packageLeaf
+$snapshotStart = Get-Date
+& {
+    $ErrorActionPreference = 'Continue'
+    & robocopy.exe $PackagePath $snapshotPath /E /COPY:DAT /MT:16 /R:1 /W:1 /NFL /NDL /NJH /NJS /NP 2>&1 | Out-Null
+}
+$snapshotExit = $LASTEXITCODE
+$global:LASTEXITCODE = 0
+if ($snapshotExit -ge 8) {
+    throw "Could not snapshot the package for the VM (robocopy exit $snapshotExit): '$PackagePath' -> '$snapshotPath'. A file locked by another process or a path over 260 characters (the snapshot sits under the config home) are the usual causes."
+}
+if (-not (Test-Path -LiteralPath (Join-Path $snapshotPath 'Invoke-AppDeployToolkit.exe'))) {
+    throw "The package snapshot is incomplete - there is no Invoke-AppDeployToolkit.exe in '$snapshotPath'."
+}
+$snapshotBytes = (@(Get-ChildItem -LiteralPath $snapshotPath -Recurse -File -Force -ErrorAction SilentlyContinue) | Measure-Object -Property Length -Sum).Sum
+$snapshotMB = [math]::Round([double]$snapshotBytes / 1MB, 1)
+$snapshotSeconds = [math]::Round(((Get-Date) - $snapshotStart).TotalSeconds, 1)
+Write-Host ("Package snapshot for the VM: {0} MB in {1} s -> {2}" -f $snapshotMB, $snapshotSeconds, $snapshotPath)
+
+# What the verdict is about: the same file set the pre-flight freshness gate judges
+# (Test-PsadtPreflightCurrent.ps1) - the launcher, the Extensions module, the detection scripts, Files\
+# and SupportFiles\. NOT the manifest and NOT Assets\: Phases 7 and 8 write exactly those while the VM
+# runs, by design. Returns the relative paths that differ (written, added or removed) between the
+# snapshot the VM tested and the live folder.
+function Get-PackageDrift {
+    param([Parameter(Mandatory)][string]$Snapshot, [Parameter(Mandatory)][string]$Live)
+    $stamp = {
+        param([string]$Root)
+        # Through Get-Item, not as given: Get-ChildItem returns the LONG form of every path, so a root
+        # passed as an 8.3 short name (%TEMP% is C:\Users\RUNNER~1\... on a build agent) no longer
+        # prefixes the children it enumerates, and every relative path comes out shifted.
+        $Root = (Get-Item -LiteralPath $Root -ErrorAction Stop).FullName.TrimEnd('\')
+        $items = @()
+        $items += @(Get-Item -LiteralPath (Join-Path $Root 'Invoke-AppDeployToolkit.ps1') -ErrorAction SilentlyContinue)
+        $items += @(Get-ChildItem -LiteralPath (Join-Path $Root 'PSAppDeployToolkit.Extensions') -Filter '*.psm1' -File -ErrorAction SilentlyContinue)
+        $items += @(Get-ChildItem -LiteralPath $Root -Filter 'Detect*.ps1' -File -ErrorAction SilentlyContinue)
+        foreach ($d in 'Files', 'SupportFiles') {
+            $items += @(Get-ChildItem -LiteralPath (Join-Path $Root $d) -File -Recurse -ErrorAction SilentlyContinue)
+        }
+        $set = @{}
+        foreach ($item in @($items | Where-Object { $_ })) {
+            $set[$item.FullName.Substring($Root.Length + 1)] = '{0}|{1}' -f $item.LastWriteTimeUtc.Ticks, $item.Length
+        }
+        $set
+    }
+    $tested = & $stamp $Snapshot
+    $now = & $stamp $Live
+    $changed = foreach ($rel in (@($tested.Keys) + @($now.Keys) | Sort-Object -Unique)) {
+        if ($tested[$rel] -ne $now[$rel]) { $rel }
+    }
+    return @($changed)
+}
+
 # --- 5. Generate the .wsb configuration -------------------------------------------------------------
 $wsbPath = Join-Path $workRoot "$stem.wsb"
 $wsb = @"
@@ -1506,7 +1578,7 @@ $wsb = @"
   <Networking>Default</Networking>
   <MappedFolders>
     <MappedFolder>
-      <HostFolder>$([System.Security.SecurityElement]::Escape($PackagePath))</HostFolder>
+      <HostFolder>$([System.Security.SecurityElement]::Escape($snapshotPath))</HostFolder>
       <ReadOnly>true</ReadOnly>
     </MappedFolder>
     <MappedFolder>
@@ -1526,9 +1598,10 @@ $donePath = Join-Path $workFolder 'DONE.txt'
 $resultPath = Join-Path $resultsFolder 'result.json'
 
 if ($GenerateOnly) {
+    # PackageSnapshot: the .wsb maps it, so a hand-started run (phase 6.4) needs it where it is.
     return [pscustomobject]@{
         Verdict = 'NOT_RUN'; RunnerPath = $runnerPath; WsbPath = $wsbPath
-        SandboxWorkFolder = $workFolder; ResultPath = $resultPath
+        SandboxWorkFolder = $workFolder; ResultPath = $resultPath; PackageSnapshot = $snapshotPath
     }
 }
 
@@ -1716,6 +1789,11 @@ if (-not $result) {
               }
               elseif (-not $verdictFile) { "The sandbox stopped before the test finished (host timeout after $TotalTimeoutMinutes minutes, or the VM was closed)." }
               else { "The sandbox reported '$verdictFile' but wrote no result.json." }
+    # The work folder stays for the investigation; the snapshot beside it is only a copy of the package.
+    # Best effort - a VM that is still up holds it, and the next run wipes the work root anyway.
+    if (-not $KeepWorkFolder -and -not $KeepSandboxOpen) {
+        Remove-Item -LiteralPath $snapshotPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
     return [pscustomobject]@{
         Verdict = 'ERROR'; Steps = @(); FailedAssertions = @(); Error = $reason
         ResultPath = $null; LogFolder = (Join-Path $resultsFolder 'psadt-logs')
@@ -1727,6 +1805,20 @@ $checked = Assert-GuestVerdict -Result $result
 if ($checked.Verdict -ne [string]$result.verdict) {
     Write-Warning "Host check overrode the guest verdict: $($checked.Note)"
     $result.verdict = $checked.Verdict
+}
+
+# --- 6b. Did the package change while the VM ran? ---------------------------------------------------
+# The VM tested the snapshot. An edit to the live folder during the run no longer corrupts the run - it
+# makes its verdict STALE: a verdict about files that are no longer the package. Warned, recorded as
+# results.sandboxTest.packageChangedDuringRun, and kept out of the verified-switch store (step 9).
+# A comparison that fails counts as a change: unproven is not the same as unchanged.
+$packageDrift = @()
+try { $packageDrift = @(Get-PackageDrift -Snapshot $snapshotPath -Live $PackagePath) }
+catch { $packageDrift = @("<not compared: $($_.Exception.Message)>") }
+if ($packageDrift.Count -gt 0) {
+    $shown = @($packageDrift | Select-Object -First 5) -join ', '
+    if ($packageDrift.Count -gt 5) { $shown += " and $($packageDrift.Count - 5) more" }
+    Write-Warning "The package changed while the VM ran, so this verdict is about the snapshot it tested, not about what is in '$PackagePath' now: $shown. Re-run the sandbox gate before relying on it."
 }
 
 # --- 7a. Move the evidence next to the package's other artefacts ------------------------------------
@@ -1781,6 +1873,9 @@ try {
                 failedAssertions = @($result.failedAssertions)
                 resultPath       = $resultPath
                 evidenceFolder   = $evidenceFolder
+                # The VM tested a snapshot; true = the live package differs from it (step 6b).
+                packageChangedDuringRun = ($packageDrift.Count -gt 0)
+                changedFiles     = @($packageDrift)
                 at               = $result.finishedUtc
             }
         } | Out-Null
@@ -1806,7 +1901,13 @@ $logFolder = if ($evidenceFolder) { Join-Path $evidenceFolder 'psadt-logs' } els
 # guest has shut down, so the FILES delete while the directory itself stays locked. A single
 # Remove-Item -ErrorAction SilentlyContinue therefore leaves an empty directory behind AND reports success,
 # which is why this is verified below instead of assumed.
-if (-not $KeepWorkFolder -and $evidenceFolder) {
+#
+# -KeepSandboxOpen: the VM is still up and still maps the snapshot and the work folder, so there is
+# nothing to clean yet - the next run of this package wipes the work root before it starts.
+if ($KeepSandboxOpen) {
+    Write-Host "The Windows Sandbox VM was left running (-KeepSandboxOpen). Close its window when done; '$workRoot' stays until the next run of this package." -ForegroundColor Yellow
+}
+if (-not $KeepWorkFolder -and $evidenceFolder -and -not $KeepSandboxOpen) {
     foreach ($attempt in 1..10) {
         if (-not (Test-Path -LiteralPath $workRoot)) { break }
         Remove-Item -LiteralPath $workRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -1835,20 +1936,26 @@ foreach ($s in @($result.steps)) {
 # Only a GREEN full gate reaches an entry, and Set-PsadtVerifiedSwitch.ps1 re-checks that itself rather
 # than trusting this call site. Best-effort on purpose: a store that cannot be written is untidy, never
 # a reason to fail a run that passed. -GenerateOnly returns long before this point, so a no-VM run
-# never touches the store.
-try {
-    $vs = & (Join-Path $PSScriptRoot 'Set-PsadtVerifiedSwitch.ps1') `
-        -PackagePath $PackagePath -Verdict $result.verdict -Scenarios @($result.scenarios) `
-        -InstalledApp $installedAppFacts -EvidenceRef $resultPath
-    if ($vs.Written) {
-        Write-Host ("  verified-switch store: {0} {1}" -f $vs.Action, $vs.Sha256) -ForegroundColor DarkGray
-    }
-    else {
-        Write-Host ("  verified-switch store: not recorded - {0}" -f $vs.Reason) -ForegroundColor DarkGray
-    }
+# never touches the store. A package that changed during the run (step 6b) proved the snapshot, not the
+# package in the folder, so its switch is not recorded as proven.
+if ($packageDrift.Count -gt 0) {
+    Write-Host "  verified-switch store: not recorded - the package changed while the VM ran" -ForegroundColor DarkGray
 }
-catch {
-    Write-Warning "Could not record the verified switch: $($_.Exception.Message)"
+else {
+    try {
+        $vs = & (Join-Path $PSScriptRoot 'Set-PsadtVerifiedSwitch.ps1') `
+            -PackagePath $PackagePath -Verdict $result.verdict -Scenarios @($result.scenarios) `
+            -InstalledApp $installedAppFacts -EvidenceRef $resultPath
+        if ($vs.Written) {
+            Write-Host ("  verified-switch store: {0} {1}" -f $vs.Action, $vs.Sha256) -ForegroundColor DarkGray
+        }
+        else {
+            Write-Host ("  verified-switch store: not recorded - {0}" -f $vs.Reason) -ForegroundColor DarkGray
+        }
+    }
+    catch {
+        Write-Warning "Could not record the verified switch: $($_.Exception.Message)"
+    }
 }
 
 return [pscustomobject]@{
@@ -1862,5 +1969,7 @@ return [pscustomobject]@{
     LogFolder         = $logFolder
     EvidenceFolder    = $evidenceFolder
     SandboxWorkFolder = $workFolderRemaining
+    PackageChangedDuringRun = ($packageDrift.Count -gt 0)
+    ChangedFiles      = @($packageDrift)
     DurationMinutes   = [math]::Round(((Get-Date) - $startedAt).TotalMinutes, 1)
 }
