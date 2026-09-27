@@ -2,7 +2,7 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
-## 0.49.1 - 2026-09-26 - The permissions it asks for were written down nowhere a reader looks
+## 0.49.1 - 2026-09-27 - The permissions it asks for were written down nowhere a reader looks
 
 Anyone deciding whether to let this skill into a tenant asks one question first: which Entra permissions
 does it want, and what does its setup script do with an administrator's sign-in? `SECURITY.md` said
