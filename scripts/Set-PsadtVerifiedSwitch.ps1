@@ -287,7 +287,9 @@ $entry = [ordered]@{
     installLog     = $null
     noReboot       = $null
     detectHint     = $detectHint
-    returnCodes    = @($m.research.returnCodes)
+    # Filtered: @($null) is an array holding one null, and a manifest without researched codes wrote
+    # exactly that into the store, where every reader served it as a return code (2026-09-27).
+    returnCodes    = @($m.research.returnCodes | Where-Object { $null -ne $_ })
     notes          = $notes.ToArray()
     scenarios      = $ran
     verifiedAt     = (Get-Date -Format 'yyyy-MM-dd')

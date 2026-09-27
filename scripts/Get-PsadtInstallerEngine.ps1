@@ -345,8 +345,15 @@ if ($isMsi) {
 
 function Get-Identity {
     param([string]$MsiKey, $FromVersionInfo)
-    if ($msiProps.ContainsKey($MsiKey) -and $msiProps[$MsiKey]) { return $msiProps[$MsiKey] }
-    if ($FromVersionInfo) { return $FromVersionInfo }
+    # Trimmed, because this is where the value enters the skill. A version resource can pad its strings
+    # to a fixed width: a real Inno Setup installer (2026-09-27) followed its product name with 49
+    # spaces, and the switch candidates, the research ladder's search queries, the verified-switch store
+    # and the logo lookup all inherited them. A value that is only whitespace is no value.
+    $fromMsi = if ($msiProps.ContainsKey($MsiKey)) { $msiProps[$MsiKey] } else { $null }
+    foreach ($v in @($fromMsi, $FromVersionInfo)) {
+        $t = ([string]$v).Trim()
+        if ($t) { return $t }
+    }
     return $null
 }
 $sigStatus = $null

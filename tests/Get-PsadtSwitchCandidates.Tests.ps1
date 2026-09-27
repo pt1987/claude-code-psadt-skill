@@ -489,6 +489,23 @@ Describe 'Get-PsadtSwitchCandidates' {
         }
     }
 
+    Context 'a store entry written before 0.49.3' {
+        # Set-PsadtVerifiedSwitch.ps1 wrote "returnCodes": [null] for a manifest without researched codes.
+        # Those entries are in real stores now; the reader must not hand the null on as a return code.
+        It 'serves no null return code' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
+            Write-Store @(@{
+                    sha256 = $sha; install = '/VERYSILENT'; uninstall = '/VERYSILENT'; returnCodes = @($null)
+                    scenarios = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+                    verifiedAt = '2026-09-27'; verifiedBy = 'tester on TESTBOX'
+                })
+            $hit = @((& $script:src -Path $p -ShippedStorePath (Join-Path $script:tempHome 'absent.json')).Candidates | Where-Object Stage -eq 0)[0]
+            $hit | Should -Not -BeNullOrEmpty
+            @($hit.ReturnCodes | Where-Object { $null -eq $_ }).Count | Should -Be 0
+        }
+    }
+
     Context 'house conventions' {
         It 'is ASCII-clean' {
             $bytes = [System.IO.File]::ReadAllBytes($script:src)

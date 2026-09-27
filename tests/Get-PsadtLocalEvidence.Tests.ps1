@@ -693,6 +693,43 @@ Describe 'Get-PsadtLocalEvidence' {
         }
     }
 
+    Context 'the installer log switch survives a store hit (0.49.3)' {
+        # Measured 2026-09-27 on a real Inno Setup installer: the gate had proven its switches, so the
+        # top candidate was the verified store entry - and a store entry records what the gate ran, which
+        # had no log switch. The ladder read the log switch off that top candidate only, found none, and
+        # said "no engine resolved, so no documented log argument" for an installer identified as Inno
+        # with high confidence. The engine's /LOG was in the very same candidate list, one row down.
+        It 'takes the log switch from the engine default when the store entry has none' {
+            $p = Track (New-TestPe -Overlay (New-Blob 'Inno Setup Setup Data'))
+            $sha = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
+            Write-LocalStore @(@{
+                    sha256     = $sha; install = '/VERYSILENT /PROVEN'; uninstall = '/VERYSILENT /GONE'
+                    installLog = $null
+                    scenarios  = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+                    verifiedAt = '2026-09-20'; verifiedBy = 'tester on TESTBOX'
+                })
+            $r = & $script:src -Path $p -ProductName 'Fixture App' -UninstallRoots $script:reg
+            $q = @($r.Questions | Where-Object Id -eq 'installer-log')[0]
+            $q.Answer | Should -BeExactly '/LOG="{log}"'
+            $q.WhyOpen | Should -Not -Match 'no engine resolved'
+        }
+
+        It 'still says no engine resolved when none was' {
+            $p = Track (New-TestPe)
+            $r = & $script:src -Path $p -ProductName 'Fixture App' -UninstallRoots $script:reg
+            $q = @($r.Questions | Where-Object Id -eq 'installer-log')[0]
+            $q.Answer | Should -BeNullOrEmpty
+            $q.WhyOpen | Should -Match 'no engine resolved'
+        }
+
+        It 'trims a padded product name it is handed' {
+            # The same padding the version resource carries, passed straight through by a caller.
+            $r = & $script:src -Path 'C:\nope\missing.exe' -ProductName ('Fixture App' + (' ' * 40)) -Publisher 'ACME   ' -UninstallRoots $script:reg
+            $r.Identity.ProductName | Should -BeExactly 'Fixture App'
+            $r.Identity.Publisher | Should -BeExactly 'ACME'
+        }
+    }
+
     Context 'house conventions' {
         It 'is ASCII-clean' {
             $bytes = [System.IO.File]::ReadAllBytes($script:src)
