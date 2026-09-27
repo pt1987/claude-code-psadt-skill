@@ -90,9 +90,9 @@ them onto the template. Keep them for depth and for the manual Admin-Center rout
 | **Show this as a featured app in the Company Portal** | Yes/No | Yes only for recommended self-service apps |
 | **Information URL** | `<vendor-product-page>` | official product homepage |
 | **Privacy URL** | `<vendor-privacy-url>` | often the vendor's `/legal/privacy/` |
-| **Developer** | `<Vendor-ShortName>` | usually == Publisher |
+| **Developer** | `<Vendor-ShortName>` | == Publisher unless `app.developer` records another; the upload sends the same value (0.49.3) |
 | **Owner** | `<internal-team>` | internal service owner (e.g. "Workplace-Services") |
-| **Notes** | `PSADT 4.1.8 v<N> - pkg rev <NN> - YYYY-MM-DD` | package metadata for later troubleshooting |
+| **Notes** | `app.notes`, else the organisation's opt-in `intune.notes`, else empty | never a branded default - the dossier shows exactly what the upload sends (0.49.3) |
 | **Logo** | `<pkg>\Assets\<App>-Logo.png` (REAL app logo, NOT the PSADT default `AppIcon.png`) | >=256x256 PNG |
 | **Role scope tags** | `<Default>` or custom | only with a delegated admin role structure |
 
@@ -186,7 +186,7 @@ Every unknown exit code produces `0x80070000+code` in the error display.
 | Intune field | Value | Notes |
 |---|---|---|
 | **Operating system architecture** | x64 / x86 / Both | matches `$adtSession.AppArch` |
-| **Minimum operating system** | Win11 22H2 / Win10 22H2 | realistic, not "Win10 1607" |
+| **Minimum operating system** | Win10 1607, or `app.minWindowsRelease` (1607-2004) | what the upload can send; a newer minimum (22H2) is set in the portal afterwards (8.4) |
 | **Disk space required (MB)** | `<MB>` | from the installer requirement, net + 20% reserve |
 | **Physical memory required (MB)** | `<MB>` or empty | only for RAM-hungry installers |
 | **Minimum number of logical processors required** | 1 / 2 / 4 | rarely relevant |
@@ -301,7 +301,7 @@ Before the `Create`, go through all tabs. After `Create`: Intune does not sync i
 | Installation time | 60 min |
 | Return codes | 0/1707 Success; 3010/1641 reboot; 1618 retry; 60001/60008 Failed |
 | OS architecture | x64 |
-| Minimum OS | Windows 10 22H2 |
+| Minimum OS | Windows 10 1607 |
 | Disk space required | 12288 MB |
 | Physical memory | 4096 MB |
 | Detection | Custom script `Detect-OracleXE.ps1`, Run as 32-bit=No, Signature=No |

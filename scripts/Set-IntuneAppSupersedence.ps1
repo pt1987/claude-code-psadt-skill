@@ -275,20 +275,52 @@ if (-not $NoAnnotate) {
 }
 
 # --- Record it ------------------------------------------------------------------------------------------
+$recordedAt = (Get-Date).ToUniversalTime().ToString('o')
 if ($ManifestPath) {
     try {
         & (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath (Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath).Path) -Updates @{
             'results.supersedence' = @{
                 appId            = $AppId
                 supersedes       = @($targets)
+                # By name and version (0.49.3): the dossier printed the bare GUID where the previous
+                # version belongs.
+                supersedesApps   = @($oldApps | ForEach-Object { @{ id = [string]$_.id; displayName = [string]$_.displayName; displayVersion = [string]$_.displayVersion } })
                 supersedenceType = $SupersedenceType
                 verified         = $verified
-                at               = (Get-Date).ToUniversalTime().ToString('o')
+                at               = $recordedAt
             }
         } | Out-Null
         Write-Info "Recorded in results.supersedence."
     } catch { Write-Warn2 "Manifest not updated: $($_.Exception.Message)" }
 }
+
+# --- ...and on the superseded package (0.49.3) -----------------------------------------------------------
+# The OLD package's manifest - and so its dossier - never learned that it had been superseded. Its manifest
+# is found by the app id its own upload recorded (results.upload.appId), under paths.packageRoot. Read-only
+# scan; best effort: a superseded version packaged elsewhere is simply not found, and said so.
+try {
+    $cfgS = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot
+    $pkgRoot = [string]$cfgS.Config.paths.packageRoot
+    $byIdPath = @{}
+    if ($pkgRoot -and (Test-Path -LiteralPath $pkgRoot)) {
+        foreach ($m in @(Get-ChildItem -LiteralPath $pkgRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object { Join-Path $_.FullName 'psadt-package.json' } | Where-Object { Test-Path -LiteralPath $_ })) {
+            try { $j = Get-Content -LiteralPath $m -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+            $upId = if ($j.results -and $j.results.upload) { [string]$j.results.upload.appId } else { '' }
+            if ($upId) { $byIdPath[$upId.ToLowerInvariant()] = $m }
+        }
+    }
+    foreach ($o in $oldApps) {
+        $oldMf = $byIdPath[([string]$o.id).ToLowerInvariant()]
+        if (-not $oldMf) { Write-Info "No package under paths.packageRoot records app $($o.id) as its upload; its manifest was not updated."; continue }
+        & (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath (Split-Path -Parent $oldMf) -Updates @{
+            'results.supersededBy' = @{
+                appId = $AppId; displayName = [string]$newApp.displayName; displayVersion = [string]$newApp.displayVersion
+                supersedenceType = $SupersedenceType; at = $recordedAt
+            }
+        } | Out-Null
+        Write-Info "Recorded results.supersededBy in $oldMf - regenerate that package's dossier (New-PsadtReport.ps1 -ManifestPath '$oldMf'), it now reads as superseded."
+    }
+} catch { Write-Warn2 "The superseded package was not updated: $($_.Exception.Message)" }
 
 if (-not $verified) {
     throw "Supersedence was not verified after the write: $($missing -join ', ') is missing from the chain. Check the app in the portal before relying on this deployment."

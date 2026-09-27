@@ -290,15 +290,17 @@ App. R.6 / R.7.
 <!-- rule:assignment-dry-run-first -->
 **Phase 10 - Group assignment (opt-in).** Only when the user chose it at Gate 2 and `intune.groups.enabled`.
 ALWAYS dry-run first (read-only) → show the planned group names + actions → confirm → `-Execute`.
-`Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName ... -AppVendor ... -AppVersion ... -Intents available,required,uninstall`
-(comma-separated is fine: array parameters in this skill split the list themselves, because `pwsh
-script.ps1 -Intents a,b` uses the `-File` binder, which passes `a,b` as one element - guide App. M.4)
+`Invoke-IntuneAppAssignment.ps1 -ManifestPath <pkg>\psadt-package.json -Intents available,required,uninstall`
+(the app id and the identity come from the manifest; comma-separated is fine: array parameters in this
+skill split the list themselves, because `pwsh script.ps1 -Intents a,b` uses the `-File` binder, which
+passes `a,b` as one element - guide App. M.4)
 creates/reuses Entra security groups by the config naming scheme (`intune.groups.naming`, version-INDEPENDENT by
 default so a new version reuses the same groups; `%version%` is an opt-in that breaks that) and assigns the app
 (intents required/available/uninstall). Idempotent; never deletes a group or another app's assignment;
 ambiguous/duplicate names are skipped, not guessed. Needs `Capabilities.Groups` (BOTH group roles - the
-script asserts them before creating anything). Feed the returned `Groups` into the dossier Assignments
-table. Full schema + naming rules + permission model: guide Appendix M.
+script asserts them before creating anything). After `-Execute` it reads the assignments back and records
+them as `results.assignment`, which the dossier renders - regenerate it. Full schema + naming rules +
+permission model: guide Appendix M.
 
 **Phase 11 - Real devices via an Intune test group.** The local Install/Uninstall/Repair loop is
 **Phase 6** and is not repeated here - Phase 6 already ran it as SYSTEM and its verdict is what let the

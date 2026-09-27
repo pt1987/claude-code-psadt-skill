@@ -442,3 +442,15 @@ Describe 'the upload enforces the SYSTEM-test gate itself (0.49.3)' {
         $src.IndexOf('.TestGate') | Should -BeLessThan $src.IndexOf("Get-GraphToken.ps1')")
     }
 }
+
+Describe 'the upload hands over to Phase 10 instead of to the portal (0.49.3)' {
+    # Measured 2026-09-27: after a successful upload the script said "NOT assigned to groups - assign to
+    # Entra groups manually", while Phase 10 and Gate 2 have the skill do exactly that.
+    BeforeAll { $script:us3 = Get-Content -LiteralPath $script:Upload -Raw }
+    It 'no longer sends the operator to assign by hand' {
+        $script:us3 | Should -Not -Match 'assign to Entra groups manually'
+    }
+    It 'names the Phase 10 command, with the manifest' {
+        $script:us3 | Should -Match 'Invoke-IntuneAppAssignment\.ps1 -ManifestPath'
+    }
+}

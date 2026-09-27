@@ -319,6 +319,16 @@ Describe 'the SYSTEM-test gate is derived once, from what the manifest records (
         $g.Reason | Should -Match 'Uninstall'
     }
 
+    It 'orders runs by time, not by the text of a timestamp - across a year boundary' {
+        # ConvertFrom-Json turns an ISO timestamp into [datetime], and [string] of that is "12/30/2026 ...",
+        # which sorts AFTER "01/02/2027 ...". Compared as text, the older failed run looked like the latest.
+        $g = Get-Gate @{ results = @{ systemTest = @(
+                    @{ type = 'Install'; success = $true; at = '2027-01-02T10:00:00Z' },
+                    @{ type = 'Install'; success = $false; exitCode = 60001; at = '2026-12-30T10:00:00Z' },
+                    @{ type = 'Uninstall'; success = $true; at = '2027-01-02T10:05:00Z' }) } }
+        $g.Passed | Should -BeTrue
+    }
+
     It 'judges the DEV-VM route by the LATEST run of each type' {
         $g = Get-Gate @{ results = @{ systemTest = @(
                     @{ type = 'Install'; success = $false; at = '2026-09-27T10:00:00Z' },
@@ -344,5 +354,54 @@ Describe 'the SYSTEM-test gate is derived once, from what the manifest records (
             Set-Manifest $p (New-CompleteManifest)
             (& $script:Get -PackagePath $p).TestGate.Passed | Should -BeFalse
         } finally { Remove-Item $p -Recurse -Force }
+    }
+}
+
+Describe 'Resolve-PsadtIntuneAppInfo - one derivation of the App-information fields (0.49.3)' {
+    # Measured 2026-09-27 on one real app: the dossier said Developer = the vendor, showed a "PSADT v4.1.8 -
+    # pkg rev 01" note and "Windows 10 22H2"; the upload sent an empty developer, empty notes and 1607. The
+    # approver read one app and Intune got another. One helper now, used by both.
+    BeforeAll {
+        . (Join-Path $PSScriptRoot '..\scripts\_AppKey.ps1')
+        function New-M([hashtable]$App) { [pscustomobject]@{ app = [pscustomobject]$App } }
+    }
+
+    It 'takes publisher and developer from the vendor - objective fields are filled' {
+        $i = Resolve-PsadtIntuneAppInfo -Manifest (New-M @{ vendor = 'ACME'; name = 'Widget' })
+        $i.Publisher | Should -BeExactly 'ACME'
+        $i.Developer | Should -BeExactly 'ACME'
+    }
+
+    It 'leaves owner, notes and the URLs empty unless something recorded them - no branded default' {
+        $i = Resolve-PsadtIntuneAppInfo -Manifest (New-M @{ vendor = 'ACME'; name = 'Widget' })
+        $i.Owner | Should -BeNullOrEmpty
+        $i.Notes | Should -BeNullOrEmpty
+        $i.InformationUrl | Should -BeNullOrEmpty
+        $i.PrivacyUrl | Should -BeNullOrEmpty
+    }
+
+    It 'uses a note from config only as the organisation''s opt-in, and a recorded one over it' {
+        (Resolve-PsadtIntuneAppInfo -Manifest (New-M @{ vendor = 'ACME' }) -ConfigNotes 'Desktop team').Notes | Should -BeExactly 'Desktop team'
+        (Resolve-PsadtIntuneAppInfo -Manifest (New-M @{ vendor = 'ACME'; notes = 'Pilot only' }) -ConfigNotes 'Desktop team').Notes | Should -BeExactly 'Pilot only'
+    }
+
+    It 'takes recorded values over the defaults, trimmed' {
+        $i = Resolve-PsadtIntuneAppInfo -Manifest (New-M @{ vendor = 'ACME '; developer = ' ACME Labs'; owner = 'IT'; informationUrl = 'https://example.invalid/w'; privacyUrl = 'https://example.invalid/p' })
+        $i.Publisher | Should -BeExactly 'ACME'
+        $i.Developer | Should -BeExactly 'ACME Labs'
+        $i.Owner | Should -BeExactly 'IT'
+        $i.InformationUrl | Should -BeExactly 'https://example.invalid/w'
+        $i.PrivacyUrl | Should -BeExactly 'https://example.invalid/p'
+    }
+
+    It 'defaults the minimum Windows release to 1607, the value every tenant accepts' {
+        (Resolve-PsadtIntuneAppInfo -Manifest (New-M @{ vendor = 'ACME' })).MinWindowsRelease | Should -BeExactly '1607'
+    }
+
+    It 'takes a recorded minimum release only from the set the upload can send' {
+        (Resolve-PsadtIntuneAppInfo -Manifest (New-M @{ vendor = 'ACME'; minWindowsRelease = '1809' })).MinWindowsRelease | Should -BeExactly '1809'
+        $i = Resolve-PsadtIntuneAppInfo -Manifest (New-M @{ vendor = 'ACME'; minWindowsRelease = '22H2' })
+        $i.MinWindowsRelease | Should -BeExactly '1607'
+        ($i.Warnings -join ' ') | Should -Match '22H2'
     }
 }

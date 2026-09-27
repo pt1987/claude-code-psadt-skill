@@ -60,6 +60,24 @@ finding.
 (`3.01`) was compared correctly but printed as `3.1` in the one line the Intune log shows. The EXE
 generator's detection script now prints the string the source reported and the baseline as declared.
 
+**The dossier and the upload describe the same app.** The dossier printed Developer = vendor, a branded
+"PSADT vX - pkg rev NN" note and "Windows 10 22H2"; the upload sent an empty developer, empty notes and
+1607 - so the approver read one app and Intune got another. Each script was tested alone, and each test
+was green. `Resolve-PsadtIntuneAppInfo` (`_AppKey.ps1`) now derives the App-information fields once for
+both: the vendor as publisher and developer, notes only when recorded or opted into by the organisation,
+and the minimum Windows release the upload can actually send. A new test runs the upload and the dossier
+on the same manifest and compares them field by field. The guidance that recommended a Windows 10 22H2
+minimum - a value some tenants refuse - now says what is sent and where a newer minimum is set.
+
+**Assignment and supersedence record what Intune holds.** `Invoke-IntuneAppAssignment.ps1` takes
+`-ManifestPath` (app id and identity from the package), reads the assignments back after `-Execute` and
+records them as `results.assignment`; the dossier renders them and marks the section as set and read back,
+not as a suggestion. `Set-IntuneAppSupersedence.ps1` records the superseded apps by name and version, so
+the dossier no longer prints a bare id, and writes `results.supersededBy` into the superseded package's
+manifest, whose dossier then says what replaced it. The upload's closing line names the Phase 10 command
+instead of sending the operator to the portal. The tenant-writing scripts are now tested against a small
+fake tenant rather than only against their source.
+
 ## 0.49.2 - 2026-09-27 - A live two-version run found the skill contradicting itself
 
 A live run packaged one application twice, end to end - an older version first, then its successor:
