@@ -110,7 +110,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **987 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **1088 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -128,7 +128,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 987 Pester tests.
+verified against a live tenant. The helper scripts are covered by 1088 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -180,7 +180,18 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.49.1 - The permissions it asks for were written down nowhere a reader looks.** `SECURITY.md`
+Latest: **0.49.2 - A live two-version run found the skill contradicting itself.** Packaging one app
+twice, end to end, exposed four places where the skill said one thing and did another. The Windows
+Sandbox kept the package folder
+mapped for the whole run, so the manifest writes of Phases 7 and 8 - done in that same window by design -
+failed; the VM now tests a snapshot, and an edit made meanwhile is named instead of tested around. The
+research ladder never read what the previous version had answered; it now carries those answers for
+confirmation, and the agent budget of the real second version dropped from 2 to 0. The Gate 2 close
+prompt never reached the command line; the generators record it, and the upload, the dossier and the
+sandbox all read it. The logo lookup now waits for the render, repairs a missing `viewBox` and measures
+what the picture holds.
+
+Previously: **0.49.1 - The permissions it asks for were written down nowhere a reader looks.** `SECURITY.md`
 now lists every Entra permission the skill can use - with its flag, its purpose and the script behind it -
 says who has to sign in, what `New-PsadtEntraApp.ps1` does step by step and how to revoke access, and the
 README names what an upload needs. A sweep for other stale statements fixed the upload's supersedence
@@ -202,13 +213,3 @@ list behind it was complete. The engine tile correctly said 19 while the table u
 The pre-flight gate was described as ten checks and runs fourteen. Phase 9 still told the reader to wire
 supersedence themselves. The page is corrected, three wrong statements in the repo with it, and the
 guards now compare lists name-by-name instead of counting.
-
-Previously: **0.47.0 - The supersedence this skill has been wiring may never have been wired.** The upload has
-POSTed a supersedence relationship since 0.8.x, on a route that is reported not to exist, catching the
-failure and printing a yellow line - so a chain that never took looked like a normal run. No test touched
-any of it. The write now uses the `updateRelationships` action the admin center uses, merges onto the
-existing relationships instead of replacing them, and reads the chain back before claiming it. The mode is
-no longer hardcoded to `replace`, which uninstalled the previous version from every device first; `update`
-is the default and the MSI's own Upgrade table decides. Two new scripts make the predecessor's id
-something you can read rather than retype, and Appendix R covers the lifecycle - including that Intune has
-no retire state at all.
