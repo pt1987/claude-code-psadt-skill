@@ -2,7 +2,15 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
-## Unreleased
+## 0.49.2 - 2026-09-27 - A live two-version run found the skill contradicting itself
+
+A live run packaged one application twice, end to end - an older version first, then its successor:
+research, scaffold, pre-flight, a visible Windows Sandbox test, packaging, dossier, upload, assignment and
+supersedence. Both went GREEN and are in Intune. On the way the skill contradicted itself in four places:
+the sandbox locked the files the next phase is told to write in the same turn, the research ladder never
+read what the previous version had answered, the Gate 2 choice about a running app never reached the
+command line, and the logo lookup gave up on a render that was still running and passed a stamp-sized
+mark. All four are fixed, each checked on that same real material before it was merged.
 
 **The sandbox no longer locks the package it tests.** While a Windows Sandbox run was up, the package's
 own `psadt-package.json` could not be written: `File.Replace` failed with "the file to be replaced cannot
@@ -113,6 +121,8 @@ defects in `Get-PsadtAppLogo.ps1`, all from one real run:
 and the file is committed once with a replace that throws, where `Move-Item -Force` deleted the
 destination first. Re-run on the real source: found by app key despite the versioned product name, the
 `viewBox` added, the mark filling 98 % of the canvas, no Edge process left behind.
+
+Suite 987 -> 1088.
 
 ## 0.49.1 - 2026-09-27 - The permissions it asks for were written down nowhere a reader looks
 
