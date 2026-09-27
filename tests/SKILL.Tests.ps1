@@ -146,3 +146,42 @@ Describe 'the frontmatter still parses, so the skill still loads (0.46.0)' {
         @($keys | Where-Object { $_ }) | Should -Be @('name', 'description', 'license')
     }
 }
+
+Describe 'every package runs Silent, without exception (0.49.3)' {
+    # 0.49.2 offered "Auto (60 s prompt)" at Gate 2 and marked it recommended. Patrick, 2026-09-27:
+    # "AUSNAHMSLOS SILENT !!!! DAS WAR NIE ANDERS". The rule has to live in the skill, not in a memory.
+    BeforeAll {
+        $script:docs = @('SKILL.md', 'references/phases-0-6.md', 'references/phases-7-12.md',
+            'references/appendix-f-dossier-template.md') |
+            ForEach-Object { [pscustomobject]@{ Name = $_; Text = (Get-Content -LiteralPath (Join-Path $script:skillRoot $_) -Raw) } }
+    }
+    It 'states the rule as a binding, anchored convention in SKILL.md' {
+        $script:skillMd | Should -Match '<!-- rule:deploymode-silent -->'
+        $script:skillMd | Should -Match '-DeployMode Silent'
+    }
+    It 'offers no DeployMode choice anywhere an agent reads' {
+        foreach ($d in $script:docs) {
+            $d.Text | Should -Not -Match '-DeployMode Auto' -Because "$($d.Name) must not offer Auto"
+            $d.Text | Should -Not -Match 'Auto \(recommended\)' -Because "$($d.Name) must not recommend Auto"
+            $d.Text | Should -Not -Match 'Auto \(60 s prompt\)' -Because "$($d.Name) must not offer a close prompt"
+        }
+    }
+}
+
+Describe 'Gate 2 recommends all three assignment groups (0.49.3)' {
+    # Options that each proposed ONE intent ("Upload + Testgruppe Available (recommended)") drew, on
+    # 2026-09-27: "upload, available und required gruppe und uninstall gruppe hoer auf immer nur eine
+    # vorzuschlagen !". The default is all three; fewer is the operator's choice, not the offer.
+    It 'names available, required and uninstall as the recommended assignment at Gate 2' {
+        $gate2 = [regex]::Match($script:skillMd, '(?s)<!-- rule:gate-deployment-semantics -->.*?<!-- rule:gate-system-test-consent -->').Value
+        $gate2 | Should -Match 'available, required and uninstall'
+        $gate2 | Should -Not -Match 'the default is upload-without-assignment'
+    }
+    It 'shows all three intents wherever the assignment call is spelled out' {
+        foreach ($rel in 'SKILL.md', 'references/appendix-m-group-assignment.md') {
+            $t = Get-Content -LiteralPath (Join-Path $script:skillRoot $rel) -Raw
+            $t | Should -Not -Match '-Intents required,available(?!,)' -Because "$rel still shows a two-intent call"
+            $t | Should -Match '-Intents available,required,uninstall'
+        }
+    }
+}

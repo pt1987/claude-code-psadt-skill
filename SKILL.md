@@ -50,11 +50,11 @@ Bundle questions (max 4 per call).
    (recommended) / bundle it / document as manual / skip. Options + why: phase 1.4.
 
 <!-- rule:gate-deployment-semantics -->
-2. **Deployment semantics** - target audience (Required / Available / both, + AAD groups), uninstall "what
-   goes vs. what stays", repair strategy, reboot behaviour (never / 3010 / 1641), and with processes to
-   close: Auto (60 s prompt) or Silent (1.2). Pre-select defaults from
-   the installer type. Group assignment is **opt-in**: only when the user wants it here do you create/assign
-   Entra groups (Phase 10, config `intune.groups`, guide Appendix M); the default is upload-without-assignment.
+2. **Deployment semantics** - target audience + AAD groups, uninstall "what goes vs. what stays", repair
+   strategy, reboot behaviour (never / 3010 / 1641). Pre-select defaults from the installer type.
+   **Assignment: recommend upload + all three groups - available, required and uninstall - never one intent
+   alone**; nothing is assigned without that choice (Phase 10, `intune.groups`, App. M). No DeployMode
+   question: Silent, always (Conventions).
    An **NSIS MultiUser** installer also needs its scope chosen here - all-users (recommended, matches a
    System-context install) or current-user, which moves the detection rule into the profile. App. L.7.
 <!-- rule:gate-system-test-consent -->
@@ -132,6 +132,9 @@ Short form. Full text, reasoning and the failure each one prevents: `references/
   dot-sourcing of skill files, no hardcoded skill/user path, no `-SkillRoot` dependency. Client auth is
   `-Interactive` (WAM) or a passed `-GraphToken`. Reference implementation:
   `scripts/New-IntuneFirewallPolicy.ps1`, and its test enforces this.
+<!-- rule:deploymode-silent -->
+- **Silent, without exception.** Every package runs `-DeployMode Silent`. Never ask about it, never offer
+  `Auto`/`Interactive`; the generators have no switch for it, and upload and sandbox refuse any other mode.
 <!-- rule:all-three-deployment-types -->
 - **All three deployment types from the start** (Install / Uninstall / Repair), each acid-tested - even if
   only install is needed today, Company-Portal uninstall needs a filled Uninstall hook.
@@ -193,7 +196,7 @@ table, the pnputil staging route and the certificate options: App. Q.1.
 
 <!-- rule:preflight-green-gate -->
 **Phase 5 - Pre-flight (Reviewer gate).** `scripts/Invoke-PsadtPreflight.ps1 -PackagePath <pkg>` returns
-`{ Overall='GREEN'|'RED'; Checks=@(...) }`, every gate check deterministically (list: phase 5).
+`{ Overall='GREEN'|'RED'; Checks=@(...) }`, every gate check deterministically.
 **`Overall` must be GREEN to proceed** - packing and the sandbox refuse a RED or stale verdict (any RED =
 STOP, even if Install looks fine - else Company-Portal uninstall returns 0x80070001). Per-check
 explanations and the encoding fix: phase 5 (5.1-5.6), App. C. WinGet must use the acid-test stub, since a
@@ -205,17 +208,16 @@ live acid test would install: App. I.4.
 enforces. Runs append to `results.systemTest[]`.
 
 **Default route: `pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg>`.** One throwaway Windows
-Sandbox, every action as SYSTEM. No elevation, host untouched. Runs the FULL gate by default: a VM boot
-costs 139s fixed, so a second run is never cheap. Red Install/Uninstall skips the rest; `-Quick` = the
+Sandbox, every action as SYSTEM. No elevation, host untouched. Runs the FULL gate by default (a VM boot
+costs 139s). Red Install/Uninstall skips the rest; `-Quick` = the
 pair. Poll the `progress.json` it names; never buffer its output. **Start the VM, then do Phases 7+8 in
 the SAME turn** - neither needs the verdict (the VM runs a snapshot, so their manifest writes are safe),
 and waiting idle costs the whole run twice. Verdict = the
 DETECTION SCRIPT (what Intune evaluates). Each run snapshots the real installed-app entry (`InstalledAppFacts`):
 write hooks against those strings, never a guess. `-Paths*`, prerequisite, wrong-host case: phase 6.1.
 
-**A package that stages a driver needs `-TrustedPublisherCert`.** No policy trusts that signer in the
-guest, so Windows raises the "install device software?" prompt - invisible, because every action runs as
-SYSTEM - and the phase burns its timeout looking like a slow installer. Cancel with `STOP.txt`, never by
+**A package that stages a driver needs `-TrustedPublisherCert`**, or the guest raises an invisible "install
+device software?" prompt and the phase burns its timeout. Cancel with `STOP.txt`, never by
 killing the process, which orphans the VM worker. Never hand-roll this harness: App. G, phase 6.1.
 
 **After GREEN, offer a manual interactive test** for an unfamiliar app/vendor or a suspected runtime
@@ -288,7 +290,7 @@ App. R.6 / R.7.
 <!-- rule:assignment-dry-run-first -->
 **Phase 10 - Group assignment (opt-in).** Only when the user chose it at Gate 2 and `intune.groups.enabled`.
 ALWAYS dry-run first (read-only) → show the planned group names + actions → confirm → `-Execute`.
-`Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName ... -AppVendor ... -AppVersion ... -Intents required,available`
+`Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName ... -AppVendor ... -AppVersion ... -Intents available,required,uninstall`
 (comma-separated is fine: array parameters in this skill split the list themselves, because `pwsh
 script.ps1 -Intents a,b` uses the `-File` binder, which passes `a,b` as one element - guide App. M.4)
 creates/reuses Entra security groups by the config naming scheme (`intune.groups.naming`, version-INDEPENDENT by

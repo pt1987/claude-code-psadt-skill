@@ -2,6 +2,23 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## Unreleased
+
+**Every package runs Silent, without exception - and the skill now says so where it binds.** 0.49.2
+added a DeployMode choice to Gate 2 and to the MSI and EXE generators, and marked `Auto` (a close prompt
+with a countdown) as recommended. That was wrong: the rule has always been `-DeployMode Silent`. It is
+now a binding, anchored convention in `SKILL.md` (`rule:deploymode-silent`); Gate 2 asks no DeployMode
+question; the generators have no `-DeployMode` parameter and always record the Silent command lines;
+and `Get-PsadtPackageManifest.ps1` accepts a recorded command line only with `-DeployMode Silent`, so
+the upload, the sandbox and the per-action test refuse any other mode with the reason, and the dossier
+names it instead of printing it.
+
+**Gate 2 recommends all three assignment groups.** Its text said group assignment is opt-in with
+upload-without-assignment as the default, and every assignment example showed two intents - so the
+offer came out as one intent per option. Gate 2 now recommends upload plus all three groups (available,
+required and uninstall) and never one intent alone; nothing is assigned without that choice. Phase 10
+and Appendix M show `-Intents available,required,uninstall`.
+
 ## 0.49.2 - 2026-09-27 - A live two-version run found the skill contradicting itself
 
 A live run packaged one application twice, end to end - an older version first, then its successor:

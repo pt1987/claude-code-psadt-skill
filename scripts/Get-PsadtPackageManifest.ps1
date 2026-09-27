@@ -41,7 +41,8 @@
 .OUTPUTS
     PSCustomObject: Exists(bool), Manifest(object|null), Missing(string[]), Path(string), Stem(string|null),
     Commands({ Install, Uninstall } each { Command, DeployMode, Recorded, Valid } - the Silent default when
-    nothing is recorded, Valid = $false for anything that is not the launcher's own command line),
+    nothing is recorded, Valid = $false - with Reason - for anything but the launcher's own command line
+    with -DeployMode Silent),
     Error(string, only when the file is malformed)
 
 .EXAMPLE
@@ -96,22 +97,26 @@ function Get-ByPath($obj, [string]$path) {
 }
 # The launcher command lines Intune runs (0.49.2). The generators record them as package.installCommand /
 # package.uninstallCommand, and this is the ONE place that parses them - before, the upload and the dossier
-# each carried their own '-DeployMode Silent' default and the sandbox a third, whatever Gate 2 chose. The
-# manifest is data and the command runs as SYSTEM on every device, so only the launcher's own shape is
-# accepted: the right deployment type, a DeployMode the launcher has, nothing chained after it.
+# each carried their own default and the sandbox a third. The manifest is data and the command runs as
+# SYSTEM on every device, so only the launcher's own shape is accepted: the right deployment type, nothing
+# chained after it - and -DeployMode Silent, without exception (rule:deploymode-silent, 0.49.3). 0.49.2
+# briefly offered Auto at Gate 2; a manifest that still records it is refused with the reason, not run.
 function Get-LauncherCommand($Raw, [string]$Type) {
-    $modes = @('Silent', 'Auto', 'Interactive', 'NonInteractive')
+    $silent = "Invoke-AppDeployToolkit.exe -DeploymentType $Type -DeployMode Silent"
     if ([string]::IsNullOrWhiteSpace([string]$Raw)) {
-        return [pscustomobject]@{ Command = "Invoke-AppDeployToolkit.exe -DeploymentType $Type -DeployMode Silent"; DeployMode = 'Silent'; Recorded = $false; Valid = $true }
+        return [pscustomobject]@{ Command = $silent; DeployMode = 'Silent'; Recorded = $false; Valid = $true; Reason = $null }
     }
     $text = ([string]$Raw).Trim()
     $hit = [regex]::Match($text, "^Invoke-AppDeployToolkit\.exe\s+-DeploymentType\s+$Type\s+-DeployMode\s+(\w+)$", 'IgnoreCase')
-    # -eq is case-insensitive, so this also hands back the launcher's own spelling of the mode.
-    $mode = if ($hit.Success) { $modes | Where-Object { $_ -eq $hit.Groups[1].Value } | Select-Object -First 1 } else { $null }
-    if ($mode) {
-        return [pscustomobject]@{ Command = "Invoke-AppDeployToolkit.exe -DeploymentType $Type -DeployMode $mode"; DeployMode = $mode; Recorded = $true; Valid = $true }
+    if ($hit.Success -and $hit.Groups[1].Value -eq 'Silent') {
+        return [pscustomobject]@{ Command = $silent; DeployMode = 'Silent'; Recorded = $true; Valid = $true; Reason = $null }
     }
-    return [pscustomobject]@{ Command = $text; DeployMode = $null; Recorded = $true; Valid = $false }
+    $why = if ($hit.Success) {
+        "it runs -DeployMode $($hit.Groups[1].Value); every package runs -DeployMode Silent, without exception"
+    } else {
+        "it is not the launcher's own command line (expected: $silent) and would run as SYSTEM on every device"
+    }
+    return [pscustomobject]@{ Command = $text; DeployMode = $null; Recorded = $true; Valid = $false; Reason = $why }
 }
 function Get-LauncherCommands($manifest) {
     [pscustomobject]@{

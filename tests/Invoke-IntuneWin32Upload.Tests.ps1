@@ -340,10 +340,17 @@ Describe 'name and command line come from what the package recorded (0.49.2)' {
 
     It 'takes the recorded command lines, and says so' {
         $r = & $script:run (& $script:newPkg 'Widget_2.0' '2.0' @{ package = @{
-                    installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
-                    uninstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto' } })
-        $r.Text | Should -Match 'Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode Auto'
+                    installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+                    uninstallCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent' } })
+        $r.Text | Should -Match 'Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode Silent'
         $r.Text | Should -Match 'from the manifest'
+    }
+
+    It 'refuses a recorded -DeployMode Auto - every package runs Silent, without exception (0.49.3)' {
+        $r = & $script:run (& $script:newPkg 'Widget_2.0' '2.0' @{ package = @{
+                    installCommand = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto' } })
+        $r.Error | Should -Match 'package\.installCommand'
+        $r.Error | Should -Match 'Silent'
     }
 
     It 'says when no command line was recorded and the Silent default is used' {

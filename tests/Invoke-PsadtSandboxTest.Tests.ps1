@@ -916,15 +916,20 @@ Describe 'the sandbox tests the command line the package ships (0.49.2)' {
         Remove-TempSkillRoot $script:mRoot
     }
 
-    It 'runs Install and Uninstall with the modes the manifest records, each its own' {
+    It 'runs Install and Uninstall with the recorded command lines' {
         & $script:mSet -PackagePath $script:mPkg -Updates @{
-            'package.installCommand'   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
+            'package.installCommand'   = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
             'package.uninstallCommand' = 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent' } | Out-Null
         $runner = Get-Content -LiteralPath (& $script:mScript -PackagePath $script:mPkg -GenerateOnly).RunnerPath -Raw
-        $runner | Should -Match "\`$installDeployMode\s*=\s*'Auto'"
+        $runner | Should -Match "\`$installDeployMode\s*=\s*'Silent'"
         $runner | Should -Match "\`$uninstallDeployMode\s*=\s*'Silent'"
         $runner | Should -Match '-DeployMode \$mode'
-        $runner | Should -Not -Match '-DeploymentType \$DeploymentType -DeployMode Silent'
+    }
+
+    It 'refuses a recorded -DeployMode Auto before a VM exists - Silent, without exception (0.49.3)' {
+        & $script:mSet -PackagePath $script:mPkg -Updates @{
+            'package.installCommand' = 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto' } | Out-Null
+        { & $script:mScript -PackagePath $script:mPkg -GenerateOnly } | Should -Throw -ExpectedMessage '*Silent*'
     }
 
     It 'keeps Silent for a package that recorded nothing' {

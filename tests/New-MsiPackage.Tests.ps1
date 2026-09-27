@@ -312,12 +312,12 @@ Describe 'New-MsiPackage: the running app and the command line (0.49.2)' {
     # dossier each carried their own default. And the Install prompt had no countdown: an Interactive
     # prompt without one waits UI.DefaultTimeout (3300 s) and then exits 1618.
     BeforeAll { $script:s3 = Get-Content -LiteralPath $script:src -Raw }
-    It 'offers -DeployMode Silent or Auto, Silent by default' {
-        $script:s3 | Should -Match "\[ValidateSet\('Silent', 'Auto'\)\]\[string\]\`$DeployMode = 'Silent'"
+    It 'has no DeployMode switch - every package runs Silent (0.49.3)' {
+        $script:params | Should -Not -Contain 'DeployMode'
     }
-    It 'records the install and uninstall command lines in the manifest' {
-        $script:s3 | Should -Match "'package\.installCommand'\s*=\s*`"Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode \`$DeployMode`""
-        $script:s3 | Should -Match "'package\.uninstallCommand'\s*=\s*`"Invoke-AppDeployToolkit\.exe -DeploymentType Uninstall -DeployMode \`$DeployMode`""
+    It 'records the install and uninstall command lines in the manifest, Silent' {
+        $script:s3 | Should -Match "'package\.installCommand'\s*=\s*'Invoke-AppDeployToolkit\.exe -DeploymentType Install -DeployMode Silent'"
+        $script:s3 | Should -Match "'package\.uninstallCommand'\s*=\s*'Invoke-AppDeployToolkit\.exe -DeploymentType Uninstall -DeployMode Silent'"
     }
     It 'gives the Install close prompt a countdown - inside the if, because the countdown needs -CloseProcesses' {
         # Every PSADT parameter set that carries -CloseProcessesCountdown also requires -CloseProcesses, so
@@ -326,7 +326,7 @@ Describe 'New-MsiPackage: the running app and the command line (0.49.2)' {
     }
 }
 
-Describe 'New-MsiPackage: a generated Auto package (0.49.2)' -Skip:(-not $script:hasPsadt) {
+Describe 'New-MsiPackage: a generated package with processes to close (0.49.2)' -Skip:(-not $script:hasPsadt) {
     BeforeAll {
         $script:g3 = Join-Path $PSScriptRoot '..\scripts\New-MsiPackage.ps1'
         $script:r3 = Join-Path $TestDrive 'pk3'
@@ -337,15 +337,15 @@ Describe 'New-MsiPackage: a generated Auto package (0.49.2)' -Skip:(-not $script
             ProductCode = '{11111111-2222-3333-4444-555555555555}'; InstallerFile = 'widget.msi'; InstallerPath = $msi3
             Author = 'Test'; Changelog = 'c'; PackageRoot = $script:r3
         }
-        & $script:g3 -Name 'Auto' -DeployMode Auto -ProcessesToClose @('widget') @c3 | Out-Null
+        & $script:g3 -Name 'Auto' -ProcessesToClose @('widget') @c3 | Out-Null
         & $script:g3 -Name 'Plain' @c3 | Out-Null
         $script:autoM  = Get-Content (Join-Path $script:r3 'Auto\psadt-package.json') -Raw | ConvertFrom-Json
         $script:plainM = Get-Content (Join-Path $script:r3 'Plain\psadt-package.json') -Raw | ConvertFrom-Json
         $script:autoL  = Get-Content (Join-Path $script:r3 'Auto\Invoke-AppDeployToolkit.ps1') -Raw
     }
-    It 'records the Auto command lines' {
-        $script:autoM.package.installCommand   | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Auto'
-        $script:autoM.package.uninstallCommand | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Auto'
+    It 'records the Silent command lines' {
+        $script:autoM.package.installCommand   | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'
+        $script:autoM.package.uninstallCommand | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent'
     }
     It 'records Silent by default, so nothing changes for an existing flow' {
         $script:plainM.package.installCommand | Should -Be 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent'

@@ -134,9 +134,9 @@ Check: the first paragraph must also be readable on its own (200-character short
 
 | Intune field | Value |
 |---|---|
-| **Install command** | `package.installCommand`: `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent` or `-DeployMode Auto` (Gate 2, phase 1.2) |
+| **Install command** | `package.installCommand`: `Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent` - always Silent |
 | **Install script** | - (do not use, the command is enough) |
-| **Uninstall command** | `package.uninstallCommand`, the same `-DeployMode` |
+| **Uninstall command** | `package.uninstallCommand`: `Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent` |
 | **Uninstall script** | - |
 | **Installation time required (mins)** | Default 60; only raise if >45 min documented |
 | **Allow available uninstall** | Yes (the user may uninstall via the CP) |

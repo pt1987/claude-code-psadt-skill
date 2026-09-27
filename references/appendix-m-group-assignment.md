@@ -104,10 +104,10 @@ Always dry-run first (read-only), confirm the planned group names + actions, the
 ```
 # dry run
 pwsh scripts/Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName '<App>' -AppVendor '<Vendor>' `
-    -AppVersion '<x.y.z>' -AppArch x64 -Intents required,available
+    -AppVersion '<x.y.z>' -AppArch x64 -Intents available,required,uninstall
 # execute
 pwsh scripts/Invoke-IntuneAppAssignment.ps1 -AppId <id> -AppName '<App>' -AppVendor '<Vendor>' `
-    -AppVersion '<x.y.z>' -AppArch x64 -Intents required,available -Execute
+    -AppVersion '<x.y.z>' -AppArch x64 -Intents available,required,uninstall -Execute
 ```
 
 > **Array parameters and the `-File` binder (bit us on 2026-09-06).** `pwsh script.ps1 -Intents a,b` uses
