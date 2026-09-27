@@ -264,3 +264,85 @@ Describe 'Resolve-PsadtDisplayName - one derivation of the Intune name (0.49.2)'
         (Resolve-PsadtDisplayName -Manifest ([pscustomobject]@{ app = [pscustomobject]@{ vendor = 'ACME' } })).Name | Should -BeNullOrEmpty
     }
 }
+
+Describe 'the SYSTEM-test gate is derived once, from what the manifest records (0.49.3)' {
+    # Until 0.49.3 the only place that enforced rule:test-before-upload was the DOSSIER: it refused to
+    # render. The upload itself never looked. And SKILL.md tells the agent to render the dossier while the
+    # sandbox is still running - so the one enforcement point was also the one step documented to run
+    # before the verdict exists. The gate is now derived here and enforced by the upload; the dossier
+    # shows it.
+    BeforeAll {
+        $script:five = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+        function Get-Gate($manifest) {
+            (& $script:Get -Manifest ($manifest | ConvertTo-Json -Depth 12 | ConvertFrom-Json)).TestGate
+        }
+    }
+
+    It 'is closed when nothing was tested, and names the command that opens it' {
+        $g = Get-Gate @{ schema = 1; app = @{ name = 'Widget' } }
+        $g.Passed | Should -BeFalse
+        $g.Reason | Should -Match 'Invoke-PsadtSandboxTest\.ps1'
+    }
+
+    It 'opens on a full-gate GREEN in the sandbox' {
+        $g = Get-Gate @{ results = @{ sandboxTest = @{ verdict = 'GREEN'; scenarios = $script:five; fullGate = $true; at = '2026-09-27T12:00:00Z' } } }
+        $g.Passed | Should -BeTrue
+        $g.Route | Should -Be 'sandbox'
+    }
+
+    It 'stays closed on a partial verdict, and says the full gate is the default' {
+        $g = Get-Gate @{ results = @{ sandboxTest = @{ verdict = 'GREEN_PARTIAL'; scenarios = @('Install', 'Uninstall') } } }
+        $g.Passed | Should -BeFalse
+        $g.Reason | Should -Match 'GREEN_PARTIAL'
+        $g.Reason | Should -Match 'the full gate is the default'
+    }
+
+    It 'stays closed when the package changed while the sandbox ran' {
+        $g = Get-Gate @{ results = @{ sandboxTest = @{ verdict = 'GREEN'; scenarios = $script:five; packageChangedDuringRun = $true } } }
+        $g.Passed | Should -BeFalse
+        $g.Reason | Should -Match 'changed'
+    }
+
+    It 'opens on the DEV-VM route once Install and Uninstall both passed' {
+        $g = Get-Gate @{ results = @{ systemTest = @(
+                    @{ type = 'Install'; success = $true; exitCode = 0; at = '2026-09-27T12:00:00Z' },
+                    @{ type = 'Uninstall'; success = $true; exitCode = 0; at = '2026-09-27T12:05:00Z' }) } }
+        $g.Passed | Should -BeTrue
+        $g.Route | Should -Be 'dev-vm'
+    }
+
+    It 'stays closed on the DEV-VM route while the Uninstall is missing or failed' {
+        (Get-Gate @{ results = @{ systemTest = @(@{ type = 'Install'; success = $true }) } }).Passed | Should -BeFalse
+        $g = Get-Gate @{ results = @{ systemTest = @(
+                    @{ type = 'Install'; success = $true }, @{ type = 'Uninstall'; success = $false; exitCode = 60001 }) } }
+        $g.Passed | Should -BeFalse
+        $g.Reason | Should -Match 'Uninstall'
+    }
+
+    It 'judges the DEV-VM route by the LATEST run of each type' {
+        $g = Get-Gate @{ results = @{ systemTest = @(
+                    @{ type = 'Install'; success = $false; at = '2026-09-27T10:00:00Z' },
+                    @{ type = 'Install'; success = $true; at = '2026-09-27T11:00:00Z' },
+                    @{ type = 'Uninstall'; success = $true; at = '2026-09-27T11:05:00Z' }) } }
+        $g.Passed | Should -BeTrue
+    }
+
+    It 'does not count the sandbox rows as a DEV-VM run' {
+        # The sandbox also appends to results.systemTest, marked context = windows-sandbox. A partial
+        # sandbox run must not slip through the DEV-VM door on its own rows.
+        $g = Get-Gate @{ results = @{
+                sandboxTest = @{ verdict = 'GREEN_PARTIAL'; scenarios = @('Install', 'Uninstall') }
+                systemTest  = @(
+                    @{ type = 'Install'; success = $true; context = 'windows-sandbox' },
+                    @{ type = 'Uninstall'; success = $true; context = 'windows-sandbox' }) } }
+        $g.Passed | Should -BeFalse
+    }
+
+    It 'is also part of the package read' {
+        $p = New-TempPackage
+        try {
+            Set-Manifest $p (New-CompleteManifest)
+            (& $script:Get -PackagePath $p).TestGate.Passed | Should -BeFalse
+        } finally { Remove-Item $p -Recurse -Force }
+    }
+}

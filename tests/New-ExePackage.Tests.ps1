@@ -126,3 +126,40 @@ Describe 'New-ExePackage: a generated package with processes to close (0.49.2)' 
         @($e).Count | Should -Be 0
     }
 }
+
+Describe 'New-ExePackage: the detection script reports the version the way it is written (0.49.3)' {
+    # Measured 2026-09-27: ARP said 3.01, and the detection script printed "3.1 detected (baseline 3.1)".
+    # [System.Version] reads '3.01' as major 3, minor 1. The ORDERING is right - a vendor that writes the
+    # minor with two digits compares 01 < 09 < 10 < 21 correctly - but the one line an operator reads in
+    # the IME log names a version that does not exist. The comparison stays numeric; the text is the
+    # string the source reported. Built from the template in the generator, then run.
+    BeforeAll {
+        $assign = $script:ast.FindAll({ param($n)
+                $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                $n.Left.Extent.Text -eq '$detect' -and $n.Right.Extent.Text.StartsWith("@'") }, $true) | Select-Object -First 1
+        $tmpl = $assign.Right.Expression.Value
+        $script:detectText = $tmpl.Replace('__NAME__', 'Widget_3.01').Replace('__APPNAME__', 'Widget').
+            Replace('__APPVERSION__', '3.01').Replace('__BASELINE__', '3.01').
+            Replace('__VERIFYRELATIVEPATH__', 'widget.exe').Replace('__DISPLAYNAMELIKE__', 'ACME Widget')
+        $dast = [System.Management.Automation.Language.Parser]::ParseInput($script:detectText, [ref]$null, [ref]$null)
+        $fn = $dast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Add-Candidate' }, $true) | Select-Object -First 1
+        $base = $dast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$baseline' }, $true) | Select-Object -First 1
+        $verdict = $dast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.IfStatementAst] -and $_.Extent.Text -match '^if \(\$candidates\.Count' } | Select-Object -First 1
+        $script:detectParts = @($base.Extent.Text, $fn.Extent.Text, $verdict.Extent.Text)
+        $script:detectFor = {
+            param([string]$Raw)
+            $sb = [scriptblock]::Create(($script:detectParts[0], '$candidates = New-Object System.Collections.ArrayList', $script:detectParts[1],
+                    "Add-Candidate '$Raw' 'ARP DisplayVersion'", $script:detectParts[2]) -join "`n")
+            & $sb
+        }
+    }
+
+    It 'prints the version the ARP entry wrote, not the normalised one' {
+        & $script:detectFor '3.01' | Should -BeExactly 'Widget 3.01 detected via ARP DisplayVersion (baseline 3.01)'
+    }
+
+    It 'still compares numerically: a newer build satisfies the floor, an older one does not' {
+        & $script:detectFor '3.10' | Should -BeExactly 'Widget 3.10 detected via ARP DisplayVersion (baseline 3.01)'
+        & $script:detectFor '2.21' | Should -BeNullOrEmpty
+    }
+}

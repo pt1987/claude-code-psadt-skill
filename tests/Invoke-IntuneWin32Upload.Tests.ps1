@@ -377,3 +377,68 @@ Describe 'name and command line come from what the package recorded (0.49.2)' {
         }
     }
 }
+
+Describe 'the upload enforces the SYSTEM-test gate itself (0.49.3)' {
+    # rule:test-before-upload was enforced in exactly one place: the dossier refused to render. The upload
+    # never looked - and SKILL.md has the dossier rendered while the sandbox is still running, so the one
+    # enforcement point sat on the one step documented to run before the verdict exists. The gate is read
+    # from the manifest (Get-PsadtPackageManifest.ps1 -Manifest, .TestGate) and checked before any token.
+    BeforeEach {
+        $script:oldHome = $env:PSADT_DEPLOY_HOME
+        $script:gHome = Join-Path $TestDrive ('ghome_' + [guid]::NewGuid().ToString('N'))
+        New-Item $script:gHome -ItemType Directory -Force | Out-Null
+        $env:PSADT_DEPLOY_HOME = $script:gHome
+        $script:gPkg = { param([hashtable]$Results)
+            $d = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+            New-Item $d -ItemType Directory -Force | Out-Null
+            Set-Content (Join-Path $d 'Invoke-AppDeployToolkit.ps1') '# launcher'
+            $m = @{ schema = 1; app = @{ vendor = 'ACME'; name = 'Widget'; version = '2.0'; arch = 'x64' }; package = @{} }
+            if ($Results) { $m['results'] = $Results }
+            $m | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $d 'psadt-package.json') -Encoding UTF8
+            Join-Path $d 'psadt-package.json' }
+        $script:gRun = { param([string]$Manifest, [switch]$Execute)
+            $lines = New-Object System.Collections.Generic.List[string]
+            $err = $null
+            try { & $script:Upload -ManifestPath $Manifest -IntuneWinPath $script:DummyWin -Execute:$Execute -ErrorAction Stop 6>&1 | ForEach-Object { $lines.Add([string]$_) } }
+            catch { $err = $_.Exception.Message }
+            [pscustomobject]@{ Text = ($lines -join "`n"); Error = $err } }
+    }
+    AfterEach { $env:PSADT_DEPLOY_HOME = $script:oldHome }
+
+    It 'refuses -Execute for an untested package, before the artifact or a token is touched' {
+        $r = & $script:gRun (& $script:gPkg $null) -Execute
+        $r.Error | Should -Match 'SYSTEM test'
+        $r.Error | Should -Match 'Invoke-PsadtSandboxTest\.ps1'
+        $r.Error | Should -Not -Match 'Not found' -Because 'the gate runs before the .intunewin is opened'
+    }
+
+    It 'refuses -Execute on a partial sandbox verdict' {
+        $r = & $script:gRun (& $script:gPkg @{ sandboxTest = @{ verdict = 'GREEN_PARTIAL'; scenarios = @('Install', 'Uninstall') } }) -Execute
+        $r.Error | Should -Match 'GREEN_PARTIAL'
+    }
+
+    It 'lets a full-gate GREEN through to the next step' {
+        $r = & $script:gRun (& $script:gPkg @{ sandboxTest = @{ verdict = 'GREEN'; scenarios = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall') } }) -Execute
+        $r.Error | Should -Match 'Not found' -Because 'past the gate, the run reaches the artifact step'
+    }
+
+    It 'still dry-runs an untested package, and says -Execute will refuse' {
+        $r = & $script:gRun (& $script:gPkg $null)
+        $r.Error | Should -Match 'Not found' -Because 'a dry run is read-only and is allowed'
+        $r.Text | Should -Match 'SYSTEM test'
+        $r.Text | Should -Match 'refuse'
+    }
+
+    It 'refuses -Execute without a manifest, because the gate lives there' {
+        $err = $null
+        try { & $script:Upload -IntuneWinPath $script:DummyWin -DisplayName 'Widget' -Execute -ErrorAction Stop 6>$null } catch { $err = $_.Exception.Message }
+        $err | Should -Match 'ManifestPath'
+        $err | Should -Match 'SYSTEM test'
+    }
+
+    It 'checks the gate before the token is acquired' {
+        $src = Get-Content -LiteralPath $script:Upload -Raw
+        $src.IndexOf('.TestGate') | Should -BeGreaterThan 0
+        $src.IndexOf('.TestGate') | Should -BeLessThan $src.IndexOf("Get-GraphToken.ps1')")
+    }
+}

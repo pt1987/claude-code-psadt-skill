@@ -45,9 +45,13 @@ different names in the artifact, the dossier and Intune:
 identity must be real. `AppName`, `AppVersion` and `Publisher` must resolve, or the script throws instead
 of shipping a dossier that says "App 0.0.0" - a placeholder with a letterhead is worse than no document.
 Everything else stays optional and renders NEUTRALLY ("not run" / "not packed yet"), because the report is
-produced for EVERY package, including one that has not reached Phase 7. The one exception is the SYSTEM
-test: when the manifest says `decisions.upload = true`, a missing SYSTEM-test result is an error, because
-Phase 6 is the binding gate for upload.
+produced for EVERY package, including one that has not reached Phase 7 - or whose sandbox is still
+running, which is when Phase 8 is documented to run. The SYSTEM test is still the binding gate for upload
+(`rule:test-before-upload`), but since 0.49.3 the UPLOAD enforces it: `Invoke-IntuneWin32Upload.ps1`
+refuses `-Execute` unless the manifest records a full-gate GREEN (or, on the DEV-VM route, a passing
+Install and Uninstall). The dossier shows the same verdict - `Get-PsadtPackageManifest.ps1` derives it once,
+as `.TestGate` - in the SYSTEM-test note: "Upload gesperrt" with the reason and the re-run command, until
+the gate is met. Regenerate the dossier after the verdict, as for any other change.
 
 `$meta` is a hashtable. Every key is optional (sane defaults fill the rest, so the report is always complete):
 

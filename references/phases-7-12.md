@@ -199,7 +199,11 @@ lines come from `package.installCommand` / `uninstallCommand`. It
 also supplies the `.intunewin` (`artifacts.intunewin`, 0.43.0), the logo (`artifacts.logo`) and the
 Company-Portal description (`app.description.<language.dossier>` - the same text the dossier renders,
 recorded once; 0.44.0). For a `package.detection = versionFloor` package it takes `artifacts.detection` as
-the detection script and **refuses** `-MsiProductCode` (0.44.0). After a successful `-Execute` the app id, content version, portal URL and tenant land in `results.upload`. Check
+the detection script and **refuses** `-MsiProductCode` (0.44.0). **It enforces `rule:test-before-upload`
+itself (0.49.3):** `-Execute` is refused, before the `.intunewin` is opened and before any token, unless
+the manifest records a full-gate GREEN sandbox run (or, on the DEV-VM route, a passing Install and
+Uninstall) - and without `-ManifestPath`, since that is where the test is recorded. The dry run prints the
+gate either way. After a successful `-Execute` the app id, content version, portal URL and tenant land in `results.upload`. Check
 `Capabilities.Upload` first (`Test-PsadtIntuneAccess.ps1`) instead of discovering a missing role from a 403
 mid-upload.
 

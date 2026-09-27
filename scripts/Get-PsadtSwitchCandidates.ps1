@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS  Returns prioritised silent-switch candidates for an installer, from local sources first, so Phase 2 stops guessing before it starts searching.
 .DESCRIPTION
   Phase 2 used to reach for the web as soon as an installer was not an MSI. That is slow, it is

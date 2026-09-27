@@ -148,17 +148,14 @@ if ($ManifestPath) {
     # skill refuses everywhere else. It is read here instead.
     #
     # A caller-supplied SystemTest still wins: Set-FromManifest never overwrites a key that is already
-    # present, and the DEV-VM route (Invoke-PsadtSystemTest.ps1) has no result.json to read.
-    # Carried out of the block below so the upload gate can see it. A GREEN_PARTIAL run produces rows
-    # like any other, so "rows exist" is NOT evidence that the gate was met.
-    $sandboxVerdict = [string]$mf.results.sandboxTest.verdict
-
+    # present, and the DEV-VM route (Invoke-PsadtSystemTest.ps1) has no result.json to read. Whether the
+    # upload gate is met is NOT read from these rows - a GREEN_PARTIAL run produces rows like any other -
+    # but from the manifest's verdict, below (.TestGate).
     if (-not $Metadata.ContainsKey('SystemTest')) {
         $sbxResultPath = [string]$mf.results.sandboxTest.resultPath
         if ($sbxResultPath -and (Test-Path -LiteralPath $sbxResultPath)) {
             try {
                 $sbx = Get-Content -LiteralPath $sbxResultPath -Raw | ConvertFrom-Json
-                if ([string]$sbx.verdict) { $sandboxVerdict = [string]$sbx.verdict }
 
                 # Whether the rule was expected to find the app after each action. This is what makes a
                 # row a PASS or a FAIL - an action that exits 0 while detection disagrees is not a pass.
@@ -234,24 +231,15 @@ if ($ManifestPath) {
         throw "The manifest identity is incomplete ($($identityGaps -join ', ')) - fill it with Set-PsadtPackageManifest.ps1, or pass the values via -Metadata. A dossier without a real app identity is a placeholder, not a deliverable."
     }
 
-    # The SYSTEM test is BINDING only for a package that is going to be uploaded. That decision lives in
-    # the manifest, so the gate can be enforced here instead of relying on the operator remembering it.
-    if ($mf.decisions.upload -eq $true -and -not $Metadata.ContainsKey('SystemTest')) {
-        throw "decisions.upload is true but no SYSTEM-test result was supplied. Run Invoke-PsadtSystemTest.ps1 (Install + Uninstall) first - Phase 6 is the binding gate for upload - or set decisions.upload to false."
-    }
-
-    # ...and a PARTIAL run does not satisfy it. Since Invoke-PsadtSandboxTest.ps1 defaults to the
-    # Install+Uninstall iteration pair, the common case is now a GREEN_PARTIAL result that renders a
-    # perfectly plausible table - Install passed, Uninstall passed - while Reinstall, Repair and the
-    # final Uninstall were never run. Without this check, flipping that default would have quietly
-    # WEAKENED the upload gate instead of only making iteration cheaper.
-    # A caller-supplied -Metadata SystemTest (the DEV-VM route) has no sandbox verdict and is left alone.
-    if ($mf.decisions.upload -eq $true -and $sandboxVerdict -and $sandboxVerdict -ne 'GREEN') {
-        $ranScenarios = @($mf.results.sandboxTest.scenarios)
-        $scenarioText = if ($ranScenarios.Count) { $ranScenarios -join ', ' } else { 'unknown' }
-        throw ("decisions.upload is true but the SYSTEM test verdict is '$sandboxVerdict', not GREEN " +
-            "(scenarios that ran: $scenarioText). Only the full five-scenario gate counts for an upload - " +
-            "re-run: pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg> (the full gate is the default; -Scenarios and -Quick are what narrow it)")
+    # The SYSTEM test is BINDING for a package that is going to be uploaded (rule:test-before-upload). Until
+    # 0.49.3 this dossier ENFORCED it by refusing to render - the only place that did, while SKILL.md has the
+    # dossier rendered before the sandbox verdict exists. The upload enforces it now, from the verdict
+    # Get-PsadtPackageManifest.ps1 derives (.TestGate); this dossier SHOWS the same verdict, so the two can
+    # never disagree. A partial run (GREEN_PARTIAL) is still not a pass - the upload refuses it, and the
+    # status line and the SYSTEM-test note below say why.
+    $uploadGate = $null
+    if ($mf.decisions.upload -eq $true) {
+        $uploadGate = (& (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -Manifest $mf).TestGate
     }
 
     # The Company-Portal description is the one field in this document an end user reads, and it is
@@ -699,6 +687,22 @@ $stRows = @(foreach ($s in $st) {
 }) -join "`n"
 $stNoteDe = Get-Val 'SystemTestNoteDe' 'Keine SYSTEM-Test-Ergebnisse &uuml;bergeben &ndash; der SYSTEM-Test wurde nicht ausgef&uuml;hrt (kein Beleg).'
 $stNoteEn = Get-Val 'SystemTestNoteEn' 'No SYSTEM-test results supplied &ndash; the SYSTEM test was not run (no evidence).'
+
+# The upload gate, as the upload itself will judge it (0.49.3) - only for a package meant to be uploaded.
+# Plain text with entities, no tags: the language switch sets textContent, so a tag would show as text.
+$gateOpen = $false
+if ($uploadGate -and -not $uploadGate.Passed) {
+    $gateOpen = $true
+    $rerunDe = 'pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath &lt;pkg&gt;'
+    $gateDe = switch ([string]$uploadGate.Code) {
+        'not-green'          { "Das Sandbox-Verdikt ist $(Esc ([string]$mf.results.sandboxTest.verdict)), kein voller GREEN-Lauf aller f&uuml;nf Szenarien. Neu starten: $rerunDe (der volle Test ist der Standard)." }
+        'changed-during-run' { "Das Paket wurde w&auml;hrend des Sandbox-Laufs ge&auml;ndert; das Verdikt beschreibt Dateien, die es so nicht mehr gibt. Neu starten: $rerunDe." }
+        'dev-vm-incomplete'  { 'DEV-VM-Route: Install und Uninstall m&uuml;ssen beide als SYSTEM bestanden haben (Invoke-PsadtSystemTest.ps1).' }
+        default              { "Noch kein SYSTEM-Test im Manifest. Starten: $rerunDe." }
+    }
+    $stNoteDe = "Upload gesperrt &ndash; der Upload verweigert -Execute, bis das Gate erf&uuml;llt ist. $gateDe $stNoteDe"
+    $stNoteEn = "Upload blocked &ndash; the upload refuses -Execute until the gate is met: $(Esc ([string]$uploadGate.Reason)). $stNoteEn"
+}
 
 # ----------------------------------------------------------------------------- header status
 # Derived, never asserted. The rule the SYSTEM-test table and the pre-flight KPI already follow -

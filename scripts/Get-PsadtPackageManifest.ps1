@@ -38,11 +38,17 @@
     need the stem while they are still writing the launcher, and the sanitizing rule must exist exactly
     once - a second copy would drift and rename an app behind everyone's back.
 
+.PARAMETER Manifest
+    An already-parsed manifest object: returns only what is derived from it (Commands, TestGate), with no
+    package on disk. For the dossier, whose fixtures and callers need not have a launcher beside the file.
+
 .OUTPUTS
     PSCustomObject: Exists(bool), Manifest(object|null), Missing(string[]), Path(string), Stem(string|null),
     Commands({ Install, Uninstall } each { Command, DeployMode, Recorded, Valid } - the Silent default when
     nothing is recorded, Valid = $false - with Reason - for anything but the launcher's own command line
     with -DeployMode Silent),
+    TestGate({ Passed, Route (sandbox|dev-vm|$null), Code, Reason } - rule:test-before-upload, derived
+    once: the upload enforces it before any token, the dossier shows it),
     Error(string, only when the file is malformed)
 
 .EXAMPLE
@@ -52,7 +58,8 @@
 [CmdletBinding(DefaultParameterSetName = 'Package')]
 param(
     [Parameter(Mandatory, ParameterSetName = 'Package')][string]$PackagePath,
-    [Parameter(Mandatory, ParameterSetName = 'Identity')][hashtable]$Identity
+    [Parameter(Mandatory, ParameterSetName = 'Identity')][hashtable]$Identity,
+    [Parameter(Mandatory, ParameterSetName = 'Object')][object]$Manifest
 )
 $ErrorActionPreference = 'Stop'
 
@@ -78,11 +85,13 @@ if ($PSCmdlet.ParameterSetName -eq 'Identity') {
     return [pscustomobject]@{ Stem = ($parts -join '_') }
 }
 
-if (-not (Test-Path -LiteralPath $PackagePath)) { throw "PackagePath not found: $PackagePath" }
-$launcher = Join-Path $PackagePath 'Invoke-AppDeployToolkit.ps1'
-if (-not (Test-Path -LiteralPath $launcher)) { throw "Not a PSADT package (no Invoke-AppDeployToolkit.ps1): $PackagePath" }
-
-$manifestPath = Join-Path $PackagePath 'psadt-package.json'
+$manifestPath = $null
+if ($PSCmdlet.ParameterSetName -eq 'Package') {
+    if (-not (Test-Path -LiteralPath $PackagePath)) { throw "PackagePath not found: $PackagePath" }
+    $launcher = Join-Path $PackagePath 'Invoke-AppDeployToolkit.ps1'
+    if (-not (Test-Path -LiteralPath $launcher)) { throw "Not a PSADT package (no Invoke-AppDeployToolkit.ps1): $PackagePath" }
+    $manifestPath = Join-Path $PackagePath 'psadt-package.json'
+}
 
 # The identity floor: everything the artifact name and the dossier header are built from.
 $required = @('app.vendor', 'app.name', 'app.version', 'app.arch', 'package.type')
@@ -124,13 +133,73 @@ function Get-LauncherCommands($manifest) {
         Uninstall = Get-LauncherCommand (Get-ByPath $manifest 'package.uninstallCommand') 'Uninstall'
     }
 }
+# rule:test-before-upload, derived ONCE (0.49.3). Until then the dossier was the only place that enforced
+# it - by refusing to render - while SKILL.md has the dossier rendered while the sandbox is still running,
+# and the upload never looked at all. Now the upload enforces this verdict before any token, and the
+# dossier shows it. Two routes count:
+#   sandbox - results.sandboxTest: a GREEN full gate (all five scenarios) on a package that did not
+#             change while the VM ran. GREEN_PARTIAL is not a pass.
+#   dev-vm  - results.systemTest[] from Invoke-PsadtSystemTest.ps1: the LATEST Install and the LATEST
+#             Uninstall both succeeded. Rows the sandbox appends (context = windows-sandbox) do not count
+#             here, or a partial sandbox run would pass through this door on its own rows.
+function Get-TestGate($manifest) {
+    $rerun = 'pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg> (the full gate is the default)'
+    $five = @('Install', 'Uninstall', 'Reinstall', 'Repair', 'FinalUninstall')
+    $sbx = Get-ByPath $manifest 'results.sandboxTest'
+    $dev = @(Get-ByPath $manifest 'results.systemTest') | Where-Object { $_ -and [string]$_.context -ne 'windows-sandbox' }
+
+    $sandboxPassed = $false; $sandboxReason = $null; $sandboxCode = $null
+    if ($sbx) {
+        $ran = @($sbx.scenarios | ForEach-Object { [string]$_ })
+        $missing = @($five | Where-Object { $ran -notcontains $_ })
+        if ([string]$sbx.verdict -ne 'GREEN' -or $missing.Count) {
+            $sandboxCode = 'not-green'
+            $sandboxReason = "the sandbox verdict is '$([string]$sbx.verdict)' (scenarios that ran: $(if ($ran.Count) { $ran -join ', ' } else { 'unknown' })), not a full-gate GREEN - re-run: $rerun"
+        } elseif ($sbx.packageChangedDuringRun -eq $true) {
+            $sandboxCode = 'changed-during-run'
+            $sandboxReason = "the package changed while the sandbox ran, so its GREEN describes files that are no longer there - re-run: $rerun"
+        } else { $sandboxPassed = $true }
+    }
+    if ($sandboxPassed) { return [pscustomobject]@{ Passed = $true; Route = 'sandbox'; Code = 'passed'; Reason = $null } }
+
+    $latest = @{}
+    foreach ($row in $dev) {
+        $t = [string]$row.type
+        if ($t -notin 'Install', 'Uninstall') { continue }
+        if (-not $latest.ContainsKey($t) -or ([string]$row.at -ge [string]$latest[$t].at)) { $latest[$t] = $row }
+    }
+    if ($latest.Count) {
+        $state = foreach ($t in 'Install', 'Uninstall') {
+            if (-not $latest.ContainsKey($t)) { "$t not run" }
+            elseif ($latest[$t].success -ne $true) { "$t failed (exit $($latest[$t].exitCode))" }
+        }
+        if (-not @($state).Count) {
+            # A newer DEV-VM pass settles it; a sandbox failure recorded AFTER it does not get overruled.
+            $devAt = @($latest.Values | ForEach-Object { [string]$_.at } | Sort-Object)[-1]
+            if (-not $sbx -or -not [string]$sbx.at -or $devAt -gt [string]$sbx.at) {
+                return [pscustomobject]@{ Passed = $true; Route = 'dev-vm'; Code = 'passed'; Reason = $null }
+            }
+        } elseif (-not $sbx) {
+            return [pscustomobject]@{ Passed = $false; Route = 'dev-vm'; Code = 'dev-vm-incomplete'
+                Reason = "the DEV-VM route needs both Install and Uninstall to pass as SYSTEM: $(@($state) -join '; ') - Invoke-PsadtSystemTest.ps1 (phase 6.2)" }
+        }
+    }
+    if ($sandboxReason) { return [pscustomobject]@{ Passed = $false; Route = 'sandbox'; Code = $sandboxCode; Reason = $sandboxReason } }
+    [pscustomobject]@{ Passed = $false; Route = $null; Code = 'not-run'
+        Reason = "no SYSTEM test is recorded in the manifest - run: $rerun" }
+}
 function New-Result([bool]$exists, $manifest, $missing, [string]$stem, [string]$err) {
     $o = [ordered]@{
         Exists = $exists; Manifest = $manifest; Missing = $missing; Path = $manifestPath; Stem = $stem
         Commands = (Get-LauncherCommands $manifest)
+        TestGate = (Get-TestGate $manifest)
     }
     if ($err) { $o['Error'] = $err }
     [pscustomobject]$o
+}
+
+if ($PSCmdlet.ParameterSetName -eq 'Object') {
+    return [pscustomobject]@{ Commands = (Get-LauncherCommands $Manifest); TestGate = (Get-TestGate $Manifest) }
 }
 
 if (-not (Test-Path -LiteralPath $manifestPath)) { return (New-Result $false $null $required $null $null) }

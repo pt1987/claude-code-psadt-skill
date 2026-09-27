@@ -220,6 +220,24 @@ if ($ManifestPath) {
     }
 }
 
+# --- rule:test-before-upload, enforced HERE (0.49.3) ---------------------------------------------------
+# The verdict the manifest records, derived once by Get-PsadtPackageManifest.ps1 (.TestGate) - the dossier
+# shows the same one. Until 0.49.3 the dossier was the only enforcement, by refusing to render, while this
+# script never looked, and SKILL.md has the dossier rendered before the sandbox verdict exists. Checked
+# before the .intunewin is opened and before any token: a dry run reports it and goes on, -Execute stops.
+$testGate = $null
+if ($ManifestPath) { $testGate = (& (Join-Path $PSScriptRoot 'Get-PsadtPackageManifest.ps1') -Manifest $mfUp).TestGate }
+if ($Execute) {
+    if (-not $ManifestPath) {
+        throw ("-Execute needs -ManifestPath: Install and Uninstall must pass the SYSTEM test before any upload " +
+            "(rule:test-before-upload), and the package manifest is where that is recorded - without it nothing shows this package was tested.")
+    }
+    if (-not $testGate.Passed) {
+        throw ("Refusing to upload: the SYSTEM test gate is not met - $($testGate.Reason). " +
+            "Install and Uninstall must pass as SYSTEM before any upload (rule:test-before-upload).")
+    }
+}
+
 # The SAME canonical table the dossier renders - see Get-PsadtReturnCodes.ps1. Resolved HERE, before the
 # token is acquired and before any Graph call, so an invalid return code fails at validation time instead
 # of after authenticating against the tenant.
@@ -250,6 +268,8 @@ if ($ManifestPath) {
     Write-Info "name      : from $displayNameSource"
     Write-Info "install   : $InstallCommandLine ($commandSource)"
     Write-Info "uninstall : $UninstallCommandLine"
+    if ($testGate.Passed) { Write-Info "SYSTEM test: met ($($testGate.Route))" }
+    else { Write-Warn2 "SYSTEM test: NOT met - -Execute will refuse: $($testGate.Reason)" }
 }
 
 # 1. Parse the .intunewin --------------------------------------------------------------------------
@@ -437,7 +457,9 @@ if (-not $Execute) {
     Write-Host "  Logo        : $(if($body.largeIcon){'yes'}else{'NO - WARNING'})"
     Write-Host "  Return codes: $($returnCodes.Count) ($(($returnCodes | ForEach-Object { "$($_.returnCode)=$($_.type)" }) -join ', '))"
     Write-Host "  Existing    : $(if($existing){ ($existing | ForEach-Object { "$($_.id) (v$($_.displayVersion))" }) -join ', ' } else { 'none' })"
-    $action = if ($UpdateAppId) { "UPDATE IN PLACE app $UpdateAppId (content replaced; id/assignments kept)" }
+    Write-Host "  SYSTEM test : $(if (-not $testGate) { 'unknown - no manifest' } elseif ($testGate.Passed) { "met ($($testGate.Route))" } else { "NOT met - $($testGate.Reason)" })"
+    $action = if (-not $testGate -or -not $testGate.Passed) { "REFUSED - the SYSTEM test gate is not met (rule:test-before-upload)" }
+              elseif ($UpdateAppId) { "UPDATE IN PLACE app $UpdateAppId (content replaced; id/assignments kept)" }
               elseif ($existing -and $OnExisting -eq 'Abort') { "ABORT (existing app present, -OnExisting Abort)" }
               elseif ($existing) { "CREATE NEW coexisting app (existing version(s) left INTACT - never deleted)" }
               else { "CREATE NEW app" }

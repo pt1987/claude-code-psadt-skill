@@ -15,7 +15,8 @@
                       functions / the template's preference-sets + Set-StrictMode + the init/invocation try-blocks).
                       WARN only (informational) - the real RED signals are encoding + parse.
       5. Structure  - Install/Uninstall/Repair-ADTDeployment are all defined; every Extensions helper that is
-                      defined is actually called by the launcher (else WARN).
+                      defined is reached from the launcher, directly or through another helper (else WARN);
+                      no module function reads the launcher's $adtSession, which it cannot see (FAIL).
       6. ProductCode- no `Start-ADTMsiProcess -FilePath '{GUID}'` (a GUID belongs on -ProductCode; a GUID on
                       -FilePath throws InvalidFilePathParameterValue -> 60001). Checked in all hooks.
       7. Detection  - any Detect*.ps1 in the package: the "not installed" path should be `exit 0` + empty stdout
@@ -128,15 +129,51 @@ else {
         else { Add-Check 'Structure' 'FAIL' "$hook MISSING (Company-Portal $($hook.Split('-')[0]) would fail)" 'Invoke-AppDeployToolkit.ps1' }
     }
 
-    # Extension helpers defined-but-not-called
+    # Extension helpers: reachable from the launcher, directly or through another helper (0.49.3). A helper
+    # that only another helper calls - the ARP lookup behind a config and a cleanup helper, say - used to
+    # be reported "never called by the launcher", and that WARN turned the dossier's pre-flight tile amber
+    # for a correct package.
     $calls = @($last.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() } | Where-Object { $_ })
     foreach ($ef in $extFiles) {
         $ep = Get-Ast $ef
         if ($ep.Errors -and $ep.Errors.Count) { continue }
-        $efuncs = @($ep.Ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true) | ForEach-Object Name | Where-Object { $_ -ne 'New-ADTExampleFunction' })
-        foreach ($fn in $efuncs) {
-            if ($calls -contains $fn) { Add-Check 'Structure' 'PASS' "extension helper $fn is called" (Split-Path $ef -Leaf) }
-            else { Add-Check 'Structure' 'WARN' "extension helper $fn is defined but never called by the launcher" (Split-Path $ef -Leaf) }
+        $leafE = Split-Path $ef -Leaf
+        $defs = @($ep.Ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true) | Where-Object { $_.Name -ne 'New-ADTExampleFunction' })
+        $callees = @{}
+        foreach ($d in $defs) {
+            $callees[$d.Name] = @($d.Body.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() } | Where-Object { $_ })
+        }
+        # Breadth-first from what the launcher calls; remember which helper reached each one first.
+        $via = @{}
+        $queue = New-Object System.Collections.Generic.Queue[string]
+        foreach ($d in $defs) { if ($calls -contains $d.Name -and -not $via.ContainsKey($d.Name)) { $via[$d.Name] = $null; $queue.Enqueue($d.Name) } }
+        while ($queue.Count) {
+            $cur = $queue.Dequeue()
+            foreach ($c in $callees[$cur]) {
+                if ($callees.ContainsKey($c) -and -not $via.ContainsKey($c)) { $via[$c] = $cur; $queue.Enqueue($c) }
+            }
+        }
+        foreach ($d in $defs) {
+            $fn = $d.Name
+            if (-not $via.ContainsKey($fn)) { Add-Check 'Structure' 'WARN' "extension helper $fn is defined but nothing reaches it - neither the launcher nor a helper the launcher calls" $leafE }
+            elseif ($null -eq $via[$fn]) { Add-Check 'Structure' 'PASS' "extension helper $fn is called" $leafE }
+            else { Add-Check 'Structure' 'PASS' "extension helper $fn is called through $($via[$fn])" $leafE }
+        }
+
+        # The launcher's $adtSession inside a module function (0.49.3). A module has its own session state,
+        # so the launcher's variable is not there: $adtSession.DirSupportFiles came out empty and the
+        # install died with 60001 - one full sandbox run later (2026-09-27). Read through the AST, so a
+        # comment or help text naming it is not a finding; a function that assigns the variable itself
+        # ($adtSession = Get-ADTSession) or takes it as a parameter is fine.
+        foreach ($d in $defs) {
+            $reads = @($d.Body.FindAll({ param($n) $n -is [System.Management.Automation.Language.VariableExpressionAst] -and $n.VariablePath.UserPath -eq 'adtSession' }, $true))
+            if (-not $reads.Count) { continue }
+            $own = @($d.FindAll({ param($n)
+                        ($n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and $n.Left.VariablePath.UserPath -eq 'adtSession') -or
+                        ($n -is [System.Management.Automation.Language.ParameterAst] -and $n.Name.VariablePath.UserPath -eq 'adtSession') }, $true))
+            if ($own.Count) { continue }
+            Add-Check 'Structure' 'FAIL' ("extension helper $($d.Name) reads `$adtSession (line $($reads[0].Extent.StartLineNumber)), which a module function cannot see - it is the launcher's variable. " +
+                "Use (Get-ADTSession).DirSupportFiles, or `$adtSession = Get-ADTSession at the top of the function.") $leafE
         }
     }
 

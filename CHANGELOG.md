@@ -38,6 +38,28 @@ now means that the opaque ground is the mark, and the lookup raises no warning; 
 transparency its entry promised, or a `border-key` that did not clear the corners, is named as such. The
 catalog gains the entry the case was found on, keyed by its app identity.
 
+**The upload enforces the SYSTEM-test gate; the dossier shows it.** `rule:test-before-upload` was enforced
+in exactly one place: the dossier refused to render without a test result. The upload never looked - and
+`SKILL.md` has the dossier rendered while the sandbox is still running, so the one enforcement point sat on
+the one step documented to run before the verdict exists. `Get-PsadtPackageManifest.ps1` now derives the
+gate once (`.TestGate`): a full-gate GREEN sandbox run on a package that did not change during the run,
+or a passing Install and Uninstall on the DEV-VM route. `Invoke-IntuneWin32Upload.ps1` refuses `-Execute`
+without it, and without a manifest, before the `.intunewin` is opened or a token exists; the dry run
+prints it. The dossier renders at any time and says in its SYSTEM-test note why the upload is blocked,
+with the re-run command.
+
+**Pre-flight reads the Extensions module the way PowerShell does.** A helper called only by another helper
+was reported as never called, and that warning turned the dossier's pre-flight tile amber for a correct
+package; check 5 now follows helper chains. A helper that read the launcher's `$adtSession` - invisible
+inside a module function, so a support-file path came out empty and the install failed with 60001 one full
+sandbox run later - passed pre-flight; it is now RED, with the line and the fix. A function that fetches
+the session itself (`Get-ADTSession`) or takes it as a parameter is fine, and a comment naming it is not a
+finding.
+
+**The detection script names the version as written.** A version with a leading zero in its minor part
+(`3.01`) was compared correctly but printed as `3.1` in the one line the Intune log shows. The EXE
+generator's detection script now prints the string the source reported and the baseline as declared.
+
 ## 0.49.2 - 2026-09-27 - A live two-version run found the skill contradicting itself
 
 A live run packaged one application twice, end to end - an older version first, then its successor:
