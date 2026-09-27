@@ -299,7 +299,9 @@ default so a new version reuses the same groups; `%version%` is an opt-in that b
 (intents required/available/uninstall). Idempotent; never deletes a group or another app's assignment;
 ambiguous/duplicate names are skipped, not guessed. Needs `Capabilities.Groups` (BOTH group roles - the
 script asserts them before creating anything). After `-Execute` it reads the assignments back and records
-them as `results.assignment`, which the dossier renders - regenerate it. Full schema + naming rules +
+them as `results.assignment`, which the dossier renders - regenerate it. **Once the new version is assigned,
+take Required off the old one** (App. R.6): `-ManifestPath <old pkg> -Intents required -Remove` - that app,
+that intent, the scheme's group only; dry run first; it rewrites the old app's note. Full schema + naming rules +
 permission model: guide Appendix M.
 
 **Phase 11 - Real devices via an Intune test group.** The local Install/Uninstall/Repair loop is

@@ -17,6 +17,14 @@
     Existing app assignments are read first; one that already targets the same group+intent is skipped
     (idempotent). The script NEVER deletes a group or another app's assignment.
 
+    -Remove (0.49.3) is the one removal, and it is narrow: THIS app's assignments of the -Intents named, on
+    the groups the naming scheme resolves - never a group, never another intent, never another app, never
+    an assignment on a group outside the scheme (reported and kept). Its purpose is App. R.6: once the new
+    version is assigned, the OLD version's Required comes off, or every device in that group keeps
+    installing the old version. Dry run first like every write. After -Execute it records what is left and
+    rewrites the supersedence note on this app (Set-IntuneAppSupersedence.ps1 -RefreshNote), so the note
+    never outlives its facts.
+
     Least-privilege Graph APPLICATION permissions (grant via New-PsadtEntraApp.ps1 -IncludeGroupManagement):
       - find a group by name : GroupMember.Read.All
       - create a group       : Group.Create   (the app owns what it creates; NOT the tenant-wide Group.ReadWrite.All)
@@ -31,6 +39,7 @@
 .PARAMETER AppVendor    Optional {AppVendor} token.
 .PARAMETER AppArch      Optional {AppArch} token (default x64).
 .PARAMETER Intents      Subset of required/available/uninstall. Default = every intent that has a template.
+.PARAMETER Remove       Take the named -Intents OFF this app instead of assigning them (see above). Needs -Intents.
 .PARAMETER Execute      Perform the writes. Without it the script is a read-only dry run.
 .PARAMETER GraphToken   Optional bearer token (testing / reuse). Default: Get-GraphToken.ps1.
 .PARAMETER SkillRoot    Config home override; default = the resolved config home.
@@ -52,6 +61,7 @@ param(
     # set" - an error about a value they never typed. Split and validate in the body instead, where a
     # comma-separated list can simply be accepted.
     [string[]]$Intents,
+    [switch]$Remove,
     [switch]$Execute,
     [string]$GraphToken,
     [string]$SkillRoot
@@ -116,6 +126,9 @@ $unknown = @($requestedIntents | Where-Object { $validIntents -notcontains $_ })
 if ($unknown.Count -gt 0) {
     throw "Unknown intent(s): $($unknown -join ', '). Valid values are: $($validIntents -join ', ')."
 }
+if ($Remove -and $requestedIntents.Count -eq 0) {
+    throw "-Remove needs -Intents: name what comes off this app (App. R.6: -Intents required). It never removes everything."
+}
 
 $configured = $validIntents | Where-Object { $naming.$_ }
 $targetIntents = if ($requestedIntents.Count -gt 0) { @($requestedIntents | Where-Object { $configured -contains $_ }) } else { $configured }
@@ -145,7 +158,7 @@ function Get-MailNickname([string]$name) {
 }
 
 Write-Host "Intune app assignment (Graph) - app $AppId" -ForegroundColor White
-Write-Info "Mode: $(if($create){'create + assign'}else{'assign to existing only'}) | membership: $membership | intents: $($targetIntents -join ', ')"
+Write-Info "Mode: $(if ($Remove) { 'REMOVE from this app' } elseif ($create) { 'create + assign' } else { 'assign to existing only' }) | membership: $membership | intents: $($targetIntents -join ', ')"
 
 # Existing assignments (idempotency)
 $existing = @((Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps/$AppId/assignments" -Headers $H).value)
@@ -167,6 +180,33 @@ foreach ($intent in $targetIntents) {
             throw "Graph denied the group lookup ($($e.code)). The Entra app likely lacks GroupMember.Read.All / Group.Create - re-run New-PsadtEntraApp.ps1 -IncludeGroupManagement (Global Admin)."
         }
         throw
+    }
+
+    # -Remove: this app, this intent, the group the scheme resolves - nothing else, and nothing is created.
+    if ($Remove) {
+        $groupId = if ($found.Count -eq 1) { [string]$found[0].id } else { $null }
+        $groupResults.Add([pscustomobject]@{ Intent = $intent; Name = $name; Id = $groupId
+                Action = $(if ($found.Count -gt 1) { 'ambiguous' } elseif ($groupId) { 'resolved' } else { 'missing' }) })
+        $own = @($existing | Where-Object { $groupId -and $_.intent -eq $intent -and "$($_.target.'@odata.type')" -match 'groupAssignmentTarget' -and [string]$_.target.groupId -eq $groupId })
+        foreach ($f in @($existing | Where-Object { $_.intent -eq $intent -and -not ($groupId -and [string]$_.target.groupId -eq $groupId) })) {
+            Write-Info "kept: a $intent assignment on a group outside the naming scheme ($($f.target.groupId)) - -Remove takes only what the scheme resolves"
+        }
+        if (-not $own.Count) {
+            Write-Info "nothing to remove - '$name' carries no $intent assignment of this app"
+            $assignResults.Add([pscustomobject]@{ Intent = $intent; GroupId = $groupId; Action = 'absent' })
+            continue
+        }
+        foreach ($a in $own) {
+            if ($Execute) {
+                $null = Invoke-Graph DELETE "$GraphBase/deviceAppManagement/mobileApps/$AppId/assignments/$($a.id)" -Headers $H
+                Write-Ok "removed ($intent on '$name')"
+                $assignResults.Add([pscustomobject]@{ Intent = $intent; GroupId = $groupId; Action = 'removed' })
+            } else {
+                Write-Info "would REMOVE the $intent assignment on '$name'"
+                $assignResults.Add([pscustomobject]@{ Intent = $intent; GroupId = $groupId; Action = 'would-remove' })
+            }
+        }
+        continue
     }
 
     $groupId = $null; $action = $null
@@ -215,11 +255,13 @@ foreach ($intent in $targetIntents) {
 }
 
 if (-not $Execute) {
-    Write-Host "`n--- DRY RUN (read-only). Re-run with -Execute to create groups + assign. ---" -ForegroundColor Yellow
+    Write-Host "`n--- DRY RUN (read-only). Re-run with -Execute to $(if ($Remove) { 'remove the assignments listed' } else { 'create groups + assign' }). ---" -ForegroundColor Yellow
     foreach ($gr in $groupResults) { Write-Host ("  [{0,-9}] {1,-40} group: {2}{3}" -f $gr.Intent, $gr.Name, $gr.Action, $(if ($gr.Id) { " ($($gr.Id))" } else { '' })) }
+    if ($Remove) { foreach ($ar in $assignResults) { Write-Host ("  [{0,-9}] {1}" -f $ar.Intent, $ar.Action) } }
 }
 else {
-    Write-Host "`nDone. Groups + assignments are set (app NOT removed/modified beyond assignments)." -ForegroundColor Green
+    if ($Remove) { Write-Host "`nDone. The named assignments are off this app (no group, no other intent and no other app was touched)." -ForegroundColor Green }
+    else { Write-Host "`nDone. Groups + assignments are set (app NOT removed/modified beyond assignments)." -ForegroundColor Green }
     # What Intune holds NOW, read back - not what was asked for (0.49.3). Until then nothing was recorded,
     # and the dossier, which could only take assignments from -Metadata, called a real three-group
     # assignment "not yet assigned - a suggestion".
@@ -241,6 +283,20 @@ else {
             }
         } | Out-Null
         Write-Ok "Recorded results.assignment in the manifest ($($rows.Count) assignment(s), read back from Intune)."
+    }
+
+    # A superseded app explains itself in its notes, and that note names its assignments. Taking one off
+    # without rewriting it left "STILL assigned (... required ...)" on an app that no longer was
+    # (2026-09-27). Rewritten by the one script that writes it, from the assignments this app has now.
+    if ($Remove -and @($assignResults | Where-Object Action -eq 'removed').Count) {
+        $parents = @(@((Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps/$AppId/relationships" -Headers $H).value) |
+                Where-Object { $_.'@odata.type' -match 'mobileAppSupersedence' -and $_.targetType -eq 'parent' })
+        foreach ($p in $parents) {
+            Write-Info "This app is superseded by $($p.targetDisplayName) $($p.targetDisplayVersion) - rewriting its supersedence note."
+            $refresh = @{ AppId = [string]$p.targetId; SupersedesAppId = $AppId; RefreshNote = $true; Execute = $true; GraphToken = $token }
+            if ($SkillRoot) { $refresh['SkillRoot'] = $SkillRoot }
+            & (Join-Path $PSScriptRoot 'Set-IntuneAppSupersedence.ps1') @refresh | Out-Null
+        }
     }
 }
 

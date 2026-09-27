@@ -155,3 +155,82 @@ Describe 'the assignment takes its identity from the manifest and records what I
             Should -Throw -ExpectedMessage '*results.upload.appId*'
     }
 }
+
+Describe '-Remove takes the named intents off this app, and nothing else (0.49.3)' {
+    # App. R.6: once the new version is assigned, the OLD version's Required must come off, or every device
+    # in that group - new clients included - installs the old version and supersedence never reaches it.
+    # There was no tool for it, so it was done by hand with a raw Graph DELETE (2026-09-27), and the note on
+    # the old app went on saying "STILL assigned (... required ...)". -Remove is that step: this app only,
+    # the named intents only, the groups its naming scheme resolves only - dry run first.
+    BeforeAll {
+        function Invoke-Graph { param([string]$Method, [string]$Uri, $Body, [hashtable]$Headers, [int]$Depth = 20) }
+        $script:OLD = '11111111-2222-3333-4444-555555555555'
+        $script:NEW = '99999999-2222-3333-4444-555555555555'
+        $script:intents = { param([string]$App) @($global:PsadtFakeTenant.Assignments[$App] | ForEach-Object { "$($_.intent):$($global:PsadtFakeTenant.Groups[$_.target.groupId])" } | Sort-Object) }
+    }
+    BeforeEach {
+        $script:oldHome = $env:PSADT_DEPLOY_HOME
+        $script:rHome = Join-Path $TestDrive ('rhome_' + [guid]::NewGuid().ToString('N'))
+        $script:root = Join-Path $script:rHome 'packages'
+        New-Item $script:root -ItemType Directory -Force | Out-Null
+        $env:PSADT_DEPLOY_HOME = $script:rHome
+        @{ version = 1; paths = @{ packageRoot = $script:root }; intune = @{ groups = @{ enabled = $true; create = $true; membershipType = 'assigned'; naming = @{
+                        available = 'grp-available-%appname%'; required = 'grp-required-%appname%'; uninstall = 'grp-uninstall-%appname%' } } } } |
+            ConvertTo-Json -Depth 6 | Set-Content (Join-Path $script:rHome 'config.json') -Encoding UTF8
+        $d = Join-Path $script:root 'Widget_1.0'; New-Item $d -ItemType Directory -Force | Out-Null
+        Set-Content (Join-Path $d 'Invoke-AppDeployToolkit.ps1') '# launcher'
+        $script:mfOld = Join-Path $d 'psadt-package.json'
+        @{ schema = 1; app = @{ vendor = 'ACME'; name = 'Widget'; version = '1.0'; arch = 'x64' }; package = @{ type = 'installer' }
+           results = @{ upload = @{ appId = $script:OLD } } } | ConvertTo-Json -Depth 6 | Set-Content $script:mfOld -Encoding UTF8
+        $global:PsadtFakeTenant = New-FakeIntuneTenant
+        Add-FakeApp -Id $script:OLD -Name 'Widget' -Version '1.0'
+        Add-FakeApp -Id $script:NEW -Name 'Widget' -Version '2.0'
+        $gAv = Add-FakeGroup -Name 'grp-available-Widget'; $gReq = Add-FakeGroup -Name 'grp-required-Widget'
+        $gUn = Add-FakeGroup -Name 'grp-uninstall-Widget'; $gPilot = Add-FakeGroup -Name 'Pilot devices'
+        foreach ($app in $script:OLD, $script:NEW) {
+            Add-FakeAssignment -AppId $app -Intent 'available' -GroupId $gAv
+            Add-FakeAssignment -AppId $app -Intent 'required' -GroupId $gReq
+            Add-FakeAssignment -AppId $app -Intent 'uninstall' -GroupId $gUn
+        }
+        Add-FakeAssignment -AppId $script:OLD -Intent 'required' -GroupId $gPilot
+        # 2.0 supersedes 1.0, and 1.0 carries the note written while it was still required.
+        $global:PsadtFakeTenant.Relationships[$script:NEW].Add([pscustomobject]@{ '@odata.type' = '#microsoft.graph.mobileAppSupersedence'; targetId = $script:OLD; targetType = 'child'; supersedenceType = 'update'; targetDisplayName = 'Widget'; targetDisplayVersion = '1.0' })
+        $global:PsadtFakeTenant.Relationships[$script:OLD].Add([pscustomobject]@{ '@odata.type' = '#microsoft.graph.mobileAppSupersedence'; targetId = $script:NEW; targetType = 'parent'; supersedenceType = 'update'; targetDisplayName = 'Widget'; targetDisplayVersion = '2.0' })
+        $global:PsadtFakeTenant.Apps[$script:OLD].notes = "[psadt-deploy 2026-09-27] Superseded by 'Widget 2.0' (app id $($script:NEW)), mode 'update' - the installer upgrades in place, no uninstall command is sent. Groups: this version is STILL assigned (available, required, uninstall) - devices in those groups keep receiving it. This app is retained as a rollback target and was not deleted."
+        Mock Invoke-Graph { Invoke-FakeGraph -Method $Method -Uri $Uri -Body $Body }
+    }
+    AfterEach { $env:PSADT_DEPLOY_HOME = $script:oldHome; Remove-Variable -Name PsadtFakeTenant -Scope Global -ErrorAction SilentlyContinue }
+
+    It 'needs the intents named - it never removes "everything"' {
+        { & $script:AssignScript -ManifestPath $script:mfOld -Remove -GraphToken 'opaque' -ErrorAction Stop 6>$null } |
+            Should -Throw -ExpectedMessage '*-Intents*'
+    }
+
+    It 'dry-runs first: it lists what it would remove and removes nothing' {
+        $r = & $script:AssignScript -ManifestPath $script:mfOld -Intents required -Remove -GraphToken 'opaque' 6>$null
+        @($r.Assignments | Where-Object Action -eq 'would-remove').Count | Should -Be 1
+        @($global:PsadtFakeTenant.Calls | Where-Object { $_ -match '^(POST|PATCH|DELETE)' }).Count | Should -Be 0
+    }
+
+    It 'takes Required off the scheme group of THIS app, and keeps everything else' {
+        & $script:AssignScript -ManifestPath $script:mfOld -Intents required -Remove -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        (& $script:intents $script:OLD) | Should -Be @('available:grp-available-Widget', 'required:Pilot devices', 'uninstall:grp-uninstall-Widget')
+        (& $script:intents $script:NEW) | Should -Be @('available:grp-available-Widget', 'required:grp-required-Widget', 'uninstall:grp-uninstall-Widget')
+        $global:PsadtFakeTenant.Groups.Count | Should -Be 4 -Because 'a group is never deleted'
+    }
+
+    It 'records what is left, read back, in the manifest' {
+        & $script:AssignScript -ManifestPath $script:mfOld -Intents required -Remove -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        $g = @((Get-Content $script:mfOld -Raw | ConvertFrom-Json).results.assignment.groups)
+        @($g | ForEach-Object { "$($_.Type):$($_.Group)" }) | Should -Be @('Available:grp-available-Widget', 'Required:Pilot devices', 'Uninstall:grp-uninstall-Widget')
+    }
+
+    It 'rewrites the supersedence note so it matches what is left' {
+        & $script:AssignScript -ManifestPath $script:mfOld -Intents required -Remove -GraphToken 'opaque' -Execute 6>$null | Out-Null
+        $lines = @(([string]$global:PsadtFakeTenant.Apps[$script:OLD].notes -split "`r?`n") | Where-Object { $_ -match 'Superseded by' })
+        $lines.Count | Should -Be 1
+        $lines[0] | Should -Not -Match 'STILL assigned \(available, required, uninstall\)'
+        # A required assignment on a group outside the naming scheme is still there, and the note says so.
+        $lines[0] | Should -Match 'STILL assigned as required'
+    }
+}

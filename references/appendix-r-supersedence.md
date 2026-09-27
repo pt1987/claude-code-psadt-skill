@@ -204,7 +204,21 @@ nothing in the portal shows the two facts on one screen.
 So the moment the new version is assigned, the old one's **Required** assignment must be narrowed or
 removed. `Set-IntuneAppSupersedence.ps1` reads the superseded app's assignments and says so when it finds
 `required`; it reports rather than refuses, because during a staged rollout both are legitimately
-assigned for a while, and it never touches another app's assignments itself (`SECURITY.md`).
+assigned for a while, and it never touches another app's assignments itself (`SECURITY.md`). It names the
+exact command instead (0.49.3):
+
+```powershell
+# dry run first - it lists the one assignment it would take off
+pwsh scripts/Invoke-IntuneAppAssignment.ps1 -ManifestPath '<old pkg>\psadt-package.json' -Intents required -Remove
+# then the same with -Execute
+```
+
+`-Remove` takes only the intents named, only off that app, only on the groups its naming scheme resolves -
+a Required assignment on any other group is reported and kept. It records what is left
+(`results.assignment`) and rewrites the note on the old app from the assignments it has now
+(`Set-IntuneAppSupersedence.ps1 -RefreshNote`). Until 0.49.3 that note was a snapshot: written while
+Required still stood, it went on saying so after Required was gone, and a re-run appended a second line
+under the false one. The note now replaces its own line and says per intent what is left.
 
 *Available* on the old app is a different matter and can stay: "Only superseding apps are shown in the
 company portal and can be installed", so it stops being offered on its own.
@@ -239,7 +253,7 @@ Retirement is therefore four deliberate steps, in this order:
 
 1. **Supersede** the old app, so it stops being offered - "Only superseding apps are shown in the company
    portal and can be installed."
-2. **Remove the old app's Required assignment immediately** - not later. While it stands, every device in
+2. **Remove the old app's Required assignment immediately** (`-Intents required -Remove`, R.6) - not later. While it stands, every device in
    that group installs the old version, new clients included, and supersedence cannot reach them (R.6).
    Then narrow the rest once the new version's install status covers the fleet. Keep the app itself.
 3. **Add an Uninstall assignment** only if the old version must actively come off devices that the

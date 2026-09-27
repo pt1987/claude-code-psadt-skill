@@ -217,7 +217,8 @@ Config, naming rules and the permission model: Appendix M. Only runs when the us
 `Invoke-IntuneAppAssignment.ps1` asserts before it creates anything. Dry-run first, like every write.
 `-ManifestPath <pkg>\psadt-package.json` supplies the app id (`results.upload.appId`) and the identity
 (0.49.3); after `-Execute` the assignments are read back and recorded as `results.assignment`, and the
-dossier renders them from there - regenerate it.
+dossier renders them from there - regenerate it. With a supersedence, take Required off the OLD version as
+soon as the new one is assigned: `-ManifestPath <old pkg> -Intents required -Remove` (App. R.6).
 
 ---
 

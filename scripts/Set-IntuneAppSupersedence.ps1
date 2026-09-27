@@ -73,6 +73,10 @@ param(
     # is visible to someone who opens the OLD app in the portal - the relationship itself shows on the
     # superseding app's blade, so the version that stopped installing explains itself nowhere.
     [switch]$NoAnnotate,
+    # Rewrite only the note on the superseded app, from the assignments it has NOW (0.49.3); the
+    # relationships are not re-sent, and the edge must already exist. Invoke-IntuneAppAssignment.ps1
+    # -Remove calls this after it took an intent off the old version, so the note never outlives its facts.
+    [switch]$RefreshNote,
     [string]$ManifestPath,
     [switch]$Execute,
     [string]$GraphToken,
@@ -96,6 +100,26 @@ if ($targets.Count -gt $MaxGraphNodes) {
 }
 
 if ($ManifestPath -and -not (Test-Path -LiteralPath $ManifestPath)) { throw "ManifestPath not found: $ManifestPath" }
+if ($RefreshNote -and $NoAnnotate) { throw '-RefreshNote rewrites the note, and -NoAnnotate says not to - pass one of them.' }
+
+# The packages under paths.packageRoot, by the app id their own upload recorded (0.49.3). Read-only. Used to
+# name the exact command for a superseded app that is still Required, and to record results.supersededBy.
+function Get-PackageManifestsByAppId {
+    $byId = @{}
+    try {
+        $cfgS = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot
+        $pkgRoot = [string]$cfgS.Config.paths.packageRoot
+        if ($pkgRoot -and (Test-Path -LiteralPath $pkgRoot)) {
+            foreach ($m in @(Get-ChildItem -LiteralPath $pkgRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object { Join-Path $_.FullName 'psadt-package.json' } | Where-Object { Test-Path -LiteralPath $_ })) {
+                try { $j = Get-Content -LiteralPath $m -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+                $upId = if ($j.results -and $j.results.upload) { [string]$j.results.upload.appId } else { '' }
+                if ($upId) { $byId[$upId.ToLowerInvariant()] = $m }
+            }
+        }
+    } catch { }
+    return $byId
+}
+$manifestsById = Get-PackageManifestsByAppId
 
 # --- Token ------------------------------------------------------------------------------------------
 $token = if ($GraphToken) { $GraphToken } else { (& (Join-Path $PSScriptRoot 'Get-GraphToken.ps1') -SkillRoot $SkillRoot).Token }
@@ -150,6 +174,19 @@ if ($backwards.Count) { Write-Warn2 "Direction is backwards by displayVersion; p
 Write-Step 'Read the current relationships (read-only)'
 $before = @((Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps/$AppId/relationships" -Headers $H).value)
 Write-Info "$($before.Count) relationship(s) on the superseding app today."
+
+if ($RefreshNote) {
+    # Only for a supersedence that exists: this mode writes the note and nothing else.
+    $children = @($before | Where-Object { $_.'@odata.type' -match 'mobileAppSupersedence' -and $_.targetType -eq 'child' })
+    $childIds = @($children | ForEach-Object { [string]$_.targetId })
+    $absent = @($targets | Where-Object { $childIds -notcontains $_ })
+    if ($absent.Count) {
+        throw "$($absent -join ', ') is not superseded by $AppId yet - -RefreshNote only rewrites the note of an existing supersedence. Run this script without -RefreshNote first."
+    }
+    # The note states the mode the relationship HAS, not this parameter's default.
+    $modes = @($children | Where-Object { $targets -contains [string]$_.targetId } | ForEach-Object { [string]$_.supersedenceType } | Where-Object { $_ } | Select-Object -Unique)
+    if ($modes.Count -eq 1 -and -not $PSBoundParameters.ContainsKey('SupersedenceType')) { $SupersedenceType = $modes[0] }
+}
 
 $merged = Merge-AppRelationships -Existing $before -SupersedeTargetIds $targets -SupersedenceType $SupersedenceType
 
@@ -208,8 +245,14 @@ foreach ($o in $oldApps) {
     }
 }
 foreach ($s in $supersededStillRequired) {
+    # The exact command, not "narrow or remove it" (0.49.3): with no tool for it, the step was done by hand
+    # with a raw Graph DELETE, and the note on the old app went on saying it was still required.
+    $oldMf = $manifestsById[([string]$s.id).ToLowerInvariant()]
+    $cmd = if ($oldMf) { "pwsh scripts/Invoke-IntuneAppAssignment.ps1 -ManifestPath '$oldMf' -Intents required -Remove" }
+           else { "pwsh scripts/Invoke-IntuneAppAssignment.ps1 -AppId $($s.id) -AppName '$($s.displayName)' -Intents required -Remove" }
     Write-Warn2 ("The superseded app '$($s.displayName) $($s.displayVersion)' is STILL assigned as required. A device in that group and not in the superseding app's group installs the OLD version, " +
-        "and supersedence will not move it forward - it only reaches devices targeted by the superseding app. Narrow or remove that required assignment (App. R.7); this script never touches another app's assignments.")
+        "and supersedence will not move it forward - it only reaches devices targeted by the superseding app. Take it off the old version (App. R.6, dry run first, then -Execute): $cmd - " +
+        "it rewrites this note to match. This script never touches another app's assignments.")
 }
 
 if (-not $Execute) {
@@ -225,6 +268,12 @@ if (-not $Execute) {
 # Only updateRelationships is ever called. No DELETE is issued here or anywhere in this script: an app,
 # an assignment and a relationship this script did not merge are all left alone.
 
+if ($RefreshNote) {
+    # The edge was read above and exists; nothing about it changes.
+    $after = $before; $missing = @(); $verified = $true
+    Write-Info "Relationships left as they are (-RefreshNote)."
+}
+else {
 Write-Step 'Set the relationships'
 $null = Invoke-Graph POST "$GraphBase/deviceAppManagement/mobileApps/$AppId/updateRelationships" -Headers $H -Body @{ relationships = @($merged) }
 Write-Ok "updateRelationships accepted."
@@ -238,6 +287,7 @@ $verified = ($missing.Count -eq 0)
 
 if ($verified) { Write-Ok "Verified: $AppId supersedes $($targets -join ', ') ($SupersedenceType)." }
 else { Write-Fail "Read-back does not show: $($missing -join ', '). The call was accepted but the chain is not what was asked for." }
+}
 
 # --- Annotate the superseded app, so the OLD version explains itself in the portal -------------------
 if (-not $NoAnnotate) {
@@ -251,16 +301,26 @@ if (-not $NoAnnotate) {
             $existingNotes = [string]$cur.notes
 
             $intentsNow = Get-AppIntents $o.id
+            $intentList = (@($intentsNow) | Sort-Object -Unique) -join ', '
+            # Said per intent (0.49.3). "STILL assigned (...) - devices in those groups keep receiving it" was
+            # wrong for what R.6 leaves behind: an available version is no longer offered once superseded,
+            # and an uninstall assignment removes it rather than delivering it.
             $assignmentNote = if ($null -eq $intentsNow) { 'assignment state could not be read' }
             elseif (@($intentsNow).Count -eq 0) { 'this version no longer targets any group; the superseding app carries the assignments' }
-            else { "this version is STILL assigned ($((@($intentsNow) | Sort-Object -Unique) -join ', ')) - devices in those groups keep receiving it" }
+            elseif (@($intentsNow) -contains 'required') { "this version is STILL assigned as required ($intentList) - devices in that group keep installing it, and supersedence does not move them forward (App. R.6)" }
+            else { "required is off; still assigned: $intentList - Company Portal offers only the superseding app, and an uninstall assignment still removes this version" }
 
             $line = "[psadt-deploy $stamp] Superseded by '$($newApp.displayName) $($newApp.displayVersion)' (app id $AppId), mode '$SupersedenceType'" +
             $(if ($SupersedenceType -eq 'replace') { ' - the previous version is uninstalled before the new one installs' } else { ' - the installer upgrades in place, no uninstall command is sent' }) +
             ". Groups: $assignmentNote. This app is retained as a rollback target and was not deleted."
 
-            if ($existingNotes -and $existingNotes.Contains($line)) { Write-Info "Note already present on $($o.id)."; continue }
-            $notes = if ([string]::IsNullOrWhiteSpace($existingNotes)) { $line } else { $existingNotes.TrimEnd() + "`n" + $line }
+            # This script's OWN earlier line for this superseding app is replaced, never kept below the new
+            # one (0.49.3): appending left the old statement - by then false - in place. Every other line,
+            # an admin's included, is kept as it was.
+            $ownLine = '^\[psadt-deploy [^\]]*\] Superseded by .*\(app id ' + [regex]::Escape($AppId) + '\)'
+            $others = @(($existingNotes -split "`r?`n") | Where-Object { $_.Trim() -and $_ -notmatch $ownLine })
+            $notes = (@($others) + $line) -join "`n"
+            if ($notes -eq $existingNotes.TrimEnd()) { Write-Info "Note already current on $($o.id)."; continue }
 
             # Intune caps notes at 1024 characters; a refused PATCH would lose the record silently.
             if ($notes.Length -gt 1024) { $notes = $notes.Substring($notes.Length - 1024) }
@@ -296,21 +356,11 @@ if ($ManifestPath) {
 
 # --- ...and on the superseded package (0.49.3) -----------------------------------------------------------
 # The OLD package's manifest - and so its dossier - never learned that it had been superseded. Its manifest
-# is found by the app id its own upload recorded (results.upload.appId), under paths.packageRoot. Read-only
-# scan; best effort: a superseded version packaged elsewhere is simply not found, and said so.
+# is found by the app id its own upload recorded (results.upload.appId), under paths.packageRoot (the index
+# read at the top). Best effort: a superseded version packaged elsewhere is simply not found, and said so.
 try {
-    $cfgS = & (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1') -SkillRoot $SkillRoot
-    $pkgRoot = [string]$cfgS.Config.paths.packageRoot
-    $byIdPath = @{}
-    if ($pkgRoot -and (Test-Path -LiteralPath $pkgRoot)) {
-        foreach ($m in @(Get-ChildItem -LiteralPath $pkgRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object { Join-Path $_.FullName 'psadt-package.json' } | Where-Object { Test-Path -LiteralPath $_ })) {
-            try { $j = Get-Content -LiteralPath $m -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
-            $upId = if ($j.results -and $j.results.upload) { [string]$j.results.upload.appId } else { '' }
-            if ($upId) { $byIdPath[$upId.ToLowerInvariant()] = $m }
-        }
-    }
     foreach ($o in $oldApps) {
-        $oldMf = $byIdPath[([string]$o.id).ToLowerInvariant()]
+        $oldMf = $manifestsById[([string]$o.id).ToLowerInvariant()]
         if (-not $oldMf) { Write-Info "No package under paths.packageRoot records app $($o.id) as its upload; its manifest was not updated."; continue }
         & (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath (Split-Path -Parent $oldMf) -Updates @{
             'results.supersededBy' = @{
