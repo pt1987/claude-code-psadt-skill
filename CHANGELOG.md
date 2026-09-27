@@ -2,7 +2,17 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
-## Unreleased
+## 0.49.3 - 2026-09-27 - A second live run found the pipeline disagreeing with itself
+
+A second live run packaged another application twice, an Inno Setup installer this time: the older
+version, then its successor with supersedence - Silent, assigned to the available, required and uninstall
+groups. Both went GREEN in a visible Windows Sandbox, 26 of 26 assertions each, and are in Intune. The run
+found thirteen defects, and most of them were not inside any one script but between them: the dossier and
+the upload described different apps, the SYSTEM-test gate lived in the one step documented to run before
+the verdict exists, and the note on the superseded version went false on the very next step Appendix R
+prescribes. Each is fixed test-first, and the classes behind them now have tests of their own - one that
+runs the upload and the dossier on the same manifest and compares them, and a small fake tenant that the
+scripts writing to Intune run against. Every fix was checked again on the same real packages.
 
 **Every package runs Silent, without exception - and the skill now says so where it binds.** 0.49.2
 added a DeployMode choice to Gate 2 and to the MSI and EXE generators, and marked `Auto` (a close prompt
@@ -88,6 +98,8 @@ records what is left, and rewrites the note through `Set-IntuneAppSupersedence.p
 supersedence script replaces its own line instead of appending (an admin's note is kept), says per intent
 what the remaining assignments mean, and names the exact removal command when the old version is still
 Required.
+
+Suite 1088 -> 1173.
 
 ## 0.49.2 - 2026-09-27 - A live two-version run found the skill contradicting itself
 

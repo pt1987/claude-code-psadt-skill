@@ -13,6 +13,7 @@
 - [2026-09-11 - Google Chrome: the sandbox ran nothing as SYSTEM and blamed the package](#2026-09-11---google-chrome-the-sandbox-ran-nothing-as-system-and-blamed-the-package)
 - [2026-09-14 - Citrix Workspace + Greenshot: five faults that all blamed the package](#2026-09-14---citrix-workspace--greenshot-five-faults-that-all-blamed-the-package)
 - [2026-09-23 - Google Chrome 154: a GREEN package that would have looped in production](#2026-09-23---google-chrome-154-a-green-package-that-would-have-looped-in-production)
+- [2026-09-27 - CPU-Z 2.21, then 3.01: every script green, the pipeline disagreeing with itself](#2026-09-27---cpu-z-221-then-301-every-script-green-the-pipeline-disagreeing-with-itself)
 
 ## Appendix G: Lessons Learned (from real-world incidents)
 
@@ -400,3 +401,26 @@ it (`self-updating`), with any earlier package's different ProductCode as eviden
 
 None of these was a PSADT problem. Every one was the pipeline trusting the operator to remember a rule
 that a script could check - which is the whole reason the rules exist as scripts.
+
+### 2026-09-27 - CPU-Z 2.21, then 3.01: every script green, the pipeline disagreeing with itself
+
+Two versions of an Inno Setup application, end to end: research, scaffold, pre-flight, a visible Windows
+Sandbox full gate, package, logo, dossier, upload, assignment to the available, required and uninstall
+groups, and supersedence 3.01 over 2.21 (`update`). Both went GREEN with 26 of 26 assertions and are in
+Intune. The run still found thirteen defects - and most of them were not inside any one script. Each script
+had its tests, and each test was green. The defects sat between the scripts.
+
+| What went wrong | Cost | Anchor since 0.49.3 |
+|---|---|---|
+| A helper in the Extensions module read the launcher's `$adtSession`, which a module function cannot see: the SupportFiles path came out empty | a 60001 and one full sandbox run | pre-flight check 5 is RED on it, with the line and the fix |
+| The version resource padded the product name with 49 spaces; once the verified store entry outranked the engine default, the ladder also dropped the engine's `/LOG` switch and said "no engine resolved" | wrong search queries, a lost installer log | trimmed where the value enters (`Get-PsadtInstallerEngine.ps1`); the log switch comes from any candidate that has one |
+| The dossier said Developer = vendor, a branded note and "Windows 10 22H2"; the upload sent an empty developer, empty notes and 1607 | the approver read a different app than Intune got | `Resolve-PsadtIntuneAppInfo`; a test runs upload and dossier on one manifest and compares them |
+| The SYSTEM-test gate was enforced only by the dossier refusing to render - the step SKILL.md runs while the sandbox is still going. The upload never checked | the one binding gate sat on the wrong step | `.TestGate`, derived once; the upload refuses `-Execute` without it; the dossier shows it |
+| The old version's Required had to come off (App. R.6) and nothing could do it, so it went through a raw Graph DELETE; the note on the old app kept saying "STILL assigned (... required ...)", and a re-run appended instead of correcting | a false audit note in the tenant | `Invoke-IntuneAppAssignment.ps1 -Remove`; the note replaces its own line and is rewritten after every removal |
+| The assignment was recorded nowhere, so the dossier called three live assignments "a suggestion" | a dossier contradicting the tenant | `-ManifestPath` on the assignment; `results.assignment` read back and rendered |
+
+**General lesson:** a test per script proves each script against its own idea of the data. What an approver
+reads, what Intune receives and what the tenant holds afterwards are produced by different scripts, and
+nothing compared them. Two kinds of test now do: one that feeds the SAME manifest to the upload and the
+dossier and compares the fields, and a small fake tenant (`tests/_helpers.ps1`) that the tenant-writing
+scripts actually run against, so what they record after a write is checked against what the tenant holds.

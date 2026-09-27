@@ -110,7 +110,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **1088 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **1173 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -128,7 +128,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 1088 Pester tests.
+verified against a live tenant. The helper scripts are covered by 1173 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -180,7 +180,17 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.49.2 - A live two-version run found the skill contradicting itself.** Packaging one app
+Latest: **0.49.3 - A second live run found the pipeline disagreeing with itself.** Packaging another app
+twice - an Inno Setup installer, Silent, three groups, supersedence - went GREEN twice and still found
+thirteen defects, most of them between the scripts rather than inside one. The upload now enforces the
+SYSTEM-test gate itself, before any token, instead of relying on the dossier to refuse. The dossier and
+the upload take their App-information fields from one derivation, and a test compares the two on the same
+manifest. Pre-flight catches a helper that reads the launcher's `$adtSession` (a 60001 in the VM before).
+Assignment and supersedence record what Intune holds, a new `-Remove` takes the old version's Required
+off (App. R.6), and the note on a superseded version is rewritten instead of going stale. The
+tenant-writing scripts now run against a fake tenant in the tests.
+
+Previously: **0.49.2 - A live two-version run found the skill contradicting itself.** Packaging one app
 twice, end to end, exposed four places where the skill said one thing and did another. The Windows
 Sandbox kept the package folder
 mapped for the whole run, so the manifest writes of Phases 7 and 8 - done in that same window by design -
@@ -206,10 +216,3 @@ first, the app mutex, the leftovers, both decision gates - was recorded in the m
 read again, because every store is keyed by the installer hash and a new version has a new hash.
 `Get-PsadtPriorPackage.ps1` finds the previous package by application identity instead and offers what it
 learned for confirmation. Purely additive: nothing that passes today starts failing.
-
-Previously: **0.48.0 - The figure guards only ever read the figures.** The landing page described a skill two
-releases old, and the guards could not see it: every site assertion checked a number, never whether the
-list behind it was complete. The engine tile correctly said 19 while the table under it showed 14 rows.
-The pre-flight gate was described as ten checks and runs fourteen. Phase 9 still told the reader to wire
-supersedence themselves. The page is corrected, three wrong statements in the repo with it, and the
-guards now compare lists name-by-name instead of counting.
