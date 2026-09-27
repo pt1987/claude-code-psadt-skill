@@ -74,6 +74,15 @@ param(
     # Uninstall key name, which is the strongest match rung 1 has.
     [string]$ProductCode,
 
+    # The identity the OPERATOR chose for the application - app.vendor, app.name, app.version - and the
+    # key a previous package of it is found by (Get-PsadtPriorPackage.ps1, rung 3). Not the binary's
+    # ProductName: for many products that carries the version and never matches its own successor.
+    # Taken from the package manifest when -Path already sits in <pkg>\Files beside one. -AppVersion is
+    # the version being packaged now, so that package is never returned as its own predecessor.
+    [string]$AppVendor,
+    [string]$AppName,
+    [string]$AppVersion,
+
     # Uninstall roots to read. Default: the four views below. Exists so the tests can point rung 1 at
     # Pester's TestRegistry drive instead of the machine's real hives.
     [string[]]$UninstallRoots,
@@ -88,7 +97,7 @@ param(
     # Additionally write the JSON to this file.
     [string]$JsonPath,
 
-    # Unused downstream; accepted so callers can pass it through.
+    # Config home override, handed to the prior-package lookup (its package index lives there).
     [string]$SkillRoot,
 
     # Where earlier packages live (default: config paths.packageRoot). Read for the self-updating
@@ -400,6 +409,61 @@ if ($resolvedName -and (Test-Path -LiteralPath $refDir)) {
     Add-Miss 3 'local-corpus' 'no product name resolved, nothing to search the corpus for'
 }
 
+# A previous package of the same application - what THIS machine already learned about it. Every store
+# is keyed by the installer SHA256, so version N+1 misses them all by construction; the manifest of
+# version N holds the answers, and Get-PsadtPriorPackage.ps1 finds it by the operator's identity
+# (vendor + name). Until 0.49.2 SKILL.md said the ladder asked it, and the ladder never did: measured
+# 2026-09-27, a second version got an AgentBudget of 2 for two questions the first had answered.
+$pkgManifest = $null
+if ($installerPresent) {
+    # The installer already sits in a package: <pkg>\Files\...\<installer> beside <pkg>\psadt-package.json.
+    $walk = Split-Path -Parent $Path
+    while ($walk) {
+        if ((Split-Path -Leaf $walk) -eq 'Files') {
+            $pkgDir = Split-Path -Parent $walk
+            if ($pkgDir -and (Test-Path -LiteralPath (Join-Path $pkgDir 'psadt-package.json')) -and
+                (Test-Path -LiteralPath (Join-Path $pkgDir 'Invoke-AppDeployToolkit.ps1'))) {
+                $pkgManifest = Join-Path $pkgDir 'psadt-package.json'
+            }
+            break
+        }
+        $up = Split-Path -Parent $walk
+        if (-not $up -or $up -eq $walk) { break }
+        $walk = $up
+    }
+}
+$idVendor = $AppVendor; $idName = $AppName; $idVersion = $AppVersion
+if ($pkgManifest) {
+    try {
+        $self = Get-Content -LiteralPath $pkgManifest -Raw -Encoding UTF8 | ConvertFrom-Json
+        if (-not $idVendor)  { $idVendor  = [string](Get-Prop (Get-Prop $self 'app') 'vendor') }
+        if (-not $idName)    { $idName    = [string](Get-Prop (Get-Prop $self 'app') 'name') }
+        if (-not $idVersion) { $idVersion = [string](Get-Prop (Get-Prop $self 'app') 'version') }
+    } catch { Add-Miss 3 'prior-package' "the package manifest beside the installer could not be read: $($_.Exception.Message)" }
+}
+. (Join-Path $PSScriptRoot '_AppKey.ps1')
+$appKey = ConvertTo-PsadtAppKey -Vendor $idVendor -Name $idName
+$prior = $null
+if ($appKey) {
+    try {
+        $priorArgs = @{ Vendor = $idVendor; Name = $idName }
+        if ($idVersion)   { $priorArgs['Version'] = $idVersion }
+        if ($PackageRoot) { $priorArgs['PackageRoot'] = $PackageRoot }
+        if ($SkillRoot)   { $priorArgs['SkillRoot'] = $SkillRoot }
+        $prior = & (Join-Path $PSScriptRoot 'Get-PsadtPriorPackage.ps1') @priorArgs
+        Add-Tool 'Get-PsadtPriorPackage.ps1' $true $null
+    } catch {
+        Add-Tool 'Get-PsadtPriorPackage.ps1' $false $_.Exception.Message
+        $prior = $null
+    }
+    if (-not ($prior -and $prior.Found)) {
+        Add-Miss 3 'prior-package' "no earlier package of '$appKey' on this machine"
+        $prior = $null
+    }
+} else {
+    Add-Miss 3 'prior-package' 'no application identity (-AppVendor / -AppName, or a package manifest beside the installer), so no earlier package can be looked up'
+}
+
 # Candidates are DERIVED, never constructed. There is deliberately no https://<publisher>.com/docs
 # guess here: a URL nobody named is a guess wearing a field name.
 function Add-Doc([string]$Url, [string]$Kind, [string]$Source, [string]$SourceRef, [string]$Why) {
@@ -427,8 +491,8 @@ $rungInfo.Add([pscustomobject]@{
     Rung     = 3
     Name     = 'written-down'
     Ran      = $true
-    Context  = "corpus hits $corpusTotal, named URLs $($docCands.Count)"
-    Findings = $corpusHit.Count + $docCands.Count
+    Context  = "corpus hits $corpusTotal, named URLs $($docCands.Count), earlier package $(if ($prior) { [string]$prior.Version } else { 'none' })"
+    Findings = $corpusHit.Count + $docCands.Count + $(if ($prior) { 1 } else { 0 })
 })
 
 # ---------------------------------------------------------------------------------------------------
@@ -450,7 +514,7 @@ function New-Question {
         Confidence = 'none'; Evidence = @(); ClosedBy = $null; CanCloseLocally = $CanCloseLocally
         Severity = $Severity; Family = $Family; Resolution = 'dispatch-agent'; WhyOpen = $null
         SuggestedQuery = @(); Sources = @(); KnownContext = @(); AcceptanceCriteria = $null
-        FoldInto = $null; AgentPromptHint = $null
+        FoldInto = $null; AgentPromptHint = $null; CarriedAnswer = $null; CarriedFrom = $null
     }
     $questions.Add($q)
     return $q
@@ -673,7 +737,11 @@ if ($isMsi -and $resolvedName -and $resolvedCode) {
             $pm = $null
             try { $pm = Get-Content -LiteralPath $pmFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
             $pmCode = [string](Get-Prop (Get-Prop $pm 'package') 'productCode')
-            if ([string](Get-Prop (Get-Prop $pm 'app') 'name') -eq $resolvedName -and $pmCode -and $pmCode -ne $resolvedCode) {
+            # The app key as well as the name: a ProductName that carries the version ('<name> 2.9.0')
+            # never equals app.name, so the name alone found no earlier build of such a product at all.
+            $sameApp = ([string](Get-Prop (Get-Prop $pm 'app') 'name') -eq $resolvedName) -or
+                       ($appKey -and (Get-PsadtAppKeyFromManifest -Manifest $pm) -eq $appKey)
+            if ($sameApp -and $pmCode -and $pmCode -ne $resolvedCode) {
                 $priorBuilds.Add([pscustomobject]@{
                     Version = [string](Get-Prop (Get-Prop $pm 'app') 'version'); ProductCode = $pmCode; Manifest = $pmFile.FullName
                 })
@@ -689,7 +757,7 @@ if (-not $isMsi) {
         $pb = $priorBuilds[0]
         $qSelfUpd.Evidence = @([pscustomobject]@{
             Rung = 3; Source = 'package-history'; SourceRef = $pb.Manifest; Value = $pb.ProductCode; Confidence = 'high'
-            Detail = "a previous package of $resolvedName ($($pb.Version)) has ProductCode $($pb.ProductCode), this build $resolvedCode - the ProductCode changes per build"
+            Detail = "a previous package of $(if ($idName) { $idName } else { $resolvedName }) ($($pb.Version)) has ProductCode $($pb.ProductCode), this build $resolvedCode - the ProductCode changes per build"
         })
     }
 }
@@ -718,6 +786,37 @@ if ($psadtVersion -and @($psadtMissing).Count -eq 0) {
     # Never an agent either way: a rename is a fact about a file on disk, not about the internet.
     Set-Open $qDrift 'PSAppDeployToolkit is not installed, so there is nothing to compare against' 'accept-unanswered'
     $qDrift.Confidence = 'low'
+}
+
+# ---------------------------------------------------------------------------------------------------
+# Carry what the previous version answered - offered for confirmation, never closed
+# ---------------------------------------------------------------------------------------------------
+# A question the ladder would send to an agent, and that the previous package of this application
+# answered (research.answers.<id>), gets that answer at confidence LOW: Provisional, so it still has to
+# be confirmed for this version - a vendor changes an installer between versions, and last year's
+# finding applied unseen is worse than one re-made. 'high' would close it and reset its Resolution,
+# which is a silent pass of exactly the question pre-flight exists to hold open.
+# Runs before the folds, so a carried question is neither a carrier nor a rider. An answer to a question
+# the ladder would NOT dispatch travels as evidence only.
+$carriedAnswers = $(if ($prior) { Get-Prop (Get-Prop $prior.Carry 'research') 'answers' } else { $null })
+if ($carriedAnswers) {
+    foreach ($q in $questions) {
+        $val = Get-Prop $carriedAnswers $q.Id
+        if ($null -eq $val -or [string]::IsNullOrWhiteSpace([string]$val)) { continue }
+        $text = $(if ($val -is [string]) { $val } else { $val | ConvertTo-Json -Compress -Depth 6 })
+        $detail = "answered for version $($prior.Version) of this application - confirm it still holds for this one"
+        if ($q.Resolution -eq 'dispatch-agent' -and $q.Confidence -eq 'none') {
+            Set-Answer $q $text 'low' 3 'prior-package' ([string]$prior.ManifestPath) $detail
+            $q.CarriedAnswer = $text
+            $q.CarriedFrom = [string]$prior.Version
+            Set-Open $q ("carried from $($prior.Version): confirm it for this version and record it as research.answers.$($q.Id)") 'confirm-carried'
+        } else {
+            $q.Evidence = @($q.Evidence) + @([pscustomobject]@{
+                Rung = 3; Source = 'prior-package'; SourceRef = [string]$prior.ManifestPath; Value = $text
+                Confidence = 'low'; Detail = $detail
+            })
+        }
+    }
 }
 
 # ---------------------------------------------------------------------------------------------------
@@ -875,6 +974,9 @@ $open = @($questions | Where-Object { $_.Status -eq 'Open' -and $_.Resolution -e
 # anything looking wrong. Every question is now Closed, open, or deferred - by construction.
 $openIds = @($open | ForEach-Object { $_.Id })
 $deferred = @($questions | Where-Object { $_.Status -ne 'Closed' -and $_.Id -notin $openIds })
+# A VIEW of Deferred, not a fourth list: a carried question stays deferred (no agent), and this names the
+# ones the operator has to confirm rather than wait for.
+$carried = @($questions | Where-Object { $_.Resolution -eq 'confirm-carried' })
 
 $result = [pscustomobject]@{
     SchemaVersion        = 1
@@ -928,12 +1030,15 @@ $result = [pscustomobject]@{
     Questions            = $questions.ToArray()
     OpenQuestions        = $open
     Deferred             = $deferred
+    Carried              = $carried
+    PriorPackage         = $(if ($prior) { [pscustomobject]@{ Version = $prior.Version; ManifestPath = $prior.ManifestPath; AppKey = $prior.AppKey } } else { $null })
     AgentBudget          = $open.Count
     Summary              = [pscustomobject]@{
         Closed      = @($questions | Where-Object { $_.Status -eq 'Closed' }).Count
         Provisional = @($questions | Where-Object { $_.Status -eq 'Provisional' }).Count
         Open        = @($questions | Where-Object { $_.Status -eq 'Open' }).Count
         Deferred    = $deferred.Count
+        Carried     = $carried.Count
         AgentBudget = $open.Count
     }
     Warnings             = $warnings.ToArray()
@@ -943,15 +1048,17 @@ if ($JsonPath) { $result | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $
 
 # Recorded per installer hash so pre-flight can hold the package RED while a question that was open
 # here has no answer in the manifest (research.answers.<id>). Everything that dispatches an agent or
-# folds into one counts - a folded question is answered by that agent, not by nobody.
+# folds into one counts - a folded question is answered by that agent, not by nobody - and so does a
+# carried answer: it costs no agent, but it is last version's finding until someone confirms it.
 $sha = [string]$result.Identity.Sha256
 if ($sha) {
     try {
         $store = $EvidenceStore
         if (-not $store) { $store = Join-Path ([string](& (Join-Path $PSScriptRoot 'Get-PsadtConfig.ps1')).Home) 'evidence' }
         New-Item -ItemType Directory -Path $store -Force | Out-Null
-        $mustAnswer = @($questions | Where-Object { $_.Status -eq 'Open' -and $_.Resolution -in @('dispatch-agent', 'folded') } |
-            ForEach-Object { [pscustomobject]@{ Id = $_.Id; Question = $_.Question; Severity = $_.Severity; FoldInto = $_.FoldInto } })
+        $mustAnswer = @($questions | Where-Object { $_.Resolution -eq 'confirm-carried' -or ($_.Status -eq 'Open' -and $_.Resolution -in @('dispatch-agent', 'folded')) } |
+            ForEach-Object { [pscustomobject]@{ Id = $_.Id; Question = $_.Question; Severity = $_.Severity; FoldInto = $_.FoldInto
+                                                Resolution = $_.Resolution; CarriedFrom = $_.CarriedFrom } })
         [pscustomobject]@{
             SchemaVersion = 1; GeneratedAt = $result.GeneratedAt; Sha256 = $sha
             ProductName = $resolvedName; ProductVersion = $resolvedVersion; ProductCode = $resolvedCode
@@ -993,10 +1100,22 @@ if ($result.AgentBudget -eq 0) {
         Write-Host ("      why open: {0}" -f $q.WhyOpen) -ForegroundColor DarkGray
     }
 }
-if ($result.Deferred.Count -gt 0) {
+if ($result.Carried.Count -gt 0) {
+    Write-Host ""
+    Write-Host ("CARRIED from {0} - answered for the previous version; no agent, but confirm each for this one:" -f $result.PriorPackage.Version) -ForegroundColor Cyan
+    Write-Host ("  (from {0})" -f $result.PriorPackage.ManifestPath) -ForegroundColor DarkGray
+    foreach ($q in $result.Carried) {
+        $shown = $(if ($q.CarriedAnswer.Length -gt 110) { $q.CarriedAnswer.Substring(0, 107) + '...' } else { $q.CarriedAnswer })
+        Write-Host ("  - [{0}] {1}" -f $q.Severity, $q.Question) -ForegroundColor Cyan
+        Write-Host ("      carried: {0}" -f $shown) -ForegroundColor DarkGray
+        Write-Host ("      still true? record it as research.answers.{0}" -f $q.Id) -ForegroundColor DarkGray
+    }
+}
+$plainDeferred = @($result.Deferred | Where-Object { $_.Resolution -ne 'confirm-carried' })
+if ($plainDeferred.Count -gt 0) {
     Write-Host ""
     Write-Host "Deferred - still open, but not worth an agent of its own:" -ForegroundColor DarkGray
-    foreach ($q in $result.Deferred) {
+    foreach ($q in $plainDeferred) {
         Write-Host ("  - {0} -> {1}" -f $q.Question, $q.Resolution) -ForegroundColor DarkGray
     }
 }

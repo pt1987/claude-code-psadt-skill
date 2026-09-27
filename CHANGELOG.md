@@ -49,6 +49,25 @@ check matched `$PackagePath` in the source - the variable that stopped reaching 
 change. The first now asserts that its anchor exists; the second generates a `.wsb` for a folder whose
 name holds an ampersand and parses it.
 
+**The research ladder now reads what the previous version learned.** On a real second version of an app
+it returned an agent budget of 2 for questions the first version's manifest had answered word for word.
+`SKILL.md` said the ladder consults `Get-PsadtPriorPackage.ps1`; it never did. `Get-PsadtLocalEvidence.ps1`
+takes `-AppVendor` / `-AppName` / `-AppVersion` - the operator's identity for the app, or the manifest of
+the package the installer already sits in - finds the previous package by it, and gives every question it
+would have sent to an agent that package's `research.answers.<id>`. Such an answer is carried at
+confidence `low`, so it stays Provisional with resolution `confirm-carried`: no agent, but not settled
+either - it goes into the evidence file, and pre-flight's `Research` check names it as one to confirm for
+this version rather than one to wait for a researcher on. The console prints it as its own block with the
+answer it carries. Other answers the previous version recorded travel as evidence. Re-run on that real
+installer against a copy of its predecessor: budget 2 -> 0, three answers carried; pre-flight RED with
+the new wording, GREEN once they were recorded.
+
+**The previous-build check looked for the name only.** The ladder's own walk for an earlier build with a
+different ProductCode compared `app.name` with the MSI's ProductName - which for many products carries
+the version (`<name> 2.9.0`), so it never matched. It now matches on the app identity as well, and the same
+real run found the predecessor and its ProductCode. Tests build a real MSI database through the Windows
+Installer API, so both paths run in CI.
+
 ## 0.49.1 - 2026-09-27 - The permissions it asks for were written down nowhere a reader looks
 
 Anyone deciding whether to let this skill into a tenant asks one question first: which Entra permissions

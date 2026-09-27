@@ -28,8 +28,7 @@ on demand instead of inlining it.
    Then take option 1 if it is safe and reversible; otherwise hand the exact command back to the user.
 
 Never assume a vendor - the app comes from the user (Adobe/Oracle in the guide are examples).
-Never pass `-SkillRoot` to a script and never build a path from the skill folder -
-every script resolves the config home itself (see Conventions).
+Never pass `-SkillRoot` or build a path from the skill folder - scripts resolve the config home themselves.
 
 ## Decision gates (the ONLY AskUserQuestion moments)
 
@@ -154,10 +153,11 @@ work the WARN lines - each carries its own `.Fix`. WinGet and the optional uploa
 **Phase 1 - Intake.** A PSADT v4 package always serves all three deployment types - plan them now, not
 at the end. Resolve scope via gates 1 + 2 only, every option pre-filled from research. Catalogue: 1.2.
 
-**Phase 2 - Research, gated.** `pwsh scripts/Get-PsadtLocalEvidence.ps1 -Path <installer>` FIRST: the
+**Phase 2 - Research, gated.** `pwsh scripts/Get-PsadtLocalEvidence.ps1 -Path <installer> -AppVendor <v> -AppName <n>` FIRST: the
 local ladder - installed here? (the Uninstall registry) · binary here? (`Get-PsadtMsiFacts.ps1` /
 `Get-PsadtSwitchCandidates.ps1`) · written down already? (the corpus + `Get-PsadtPriorPackage.ps1`, and it NAMES a vendor
-doc URL for you to fetch) - returning `OpenQuestions[]` + `AgentBudget`.
+doc URL for you to fetch) - returning `OpenQuestions[]` + `AgentBudget`; `Carried[]` = the last version's
+answers: confirm them, never re-research.
 <!-- rule:research-gate -->
 **`AgentBudget` IS the dispatch rule: 0 open questions = 0 sub-agents; N = at most N, one per question,
 each given that question's `KnownContext` so it confirms instead of rediscovering.** Never a fixed three,
