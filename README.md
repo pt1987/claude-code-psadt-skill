@@ -110,7 +110,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **1173 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **1194 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -128,7 +128,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 1173 Pester tests.
+verified against a live tenant. The helper scripts are covered by 1194 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -180,15 +180,14 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.49.3 - A second live run found the pipeline disagreeing with itself.** Packaging another app
-twice - an Inno Setup installer, Silent, three groups, supersedence - went GREEN twice and still found
-thirteen defects, most of them between the scripts rather than inside one. The upload now enforces the
-SYSTEM-test gate itself, before any token, instead of relying on the dossier to refuse. The dossier and
-the upload take their App-information fields from one derivation, and a test compares the two on the same
-manifest. Pre-flight catches a helper that reads the launcher's `$adtSession` (a 60001 in the VM before).
-Assignment and supersedence record what Intune holds, a new `-Remove` takes the old version's Required
-off (App. R.6), and the note on a superseded version is rewritten instead of going stale. The
-tenant-writing scripts now run against a fake tenant in the tests.
+Latest: **0.49.4 - The dossier speaks one language at a time.** An operator reading a real upload's
+dossier found German and English mixed, the assigned groups shown as GUIDs and a logo row that repeated
+the logo section; reading both language views end to end found twenty more. The German view is German
+now, return-code types, Intune field labels and SYSTEM-test results included. Groups are recorded and
+shown by name - the GUIDs were a silent fallback for a group read back before Entra had replicated it.
+The header, the DEV-VM test rows, the per-hook "tested" badge and the hook contents come from the package
+instead of literals and PSADT's own template comments, and the package-file section shows the upload. A
+test builds both views and fails on any string the language switch cannot reach.
 
 Previously: **0.49.2 - A live two-version run found the skill contradicting itself.** Packaging one app
 twice, end to end, exposed four places where the skill said one thing and did another. The Windows

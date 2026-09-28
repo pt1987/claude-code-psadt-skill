@@ -59,21 +59,23 @@ the gate is met. Regenerate the dossier after the verdict, as for any other chan
 |---|---|
 | `Lang` | initial language `de` (default) / `en` - both are always embedded regardless |
 | `AppName`, `AppVersion`, `Publisher`, `Developer`, `Owner` | header + App Info |
-| `PkgRev`, `ScriptVersion`, `Created`, `Author`, `PsadtVersion`, `ModuleVersion` | header meta + cmdlet note |
+| `PkgRev`, `ScriptVersion`, `Created`, `Author`, `PsadtVersion`, `ModuleVersion` | header meta + cmdlet note. With `-ManifestPath`, `PkgRev` / `ScriptVersion` / `Author` come from the launcher's `$adtSession` (`AppRevision`, `AppScriptVersion`, `AppScriptAuthor`), `Author` otherwise from `config.author`; nothing supplied renders a dash, never a literal `0.1` (0.49.4) |
 | `SubDe`/`SubEn`, `StatusDe`/`StatusEn` | header subtitle + status pill (HTML entities allowed) |
 | `Category` (null⇒"not preset"), `Featured` (bool), `InfoUrl`, `PrivacyUrl`, `Notes` | App Info |
 | `DescMdDe`, `DescMdEn` | description **Markdown** per language (real umlauts here) |
 | `InstallCmd`, `UninstallCmd`, `InstallBehavior`, `RestartBehaviorDe/En`, `RestartNoteDe/En`, `InstallTimeMin`, `AllowUninstall` | Program. `InstallCmd` / `UninstallCmd` come from `package.installCommand` / `uninstallCommand` (0.49.2) - the line the upload sends |
-| `ReturnCodes` | INSTALLER-SPECIFIC codes only, as `@{ Code; Type; De; En }` with `Type` one of `success`/`softReboot`/`hardReboot`/`retry`/`failed`. They are MERGED OVER the mandatory F.4 table, never replace it, and an invalid type THROWS. `Cls`/`Label` are derived from `Type` and ignored if passed. |
-| `OsArch`, `MinOs`, `DiskMb`, `MemoryMb` | Requirements |
-| `RuleFormat`, `DetectScript`, `RunAs32` (bool), `SignatureCheck` (bool) | Detection |
+| `ReturnCodes` | INSTALLER-SPECIFIC codes only, as `@{ Code; Type; De; En }` with `Type` one of `success`/`softReboot`/`hardReboot`/`retry`/`failed`. They are MERGED OVER the mandatory F.4 table, never replace it, and an invalid type THROWS. `Cls`/`Label` are derived from `Type` and ignored if passed; the type column shows `LabelDe` / `LabelEn` (Erfolg / Success, Soft-Reboot / Soft reboot, ...) |
+| `OsArch`, `MinOs`, `DiskMb`, `MemoryMb` | Requirements; an unset disk or memory requirement reads "nicht festgelegt / not set" |
+| `RuleFormat`, `DetectScript`, `RunAs32` (bool), `SignatureCheck` (bool) | Detection; without `RuleFormat` the portal wording per language |
+| `CertPolicy`, `DriverTrust` | driver rows; with neither, ONE row "keine Treiber, kein Zertifikat erforderlich" (0.49.4) |
 | `Dependencies`/`Supersedence` (+`*NoteDe/En`) | null ⇒ "none" + note |
-| `Assignments` | array of `@{ Group; Type=Required/Available/Uninstall; Availability }` |
-| `HookInstall`, `HookUninstall`, `HookRepair` | arrays of bullets: a string (technical, same both langs) or `@{ De; En }` |
-| `Cmdlets` | array of cmdlet names (chips) |
-| `Preflight` | array of `@{ Title; Cls=ok/warn/fail; De; En; BDe; BEn }` (defaults to 6 passing checks) |
-| `SystemTest` (+`SystemTestNoteDe/En`) | array of `@{ StepDe; StepEn; Exit; Detection; Cls; Result }` |
-| `LogoSource`, `LogoResolution`, `LogoGuardOk` (bool), `IntuneWin`, `SetupFile`, `Location` | Logo & package-file section |
+| `Assignments` | array of `@{ Group; GroupId; Type=Required/Available/Uninstall; Availability }` - `Group` is the NAME, `GroupId` renders as a detail; type and availability are shown in the page language. From `results.assignment` with `-ManifestPath` |
+| `HookInstall`, `HookUninstall`, `HookRepair` | arrays of bullets: a string (technical, same both langs) or `@{ De; En }`. Derived from the launcher: PSADT cmdlets, the package's Extensions helpers (tagged "Paket-Helfer"), and its `##` comments quoted as "Kommentar im Skript (EN)" - PSADT's own template comments and `<Perform ... here>` placeholders are dropped (0.49.4) |
+| `Cmdlets` | array of cmdlet names (chips) - PSADT cmdlets only, never the package's helpers |
+| `Preflight` | array of `@{ Title; Cls=ok/warn/fail; De; En; BDe; BEn }`, optionally `TitleDe`/`TitleEn` and `Raw` (the tool's finding, shown as code). From `results.preflight.checks`; passed checks are summarised and folded, warnings and failures stay open (0.49.4) |
+| `SystemTest` (+`SystemTestNoteDe/En`) | array of `@{ StepDe; StepEn; Exit; Detection; Cls; Result }`, or with `DetectionDe`/`DetectionEn`, `ResultDe`/`ResultEn` and `Action` instead of the single-language cells. Read from the sandbox `result.json`, or from `results.systemTest` for the DEV-VM route (0.49.4). `Action` (Install/Uninstall/Repair) decides the "getestet / nicht getestet" badge under each hook |
+| `LogoSource`, `LogoResolution`, `LogoGuardOk` (bool), `IntuneWin`, `SetupFile`, `Location` | Logo & package-file section. Without `LogoResolution`, size and alpha are read from the PNG header and judged against App. J (>= 512 px, transparent) |
+| `PackageSha256`, `UploadAppId`, `UploadAt`, `UploadPortal` | package-file section: the hash of the `.intunewin` and the Intune app it became. From `results.package` / `results.upload` (0.49.4) |
 
 The tables F.1-F.9 below are the source-of-truth field reference (what each value means); the generator maps
 them onto the template. Keep them for depth and for the manual Admin-Center route.
@@ -93,7 +95,7 @@ them onto the template. Keep them for depth and for the manual Admin-Center rout
 | **Developer** | `<Vendor-ShortName>` | == Publisher unless `app.developer` records another; the upload sends the same value (0.49.3) |
 | **Owner** | `<internal-team>` | internal service owner (e.g. "Workplace-Services") |
 | **Notes** | `app.notes`, else the organisation's opt-in `intune.notes`, else empty | never a branded default - the dossier shows exactly what the upload sends (0.49.3) |
-| **Logo** | `<pkg>\Assets\<App>-Logo.png` (REAL app logo, NOT the PSADT default `AppIcon.png`) | >=256x256 PNG |
+| **Logo** | `<pkg>\Assets\<App>-Logo.png` (REAL app logo, NOT the PSADT default `AppIcon.png`) | >=512x512 PNG, transparent (App. J). The dossier documents it once, in its logo section - not again in the app-information table (0.49.4) |
 | **Role scope tags** | `<Default>` or custom | only with a delegated admin role structure |
 
 ### F.2 Description Markdown template (Company Portal)

@@ -2,6 +2,67 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.49.4 - 2026-09-28 - The dossier speaks one language at a time
+
+An operator read the dossier of a real upload (Windows App 2.0.1375.0: MSIX wrapper, DEV-VM tested,
+uploaded, three groups) and named three defects: a logo row that said nothing the logo section does not,
+the assigned groups shown as GUIDs, and German and English mixed - "bestanden" in one table, "pass" in the
+next. Reading the whole document the way `setLang()` renders it, one language at a time, found twenty more.
+Each is fixed test-first; a new test builds both views of a realistic dossier and fails on any interface
+string the language switch cannot reach. The Windows App dossier was regenerated from its manifest alone,
+without a single `-Metadata` key.
+
+**The German view is German.** The return-code types ("Success", "Soft reboot", "Failed") come from
+`Get-PsadtReturnCodes.ps1` as `LabelDe` / `LabelEn`; the Graph token the upload sends is unchanged. The
+Intune field labels, both tab names, the restart behaviour, the rule format, the assignment type and
+availability, the SYSTEM-test result and its "Detection" column, the section and TOC titles all carry
+both languages. Pre-flight check names are translated; the finding itself is the tool's output and is
+shown as code, the same in both views. German strings the generator wrote as ASCII stand-ins
+("vertrauenswuerdig", "geprueft", "unveraendert") now carry real umlauts - as HTML entities, or `[char]`
+where the text is escaped, so the script stays 7-bit ASCII.
+
+**The groups by name.** `Invoke-IntuneAppAssignment.ps1` read each group's name back by id a second
+after creating it; Entra had not replicated the group yet, the lookup failed, and the catch recorded the
+GUID without a word (measured on the live tenant: the same ids resolve minutes later). The script created
+or resolved those groups itself and now records the name it already knows, next to a new `GroupId`; only
+a group it did not handle is looked up, and a failed lookup is warned about. The fake tenant gained the
+replication lag, and the test reproduces the three GUIDs before the fix. The dossier shows the name, with
+the id as a detail.
+
+**Nothing in the dossier that the package did not say.**
+
+- The header printed script version `0.1`, revision `01` and no author for a launcher that declared
+  `0.2`, `01` and its author. All three are read from the launcher's `$adtSession`, the author otherwise
+  from `config.author`; a value nobody supplied renders as a dash.
+- The DEV-VM route recorded six passing actions in `results.systemTest`, and the upload gate read them,
+  but the dossier printed "the SYSTEM test was not run" unless the rows were retyped into `-Metadata`. It
+  builds them from the manifest now, and says "nicht protokolliert / not recorded" where the harness
+  recorded no detection result.
+- Every hook said "getestet" - a literal in the template, on every package, tested or not. The badge is
+  derived from the SYSTEM-test rows per action: tested, failed, or not tested.
+- A failed sandbox row carried the class `b-bad`, which the stylesheet does not define and the header
+  status never counted as a failure; it is `b-fail`.
+- PSADT's own template comments ("allow up to 3 deferrals ... persist the prompt" on a Silent package)
+  and `<Perform Post-Repair tasks here>` were printed as the package's rationale. They are dropped - read
+  from the installed module's v4 template, with a built-in floor - and the launcher's own `##` comments
+  are quoted as "Kommentar im Skript (EN)".
+- The hooks listed only `*-ADT*` commands, so the step that does the work - `Install-WindowsAppProvisioning`
+  from the package's Extensions module - was missing. Package helpers are listed and tagged, and stay out
+  of the "verified against the module" cmdlet list.
+- Return code 60001 said "runtime error in Install-ADTDeployment"; it is the catch-all of Install,
+  Uninstall and Repair, and says so. 60008 names what failed to start.
+
+**Structure.** The logo row in the app-information table is gone; the logo section says it once, and
+now measures the PNG itself (size and alpha from the IHDR header, judged against App. J's >= 512 px,
+transparent) instead of printing "not checked". The app version is printed in the KPI band and the table,
+no longer a third time in the header. A package without drivers gets one row ("no drivers, no certificate
+required") instead of two. Empty cells (owner, disk space) say "not set". The pre-flight section opens with
+"18 of 18 checks passed"; warnings and failures stay in view, the passed checks fold away. The package-file
+section shows the `.intunewin` SHA256 and, once uploaded, the Intune app id, the upload day and a link to
+the admin center. The assignment note no longer speaks skill jargon ("Phase 10", a script name).
+
+Suite 1173 -> 1194.
+
 ## 0.49.3 - 2026-09-27 - A second live run found the pipeline disagreeing with itself
 
 A second live run packaged another application twice, an Inno Setup installer this time: the older

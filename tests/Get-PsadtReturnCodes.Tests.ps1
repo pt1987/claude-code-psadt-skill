@@ -137,3 +137,32 @@ Describe 'Get-PsadtReturnCodes - house conventions' {
         @($errors).Count | Should -Be 0
     }
 }
+
+Describe 'Get-PsadtReturnCodes - the dossier labels a type in the reader''s language (0.49.4)' {
+    # Measured 2026-09-28 on a real dossier: the German view read "Success", "Soft reboot", "Retry" and
+    # "Failed" in the type column, next to German meanings - the label had one language only. The Graph
+    # token stays the one value the upload sends; only the label a person reads gets two languages.
+    It 'labels every type in German and in English' {
+        $want = @{
+            success    = @('Erfolg', 'Success')
+            softReboot = @('Soft-Reboot', 'Soft reboot')
+            hardReboot = @('Hard-Reboot', 'Hard reboot')
+            retry      = @('Wiederholen', 'Retry')
+            failed     = @('Fehler', 'Failed')
+        }
+        foreach ($r in @(& $script:Rc -Custom @(@{ Code = 7; Type = 'softReboot' }, @{ Code = 8; Type = 'hardReboot' }))) {
+            $r.LabelDe | Should -BeExactly $want[$r.Type][0] -Because "type $($r.Type), code $($r.Code)"
+            $r.LabelEn | Should -BeExactly $want[$r.Type][1] -Because "type $($r.Type), code $($r.Code)"
+        }
+    }
+
+    It 'describes 60001 for every deployment type, not only Install' {
+        # 60001 is the launcher's catch-all for Install, Uninstall AND Repair; "runtime error in
+        # Install-ADTDeployment" sent a reader of an uninstall failure to the wrong function.
+        $r = @(& $script:Rc) | Where-Object { $_.Code -eq 60001 }
+        $r.De | Should -Match 'Uninstall'
+        $r.De | Should -Match 'Repair'
+        $r.En | Should -Match 'Uninstall'
+        $r.En | Should -Not -Match 'in Install-ADTDeployment'
+    }
+}

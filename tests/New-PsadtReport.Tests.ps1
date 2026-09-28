@@ -96,10 +96,11 @@ Describe 'New-PsadtReport' {
         $txt | Should -Match ([char]0xF6)
     }
 
-    It 'shows "none" for the driver certificate row by default' {
+    It 'states "no drivers, no certificate" in a single row by default (0.49.4)' {
+        # Two rows ("driver certificate: none", "driver trust: no drivers") said one fact twice.
         & $script:gen -Metadata @{ AppName = 'X' } -OutputPath $script:out
         $html = Get-Content $script:out -Raw
-        $html | Should -Match 'Driver certificate'
+        $html | Should -Not -Match 'Driver certificate'
         $html | Should -Match 'no certificate required'
     }
 
@@ -553,7 +554,9 @@ Describe 'The dossier reads the sandbox verdict instead of asking for it (0.32.0
         $html | Should -Not -Match 'SYSTEM test was not run'
         $html | Should -Match '185 s'
         $html | Should -Match '32 s'
-        ([regex]::Matches($html, '>pass<')).Count | Should -Be 2
+        # One value per language (0.49.4): the German view printed "pass" under the heading "Ergebnis".
+        ([regex]::Matches($html, 'data-de="bestanden" data-en="passed"')).Count | Should -Be 2
+        $html | Should -Not -Match '>pass<'
     }
 
     It 'gives the detection column one value per language, not both languages in one cell (0.49.1)' {
@@ -607,8 +610,11 @@ Describe 'The dossier reads the sandbox verdict instead of asking for it (0.32.0
         & $script:gen -ManifestPath $script:mf2 -OutputPath $script:out2 -WarningAction SilentlyContinue
         $html = Get-Content $script:out2 -Raw
 
-        $html | Should -Match '>fail<'
-        ([regex]::Matches($html, '>pass<')).Count | Should -Be 0
+        # 'b-fail' is the class the stylesheet defines; the row used to carry 'b-bad', which styles nothing
+        # and which the header status - looking for 'b-fail' - never counted as a failure (0.49.4).
+        $html | Should -Match 'class="badge b-fail" data-de="fehlgeschlagen" data-en="failed"'
+        $html | Should -Not -Match 'b-bad'
+        ([regex]::Matches($html, 'data-de="bestanden"')).Count | Should -Be 0
     }
 
     It 'lets a caller-supplied SystemTest win, for the DEV-VM route that has no result.json' {
@@ -633,7 +639,7 @@ Describe 'The dossier reads the sandbox verdict instead of asking for it (0.32.0
         $html = Get-Content $script:out2 -Raw
 
         $html | Should -Match 'SYSTEM test was not run'
-        $html | Should -Not -Match '>pass<'
+        $html | Should -Not -Match 'data-de="bestanden"'
     }
 }
 
@@ -806,9 +812,10 @@ Describe 'the dossier and the upload describe the same app (0.49.3)' {
                 UpDeveloper = [regex]::Match($txt, 'developer : ([^\r\n]*)').Groups[1].Value.Trim()
                 UpNotes     = [regex]::Match($txt, 'notes     : ([^\r\n]*)').Groups[1].Value.Trim()
                 UpMinOs     = [regex]::Match($txt, 'min OS    : ([^\r\n]*)').Groups[1].Value.Trim()
-                DoDeveloper = & $cell 'Developer'
-                DoNotes     = & $cell 'Notes'
-                DoMinOs     = & $cell 'Minimum OS'
+                # The German portal labels (0.49.4) - the English ones showed in the German view.
+                DoDeveloper = & $cell 'Entwickler'
+                DoNotes     = & $cell 'Notizen'
+                DoMinOs     = & $cell 'Minimales Betriebssystem'
             }
         }
         $script:agree = { param($p)
@@ -890,5 +897,233 @@ Describe 'the dossier shows what Intune holds, not a suggestion (0.49.3)' {
         $html | Should -Match 'Abgel&ouml;st durch Widget 3\.0'
         $html | Should -Match 'Superseded by Widget 3\.0'
         $html | Should -Match 'Modus update, 2026-09-27'
+    }
+}
+
+Describe 'the dossier speaks one language at a time, and says only what it knows (0.49.4)' {
+    # Measured 2026-09-28 on a real dossier (Windows App 2.0.1375.0), read the way setLang() renders it:
+    # the German view showed "Success", "Soft reboot", "pass", "As soon as possible", "Determine behavior
+    # based on return codes", "Publisher" and the tab names in English; the groups by GUID; a logo row that
+    # repeated the logo section; an empty author and an empty disk-space cell; script version 0.1 for a 0.2
+    # launcher; "not run" for a package whose DEV-VM test was recorded; PSADT template comments and a
+    # "<Perform Post-Repair tasks here>" placeholder as if they described the package. Each test names the
+    # defect it guards. The views are built the way the page builds them, so a string the language switch
+    # cannot reach fails here and not in front of an approver.
+    BeforeAll {
+        function Get-DossierView {
+            param([string]$Html, [string]$Lang)
+            $b = [regex]::Match($Html, '(?s)<body[^>]*>(.*)</body>').Groups[1].Value
+            $b = $b -replace '(?s)<script.*?</script>', '' -replace '(?s)<svg.*?</svg>', ''
+            $other = if ($Lang -eq 'de') { 'en' } else { 'de' }
+            # What setLang() does: every [data-de] element's text becomes data-<lang>; element children stay.
+            $b = [regex]::Replace($b, '(?s)<(\w+)((?:\s[^>]*?)?)\sdata-de="([^"]*)"\s+data-en="([^"]*)"([^>]*)>(.*?)</\1>', {
+                    param($m)
+                    $kids = @([regex]::Matches($m.Groups[6].Value, '(?s)<(\w+)[^>]*>.*?</\1>') | ForEach-Object { $_.Value }) -join ''
+                    $txt = if ($Lang -eq 'de') { $m.Groups[3].Value } else { $m.Groups[4].Value }
+                    "<$($m.Groups[1].Value)>$txt$kids</$($m.Groups[1].Value)>"
+                })
+            $b = $b -replace "(?s)<(\w+)[^>]*class=`"[^`"]*only-$other[^`"]*`"[^>]*>.*?</\1>", ''
+            $b = $b -replace '(?i)</?(tr|h1|h2|h3|h4|p|li|div|section|pre|header|footer|nav|ul|ol|table|summary|details)[^>]*>', "`n" -replace '(?i)</t[dh]>', ' | ' -replace '<[^>]+>', ''
+            $b = [System.Net.WebUtility]::HtmlDecode($b)
+            @($b -split "`n" | ForEach-Object { ($_ -replace '\s+', ' ').Trim(' ', '|') } | Where-Object { $_ })
+        }
+        function Get-Section {
+            param([string]$Html, [string]$Id)
+            [regex]::Match($Html, "(?s)<section[^>]*id=`"$Id`".*?</section>").Value
+        }
+
+        $script:oldHomeL = $env:PSADT_DEPLOY_HOME
+        $env:PSADT_DEPLOY_HOME = Join-Path $TestDrive 'lang_home'
+        New-Item $env:PSADT_DEPLOY_HOME -ItemType Directory -Force | Out-Null
+        @{ version = 1; language = @{ dossier = 'DE'; script = 'EN' }; author = @{ person = 'Pat Example'; company = 'Example GmbH' } } |
+            ConvertTo-Json -Depth 4 | Set-Content (Join-Path $env:PSADT_DEPLOY_HOME 'config.json') -Encoding UTF8
+
+        $script:lpkg = Join-Path $TestDrive 'lang_pkg'
+        New-Item (Join-Path $script:lpkg 'PSAppDeployToolkit.Extensions') -ItemType Directory -Force | Out-Null
+        $script:launcherText = @'
+$adtSession = @{
+    AppVendor = 'ACME'
+    AppName = 'Widget'
+    AppVersion = '2.0'
+    AppRevision = '03'
+    AppScriptVersion = '0.7'
+    AppScriptAuthor = 'Jane Doe, ACME Ltd'
+}
+function Install-ADTDeployment {
+    ## Show Progress Message (with the default message).
+    Show-ADTInstallationProgress
+    ## Remove the legacy client first, so the two never run side by side.
+    Uninstall-ADTApplication -Name 'Legacy'
+    Install-WidgetThing -Path 'x'
+}
+function Uninstall-ADTDeployment {
+    ## <Perform Uninstallation tasks here>
+    Uninstall-WidgetThing
+}
+function Repair-ADTDeployment {
+    Install-WidgetThing -Path 'x'
+    ## <Perform Post-Repair tasks here>
+}
+'@
+        Set-Content (Join-Path $script:lpkg 'Invoke-AppDeployToolkit.ps1') $script:launcherText -Encoding UTF8
+        Set-Content (Join-Path $script:lpkg 'PSAppDeployToolkit.Extensions\PSAppDeployToolkit.Extensions.psm1') "function Install-WidgetThing { param(`$Path) }`nfunction Uninstall-WidgetThing { }" -Encoding UTF8
+        # A real PNG header: 600 x 600, 8 bit, colour type 6 (RGBA).
+        $script:llogo = Join-Path $script:lpkg 'Widget.png'
+        [System.IO.File]::WriteAllBytes($script:llogo, [byte[]](0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+                0, 0, 2, 0x58, 0, 0, 2, 0x58, 8, 6, 0, 0, 0, 0, 0, 0, 0))
+        $script:lmf = Join-Path $script:lpkg 'psadt-package.json'
+        $script:lout = Join-Path $script:lpkg 'Intune-Dossier.html'
+        $script:lManifest = @{
+            schema    = 1
+            app       = @{ vendor = 'ACME'; name = 'Widget'; version = '2.0'; arch = 'x64'
+                description = @{ de = '**Widget** ist ein Werkzeug.'; en = '**Widget** is a tool.' } }
+            package   = @{ type = 'installer' }
+            decisions = @{ upload = $true }
+            artifacts = @{ intunewin = 'C:\out\Widget.intunewin'; detection = 'C:\out\Detect-Widget.ps1'; outputFolder = 'C:\out' }
+            results   = @{
+                preflight  = @{ verdict = 'GREEN'; at = '2026-09-28T07:00:00Z'; checks = @(
+                        @{ Name = 'Encoding'; Status = 'PASS'; Detail = 'ASCII-clean'; File = 'Invoke-AppDeployToolkit.ps1' },
+                        @{ Name = 'Parse'; Status = 'PASS'; Detail = 'PARSE_OK'; File = 'Invoke-AppDeployToolkit.ps1' },
+                        @{ Name = 'LogName'; Status = 'PASS'; Detail = 'launcher sets a per-run log name'; File = 'Invoke-AppDeployToolkit.ps1' },
+                        @{ Name = 'Structure'; Status = 'WARN'; Detail = 'extension helper Foo is defined but nothing reaches it'; File = 'PSAppDeployToolkit.Extensions.psm1' }) }
+                systemTest = @(
+                    @{ type = 'Install'; exitCode = 0; success = $true; detection = 'installed'; at = '2026-09-21T15:32:51Z' },
+                    @{ type = 'Uninstall'; exitCode = 0; success = $true; detection = 'unknown'; at = '2026-09-21T17:49:38Z' })
+                assignment = @{ at = '2026-09-28T07:23:44Z'; verified = 'read back from Intune'; groups = @(
+                        @{ Group = 'grp-available-Widget'; GroupId = 'aaaaaaaa-1111-2222-3333-444444444444'; Type = 'Available'; Availability = 'As soon as possible' },
+                        @{ Group = 'grp-required-Widget'; GroupId = 'bbbbbbbb-1111-2222-3333-444444444444'; Type = 'Required'; Availability = 'As soon as possible' },
+                        @{ Group = 'grp-uninstall-Widget'; GroupId = 'cccccccc-1111-2222-3333-444444444444'; Type = 'Uninstall'; Availability = 'As soon as possible' }) }
+                upload     = @{ appId = '215550e2-1475-425d-84ba-03f9b5ac7adc'; at = '2026-09-28T07:23:12Z'; portalUrl = 'https://intune.microsoft.com/#view/x' }
+                package    = @{ sha256 = 'A5D94D96D7368ECBE3904E7933C0DD04BA80754309623D16F027862D3C7A4205'; setupFile = 'Invoke-AppDeployToolkit.exe' }
+            }
+        }
+        $script:lManifest | ConvertTo-Json -Depth 12 | Set-Content $script:lmf -Encoding UTF8
+        & $script:gen -ManifestPath $script:lmf -LogoPath $script:llogo -OutputPath $script:lout 3>$null | Out-Null
+        $script:lhtml = Get-Content $script:lout -Raw -Encoding UTF8
+        $script:de = Get-DossierView -Html $script:lhtml -Lang 'de'
+        $script:en = Get-DossierView -Html $script:lhtml -Lang 'en'
+    }
+    AfterAll { $env:PSADT_DEPLOY_HOME = $script:oldHomeL }
+
+    It 'shows no English interface text in the German view' {
+        $contains = 'As soon as possible', 'Determine behavior based on return codes', 'Custom Detection Script', 'App information tab',
+        'Program tab', 'Soft reboot', 'Publisher', 'Developer', 'Owner', 'Privacy URL', 'Information URL', 'Allow uninstall',
+        'Default icon guard', 'SetupFile', 'Show detection script', 'not set', 'passed', 'Return Codes'
+        $exact = 'pass', 'fail', 'Available', 'Required', 'Detection', 'Success', 'Failed', 'Retry'
+        $hits = @(foreach ($line in $script:de) {
+                foreach ($c in $contains) { if ($line -match "\b$([regex]::Escape($c))\b") { "[$c] $line" } }
+                foreach ($cell in ($line -split ' \| ')) { if ($exact -ccontains $cell.Trim()) { "[$($cell.Trim())] $line" } }
+            })
+        $hits | Should -BeNullOrEmpty
+    }
+
+    It 'shows no German interface text in the English view' {
+        $words = 'bestanden', 'Erforderlich', 'Verf.gbar', 'So bald wie', 'Verhalten basierend', 'Benutzerdefiniert', 'nicht gesetzt',
+        'nicht festgelegt', 'Kommentar im Skript', 'Paket-Helfer', 'Deinstallieren', 'R.ckgabecodes', 'Zeichenkodierung', 'Herausgeber',
+        'Entwickler', 'getestet', 'Hochgeladen', 'nicht protokolliert'
+        $hits = @(foreach ($line in $script:en) { foreach ($w in $words) { if ($line -match $w) { "[$w] $line" } } })
+        $hits | Should -BeNullOrEmpty
+    }
+
+    It 'has no logo row in the app-information table - the logo section already says it' {
+        (Get-Section $script:lhtml 'appinfo') | Should -Not -Match 'data-de="Logo"'
+    }
+
+    It 'names the assigned groups and keeps the id as a detail' {
+        @($script:de | Where-Object { $_ -match '^grp-required-Widget\b.*\| Erforderlich \| So bald wie m' }).Count | Should -Be 1
+        (Get-Section $script:lhtml 'assign') | Should -Match 'bbbbbbbb-1111-2222-3333-444444444444'
+        (Get-Section $script:lhtml 'assign') | Should -Not -Match '<td>bbbbbbbb-'
+    }
+
+    It 'takes the script version, the package revision and the author from the launcher' {
+        $script:de | Should -Contain 'Skript-Version 0.7'
+        $script:de | Should -Contain 'Paket-Rev 03'
+        $script:de | Should -Contain 'Autor Jane Doe, ACME Ltd'
+    }
+
+    It 'falls back to the configured author when the launcher names none' {
+        $d = Join-Path $TestDrive 'lang_noauthor'
+        New-Item $d -ItemType Directory -Force | Out-Null
+        Set-Content (Join-Path $d 'Invoke-AppDeployToolkit.ps1') ($script:launcherText -replace "(?m)^\s*AppScriptAuthor.*$", '') -Encoding UTF8
+        $mf = Join-Path $d 'psadt-package.json'
+        $script:lManifest | ConvertTo-Json -Depth 12 | Set-Content $mf -Encoding UTF8
+        & $script:gen -ManifestPath $mf -OutputPath (Join-Path $d 'd.html') 3>$null | Out-Null
+        Get-DossierView -Html (Get-Content (Join-Path $d 'd.html') -Raw -Encoding UTF8) -Lang 'de' | Should -Contain 'Autor Pat Example, Example GmbH'
+    }
+
+    It 'builds the SYSTEM-test rows from what the DEV-VM route recorded, without hand-built metadata' {
+        @($script:de | Where-Object { $_ -match '^Installation \(.+\) \| 0 \| erkannt \| bestanden$' }).Count | Should -Be 1
+        @($script:de | Where-Object { $_ -match '^Deinstallation \(.+\) \| 0 \| nicht protokolliert \| bestanden$' }).Count | Should -Be 1
+        $script:lhtml | Should -Not -Match 'SYSTEM-Test wurde nicht ausgef'
+    }
+
+    It 'reads the logo size from the PNG header instead of printing "not checked"' {
+        $script:lhtml | Should -Match '600 &times; 600 px'
+        (Get-Section $script:lhtml 'logo') | Should -Not -Match 'nicht gepr&uuml;ft'
+    }
+
+    It 'leaves no value cell empty' {
+        $empty = @([regex]::Matches($script:lhtml, '(?s)<tr><td class="k"[^>]*>([^<]*)</td><td>(.*?)</td></tr>') |
+                Where-Object { [string]::IsNullOrWhiteSpace(($_.Groups[2].Value -replace '<[^>]+>', '')) } | ForEach-Object { $_.Groups[1].Value })
+        $empty | Should -BeNullOrEmpty
+    }
+
+    It 'states the absence of drivers in one row, not two' {
+        $req = Get-Section $script:lhtml 'requirements'
+        $req | Should -Not -Match 'data-de="Treiber-Zertifikat"'
+        $req | Should -Match 'keine Treiber'
+        $req | Should -Match 'kein Zertifikat erforderlich'
+    }
+
+    It 'prints the app version once in the header area and once in the table' {
+        ([regex]::Matches($script:lhtml, 'data-de="App-Version"')).Count | Should -Be 2
+    }
+
+    It 'shows the Intune app id and the package hash once uploaded' {
+        $logo = Get-Section $script:lhtml 'logo'
+        $logo | Should -Match '215550e2-1475-425d-84ba-03f9b5ac7adc'
+        $logo | Should -Match 'A5D94D96D7368ECBE3904E7933C0DD04BA80754309623D16F027862D3C7A4205'
+        $logo | Should -Match '2026-09-28'
+    }
+
+    It 'drops the PSADT template comments and placeholders from the hooks' {
+        $hooks = Get-Section $script:lhtml 'hooks'
+        $hooks | Should -Not -Match 'Show Progress Message'
+        $hooks | Should -Not -Match 'Perform Post-Repair tasks here'
+        $hooks | Should -Not -Match 'Perform Uninstallation tasks here'
+    }
+
+    It 'marks a package comment as a quote from the English script' {
+        $hooks = Get-Section $script:lhtml 'hooks'
+        $hooks | Should -Match 'Remove the legacy client first'
+        @($script:de | Where-Object { $_ -match '^Kommentar im Skript \(EN\).*Remove the legacy client first' }).Count | Should -Be 1
+    }
+
+    It 'lists the package helpers a hook calls, apart from the verified PSADT cmdlets' {
+        $hooks = Get-Section $script:lhtml 'hooks'
+        $hooks | Should -Match 'Install-WidgetThing'
+        $hooks | Should -Match 'Uninstall-WidgetThing'
+        $hooks | Should -Match 'Paket-Helfer'
+        (Get-Section $script:lhtml 'cmdlets') | Should -Not -Match 'WidgetThing'
+    }
+
+    It 'summarises the passed pre-flight checks and keeps the warning in view' {
+        $pf = Get-Section $script:lhtml 'preflight'
+        $pf | Should -Match '3 von 4'
+        $cut = $pf.IndexOf('<details')
+        $cut | Should -BeGreaterThan 0
+        $pf.IndexOf('nothing reaches it') | Should -BeLessThan $cut -Because 'a warning is never folded away'
+        $pf.IndexOf('PARSE_OK') | Should -BeGreaterThan $cut -Because 'passed checks are folded'
+    }
+
+    It 'says a hook was tested only when its action passed the SYSTEM test' {
+        $hooks = Get-Section $script:lhtml 'hooks'
+        [regex]::Match($hooks, '(?s)<div class="hook install">.*?hook-foot">(.*?)</div>').Groups[1].Value | Should -Match 'data-de="getestet"'
+        [regex]::Match($hooks, '(?s)<div class="hook repair">.*?hook-foot">(.*?)</div>').Groups[1].Value | Should -Match 'data-de="nicht getestet"'
+    }
+
+    It 'writes German with real umlauts, never ASCII stand-ins' {
+        $src = Get-Content $script:gen -Raw
+        $src | Should -Not -Match 'vertrauenswuerdig|kein Zertifikat noetig|Abschliessende|SYSTEM ueber|geprueft|unveraendert|uebernommen|gefuellt'
     }
 }

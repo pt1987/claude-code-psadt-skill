@@ -142,6 +142,19 @@ Describe 'the assignment takes its identity from the manifest and records what I
         @($m.results.assignment.groups | Where-Object Type -eq 'Required')[0].Group | Should -Be 'grp-required-Widget'
     }
 
+    It 'records the group name, not its id, while a group it just created cannot be read back yet (0.49.4)' {
+        # Measured 2026-09-28: three groups created, assigned, read back - and the manifest recorded three
+        # bare GUIDs. GET /groups/{id} ran a second after POST /groups, Entra had not replicated them, and
+        # the catch fell back to the id without a word. The script created those groups; it knows their names.
+        $global:PsadtFakeTenant.LagNewGroups = $true
+        & $script:AssignScript -ManifestPath $script:mf -Intents available,required,uninstall -GraphToken 'opaque' -Execute 6>$null 3>$null | Out-Null
+        $g = @((Get-Content $script:mf -Raw | ConvertFrom-Json).results.assignment.groups)
+        @($g | ForEach-Object { $_.Group }) | Should -Be @('grp-available-Widget', 'grp-required-Widget', 'grp-uninstall-Widget')
+        foreach ($row in $g) {
+            $global:PsadtFakeTenant.Groups[[string]$row.GroupId] | Should -BeExactly $row.Group -Because 'the id travels next to the name'
+        }
+    }
+
     It 'records nothing on a dry run' {
         & $script:AssignScript -ManifestPath $script:mf -Intents available,required,uninstall -GraphToken 'opaque' 6>$null | Out-Null
         (Get-Content $script:mf -Raw | ConvertFrom-Json).results.assignment | Should -BeNullOrEmpty
