@@ -32,7 +32,7 @@
 .PARAMETER AsGraphBody
   Project to the Microsoft Graph win32LobApp shape: @(@{ returnCode = <int>; type = '<token>' }).
 .OUTPUTS
-  PSCustomObject[] with Code(int), Type(string), Label(string), Cls(string), De(string), En(string),
+  PSCustomObject[] with Code(int), Type(string), Label(string), LabelDe(string), LabelEn(string), Cls(string), De(string), En(string),
   or the Graph shape when -AsGraphBody is given. Always sorted, never empty.
 .EXAMPLE
   Get-PsadtReturnCodes.ps1
@@ -115,17 +115,18 @@ function ConvertTo-ReturnCodeType {
 function Get-ReturnCodePresentation {
     <#
       Type -> badge class + label. A closed switch, and the ONLY place either value can come from.
-      Label stays English on purpose even in a German dossier: it is the literal wording of the Intune
-      portal's Type dropdown, which the operator has to find there in either language.
+      Label is the English portal wording, kept for callers that read it. LabelDe / LabelEn are what the
+      dossier shows (0.49.4): its German view read "Success" and "Failed" next to German meanings,
+      because the one label had one language. The Graph token (Type) is still the value the upload sends.
     #>
     param([string]$Type)
 
     switch ($Type) {
-        'success' { return @{ Label = 'Success'; Cls = 'b-ok' } }
-        'softReboot' { return @{ Label = 'Soft reboot'; Cls = 'b-warn' } }
-        'hardReboot' { return @{ Label = 'Hard reboot'; Cls = 'b-warn' } }
-        'retry' { return @{ Label = 'Retry'; Cls = 'b-neut' } }
-        'failed' { return @{ Label = 'Failed'; Cls = 'b-fail' } }
+        'success' { return @{ Label = 'Success'; LabelDe = 'Erfolg'; LabelEn = 'Success'; Cls = 'b-ok' } }
+        'softReboot' { return @{ Label = 'Soft reboot'; LabelDe = 'Soft-Reboot'; LabelEn = 'Soft reboot'; Cls = 'b-warn' } }
+        'hardReboot' { return @{ Label = 'Hard reboot'; LabelDe = 'Hard-Reboot'; LabelEn = 'Hard reboot'; Cls = 'b-warn' } }
+        'retry' { return @{ Label = 'Retry'; LabelDe = 'Wiederholen'; LabelEn = 'Retry'; Cls = 'b-neut' } }
+        'failed' { return @{ Label = 'Failed'; LabelDe = 'Fehler'; LabelEn = 'Failed'; Cls = 'b-fail' } }
     }
     throw "No presentation defined for return-code type '$Type'."
 }
@@ -151,8 +152,8 @@ $canonical = @(
     @{ Code = 3010; Type = 'softReboot'; De = 'Neustart empfohlen'; En = 'Restart recommended' }
     @{ Code = 1641; Type = 'hardReboot'; De = 'Neustart wird ausgel&ouml;st'; En = 'Restart is triggered' }
     @{ Code = 1618; Type = 'retry'; De = 'Anderer Installer l&auml;uft, erneut versuchen'; En = 'Another installer running, retry' }
-    @{ Code = 60001; Type = 'failed'; De = 'Laufzeitfehler in Install-ADTDeployment'; En = 'Runtime error in Install-ADTDeployment' }
-    @{ Code = 60008; Type = 'failed'; De = 'Init/Import-Module fehlgeschlagen'; En = 'Init/Import-Module failed' }
+    @{ Code = 60001; Type = 'failed'; De = 'Unbehandelter Fehler im Deployment-Skript (Install, Uninstall oder Repair)'; En = 'Unhandled error in the deployment script (Install, Uninstall or Repair)' }
+    @{ Code = 60008; Type = 'failed'; De = 'Toolkit nicht gestartet: Modul-Import oder Sitzungsstart fehlgeschlagen'; En = 'Toolkit did not start: module import or session start failed' }
 )
 
 # --- Normalise the caller's entries ------------------------------------------------------------------
@@ -210,6 +211,8 @@ $records = foreach ($entry in $resolved.Values) {
         Code  = [int]$entry.Code
         Type  = $type
         Label = $presentation.Label
+        LabelDe = $presentation.LabelDe
+        LabelEn = $presentation.LabelEn
         Cls   = $presentation.Cls
         De    = [string]$entry.De
         En    = [string]$entry.En

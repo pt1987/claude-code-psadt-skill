@@ -268,10 +268,21 @@ else {
     if ($ManifestPath) {
         $typeOf = @{ available = 'Available'; required = 'Required'; uninstall = 'Uninstall' }
         $order = @('Available', 'Required', 'Uninstall')
+        # The names this run already resolved or created (0.49.4). Reading a group back by id a second
+        # after POST /groups fails until Entra has replicated it - measured 2026-09-28 - and the manifest
+        # then recorded three bare GUIDs. Only a group this run did not handle is looked up, and a lookup
+        # that fails is named instead of silently turning into an id.
+        $knownNames = @{}
+        foreach ($gr in $groupResults) { if ($gr.Id) { $knownNames[[string]$gr.Id] = [string]$gr.Name } }
         $rows = @(foreach ($a in @((Invoke-Graph GET "$GraphBase/deviceAppManagement/mobileApps/$AppId/assignments" -Headers $H).value)) {
                 if ("$($a.target.'@odata.type')" -notmatch 'groupAssignmentTarget') { continue }
-                $gname = try { [string](Invoke-Graph GET "$GraphBase/groups/$($a.target.groupId)?`$select=displayName" -Headers $H).displayName } catch { [string]$a.target.groupId }
-                [ordered]@{ Group = $gname; Type = $typeOf[[string]$a.intent]; Availability = 'As soon as possible' }
+                $gid = [string]$a.target.groupId
+                $gname = $knownNames[$gid]
+                if (-not $gname) {
+                    $gname = try { [string](Invoke-Graph GET "$GraphBase/groups/$($gid)?`$select=displayName" -Headers $H).displayName } catch { $null }
+                    if (-not $gname) { Write-Warning "group $gid could not be read back - recorded by its id"; $gname = $gid }
+                }
+                [ordered]@{ Group = $gname; GroupId = $gid; Type = $typeOf[[string]$a.intent]; Availability = 'As soon as possible' }
             }) | Sort-Object { $order.IndexOf([string]$_.Type) }
         $rows = @($rows)
         & (Join-Path $PSScriptRoot 'Set-PsadtPackageManifest.ps1') -PackagePath (Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath).ProviderPath) -Updates @{

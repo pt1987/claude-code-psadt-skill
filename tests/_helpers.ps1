@@ -113,6 +113,10 @@ function New-FakeIntuneTenant {
         Assignments   = @{}   # appId -> List of @{ id; intent; target }
         Relationships = @{}   # appId -> List of relationship objects
         Calls         = New-Object System.Collections.Generic.List[string]
+        # Entra replication (0.49.4): a group created seconds ago is not readable by id yet. Measured
+        # 2026-09-28 - GET /groups/{id} right after POST /groups failed, and the name was lost.
+        LagNewGroups  = $false
+        Unreplicated  = New-Object System.Collections.Generic.HashSet[string]
     }
 }
 function Add-FakeApp {
@@ -199,9 +203,13 @@ function Invoke-FakeGraph {
         return [pscustomobject]@{ value = @($t.Groups.Keys | Where-Object { $t.Groups[$_] -eq $name } | ForEach-Object { [pscustomobject]@{ id = $_; displayName = $name } }) }
     }
     $gid = [regex]::Match($path, '^/groups/([0-9a-fA-F-]{36})')
-    if ($gid.Success -and $Method -eq 'GET') { return [pscustomobject]@{ id = $gid.Groups[1].Value; displayName = $t.Groups[$gid.Groups[1].Value] } }
+    if ($gid.Success -and $Method -eq 'GET') {
+        if ($t.Unreplicated.Contains($gid.Groups[1].Value)) { throw "fake graph: 404 - group $($gid.Groups[1].Value) is not replicated yet" }
+        return [pscustomobject]@{ id = $gid.Groups[1].Value; displayName = $t.Groups[$gid.Groups[1].Value] }
+    }
     if ($path -eq '/groups' -and $Method -eq 'POST') {
         $id = Add-FakeGroup -Name ([string]$Body.displayName)
+        if ($t.LagNewGroups) { [void]$t.Unreplicated.Add($id) }
         return [pscustomobject]@{ id = $id; displayName = [string]$Body.displayName }
     }
     throw "fake graph: no route for $Method $Uri"

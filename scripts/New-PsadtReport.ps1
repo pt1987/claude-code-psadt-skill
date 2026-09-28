@@ -89,6 +89,7 @@ function Format-IsoDay($Value) {
 }
 
 # ----------------------------------------------------------------------------- manifest (0.21.0)
+$launcherAst = $null; $launcherTokens = $null; $launcherFile = $null
 if ($ManifestPath) {
     if (-not (Test-Path -LiteralPath $ManifestPath)) { throw "ManifestPath not found: $ManifestPath" }
     try { $mf = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json }
@@ -129,7 +130,7 @@ if ($ManifestPath) {
     $asgRecorded = $null
     if ($mf.results.assignment -and $mf.results.assignment.groups) {
         $asgRecorded = $mf.results.assignment
-        Set-FromManifest 'Assignments' @($asgRecorded.groups | ForEach-Object { @{ Group = [string]$_.Group; Type = [string]$_.Type; Availability = [string]$_.Availability } })
+        Set-FromManifest 'Assignments' @($asgRecorded.groups | ForEach-Object { @{ Group = [string]$_.Group; GroupId = [string]$_.GroupId; Type = [string]$_.Type; Availability = [string]$_.Availability } })
     }
     # The command lines the package ships (0.49.2), parsed once, by Get-PsadtPackageManifest.ps1 - the
     # upload reads the same value. Before, the dossier printed its own '-DeployMode Silent' default
@@ -151,6 +152,39 @@ if ($ManifestPath) {
     if ($mf.app.description) {
         Set-FromManifest 'DescMdDe' $mf.app.description.de
         Set-FromManifest 'DescMdEn' $mf.app.description.en
+    }
+
+    # What the upload left behind (0.49.4): the app id, when, and the hash of the file that went up. The
+    # dossier of an uploaded package said nothing about the upload at all.
+    Set-FromManifest 'UploadAppId'   $mf.results.upload.appId
+    Set-FromManifest 'UploadPortal'  $mf.results.upload.portalUrl
+    if ($mf.results.upload.at) { Set-FromManifest 'UploadAt' (Format-IsoDay $mf.results.upload.at) }
+    Set-FromManifest 'PackageSha256' $mf.results.package.sha256
+
+    # The launcher, parsed once: the hooks further down read it, and so do the header fields (0.49.4) -
+    # the header printed script version 0.1, revision 01 and no author for a launcher that declared 0.2,
+    # 01 and its author, because it only knew -Metadata and literals.
+    $launcherFile = Join-Path (Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath).Path) 'Invoke-AppDeployToolkit.ps1'
+    if (Test-Path -LiteralPath $launcherFile) {
+        $launcherTokens = $null
+        $launcherAst = [System.Management.Automation.Language.Parser]::ParseFile($launcherFile, [ref]$launcherTokens, [ref]$null)
+        $sessionHt = $launcherAst.FindAll({ param($n)
+                $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$adtSession' -and
+                $n.Right -is [System.Management.Automation.Language.CommandExpressionAst] -and
+                $n.Right.Expression -is [System.Management.Automation.Language.HashtableAst] }, $true) |
+            Select-Object -First 1
+        if ($sessionHt) {
+            foreach ($kv in $sessionHt.Right.Expression.KeyValuePairs) {
+                $key = [string]$kv.Item1.Extent.Text.Trim("'", '"')
+                $expr = if ($kv.Item2 -is [System.Management.Automation.Language.PipelineAst]) { $kv.Item2.GetPureExpression() } elseif ($kv.Item2 -is [System.Management.Automation.Language.CommandExpressionAst]) { $kv.Item2.Expression } else { $null }
+                if ($expr -isnot [System.Management.Automation.Language.StringConstantExpressionAst]) { continue }
+                switch ($key) {
+                    'AppScriptVersion' { Set-FromManifest 'ScriptVersion' $expr.Value }
+                    'AppRevision'      { Set-FromManifest 'PkgRev' $expr.Value }
+                    'AppScriptAuthor'  { Set-FromManifest 'Author' $expr.Value }
+                }
+            }
+        }
     }
 
     # Supersedence, from what was actually wired rather than from what was typed. The field existed only
@@ -219,8 +253,8 @@ if ($ManifestPath) {
                     Uninstall = $false; FinalUninstall = $false
                 }
                 $labelDe = @{
-                    Install = 'Install'; Uninstall = 'Deinstallation'; Reinstall = 'Neuinstallation'
-                    Repair = 'Reparatur'; FinalUninstall = 'Abschliessende Deinstallation'
+                    Install = 'Installation'; Uninstall = 'Deinstallation'; Reinstall = 'Neuinstallation'
+                    Repair = 'Reparatur'; FinalUninstall = 'Abschlie&szlig;ende Deinstallation'
                 }
                 $labelEn = @{
                     Install = 'Install'; Uninstall = 'Uninstall'; Reinstall = 'Reinstall'
@@ -247,8 +281,13 @@ if ($ManifestPath) {
                             # follow the dossier's language switch and showed German in the English view.
                             DetectionDe = $(if ($null -eq $det) { '&ndash;' } elseif ($det) { 'erkannt' } else { 'nicht erkannt' })
                             DetectionEn = $(if ($null -eq $det) { '&ndash;' } elseif ($det) { 'detected' } else { 'absent' })
-                            Cls       = $(if ($ok) { 'b-ok' } else { 'b-bad' })
+                            # 'b-fail' is the class the stylesheet defines. 'b-bad' styled nothing, and the
+                            # header status - which looks for 'b-fail' - never saw the failure (0.49.4).
+                            Cls       = $(if ($ok) { 'b-ok' } else { 'b-fail' })
                             Result    = $(if ($ok) { 'pass' } else { 'fail' })
+                            ResultDe  = $(if ($ok) { 'bestanden' } else { 'fehlgeschlagen' })
+                            ResultEn  = $(if ($ok) { 'passed' } else { 'failed' })
+                            Action    = $name
                         }
                     })
 
@@ -258,9 +297,9 @@ if ($ManifestPath) {
                     $failed = @($sbx.failedAssertions)
                     $failedText = if ($failed.Count) { ($failed -join ', ') } else { $null }
                     if (-not $Metadata.ContainsKey('SystemTestNoteDe')) {
-                        $Metadata['SystemTestNoteDe'] = 'Windows Sandbox, jede Aktion als NT AUTHORITY\SYSTEM ueber eine geplante Aufgabe. Verdikt: ' +
+                        $Metadata['SystemTestNoteDe'] = 'Windows Sandbox, jede Aktion als NT AUTHORITY\SYSTEM &uuml;ber eine geplante Aufgabe. Verdikt: ' +
                         $verdict + '. ' + $(if ($failedText) { 'Fehlgeschlagene Zusicherungen: ' + $failedText + '. ' } else { 'Keine fehlgeschlagene Zusicherung. ' }) +
-                        'Die Erkennung wurde nach jeder Aktion gegen dieselbe Regel geprueft, die Intune auswertet. Beleg: ' + $sbxResultPath
+                        'Die Erkennung wurde nach jeder Aktion gegen dieselbe Regel gepr&uuml;ft, die Intune auswertet. Beleg: ' + $sbxResultPath
                     }
                     if (-not $Metadata.ContainsKey('SystemTestNoteEn')) {
                         $Metadata['SystemTestNoteEn'] = 'Windows Sandbox, every action as NT AUTHORITY\SYSTEM through a scheduled task. Verdict: ' +
@@ -273,6 +312,47 @@ if ($ManifestPath) {
                 # A result.json that cannot be read must not cost the caller the whole dossier. The
                 # neutral "not run" default then stands, which is the honest state for unreadable evidence.
                 Write-Verbose "sandbox result.json not usable: $($_.Exception.Message)"
+            }
+        }
+    }
+
+    # The DEV-VM route (0.49.4). Invoke-PsadtSystemTest.ps1 appends every action to results.systemTest, and
+    # the upload gate (.TestGate) already reads it - but this document did not, so a package whose gate was
+    # met printed "the SYSTEM test was not run" unless someone retyped the rows into -Metadata by hand.
+    if (-not $Metadata.ContainsKey('SystemTest') -and @($mf.results.systemTest).Count) {
+        $devLabelDe = @{ Install = 'Installation'; Uninstall = 'Deinstallation'; Repair = 'Reparatur' }
+        $expectDev = @{ Install = $true; Repair = $true; Uninstall = $false }
+        $devRows = @(foreach ($t in @($mf.results.systemTest)) {
+                $type = [string]$t.type
+                if (-not $devLabelDe.ContainsKey($type)) { continue }
+                $when = ''
+                if ($t.at) {
+                    $d = if ($t.at -is [datetime]) { $t.at } else { [datetime]::Parse([string]$t.at, [cultureinfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind) }
+                    $d = $d.ToLocalTime()
+                    $when = " ($($d.ToString('dd.MM. HH:mm', [cultureinfo]::InvariantCulture)))"
+                    $whenEn = " ($($d.ToString('MM-dd HH:mm', [cultureinfo]::InvariantCulture)))"
+                } else { $whenEn = '' }
+                $det = switch ([string]$t.detection) { 'installed' { $true } 'not-installed' { $false } default { $null } }
+                $ok = [bool]$t.success -and ($null -eq $det -or $det -eq $expectDev[$type])
+                @{
+                    StepDe = $devLabelDe[$type] + $when; StepEn = $type + $whenEn; Exit = "$($t.exitCode)"
+                    DetectionDe = $(if ($null -eq $det) { 'nicht protokolliert' } elseif ($det) { 'erkannt' } else { 'nicht erkannt' })
+                    DetectionEn = $(if ($null -eq $det) { 'not recorded' } elseif ($det) { 'detected' } else { 'absent' })
+                    Cls = $(if ($ok) { 'b-ok' } else { 'b-fail' }); Result = $(if ($ok) { 'pass' } else { 'fail' })
+                    ResultDe = $(if ($ok) { 'bestanden' } else { 'fehlgeschlagen' }); ResultEn = $(if ($ok) { 'passed' } else { 'failed' })
+                    Action = $type
+                }
+            })
+        if ($devRows.Count) {
+            $Metadata['SystemTest'] = $devRows
+            $nOk = @($devRows | Where-Object { $_.Cls -eq 'b-ok' }).Count
+            if (-not $Metadata.ContainsKey('SystemTestNoteDe')) {
+                $Metadata['SystemTestNoteDe'] = "DEV-VM-Route: jede Aktion einzeln als NT AUTHORITY\SYSTEM (Invoke-PsadtSystemTest.ps1). $($devRows.Count) L&auml;ufe, $nOk bestanden." +
+                $(if ($mf.results.gate.verdict) { " Gate-Verdikt: $([string]$mf.results.gate.verdict)$(if ($mf.results.gate.at) { ' (' + (Format-IsoDay $mf.results.gate.at) + ')' })." })
+            }
+            if (-not $Metadata.ContainsKey('SystemTestNoteEn')) {
+                $Metadata['SystemTestNoteEn'] = "DEV-VM route: every action on its own as NT AUTHORITY\SYSTEM (Invoke-PsadtSystemTest.ps1). $($devRows.Count) runs, $nOk passed." +
+                $(if ($mf.results.gate.verdict) { " Gate verdict: $([string]$mf.results.gate.verdict)$(if ($mf.results.gate.at) { ' (' + (Format-IsoDay $mf.results.gate.at) + ')' })." })
             }
         }
     }
@@ -378,6 +458,23 @@ function Get-LogoDataUri {
     return "data:image/svg+xml;base64,$([System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($svg)))"
 }
 
+# Width, height and alpha from a PNG's IHDR chunk (bytes 16-25) - deterministic, no image library. $null
+# for anything that is not a complete PNG header, so the caller says "not checked" instead of guessing.
+function Get-PngFacts {
+    param($Path)
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $null }
+    $buf = New-Object byte[] 26
+    $fs = [System.IO.File]::OpenRead((Resolve-Path -LiteralPath $Path).Path)
+    try { $n = $fs.Read($buf, 0, 26) } finally { $fs.Dispose() }
+    if ($n -lt 26) { return $null }
+    $sig = @(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+    for ($i = 0; $i -lt 8; $i++) { if ($buf[$i] -ne $sig[$i]) { return $null } }
+    if ([System.Text.Encoding]::ASCII.GetString($buf, 12, 4) -ne 'IHDR') { return $null }
+    $be = { param($o) ([uint32]$buf[$o] -shl 24) -bor ([uint32]$buf[$o + 1] -shl 16) -bor ([uint32]$buf[$o + 2] -shl 8) -bor [uint32]$buf[$o + 3] }
+    # Colour type 4 (grey + alpha) and 6 (RGBA) carry an alpha channel.
+    [pscustomobject]@{ Width = [int](& $be 16); Height = [int](& $be 20); Alpha = ($buf[25] -eq 4 -or $buf[25] -eq 6) }
+}
+
 # ----------------------------------------------------------------------------- scalar values
 # language.dossier is what SKILL.md promises decides this, and until 0.46.0 nothing read it: the template
 # is bilingual, so the key only chooses which language the file OPENS in. -Metadata Lang still wins.
@@ -394,16 +491,23 @@ $appVersion    = Get-Val 'AppVersion' '0.0.0'
 $publisher     = Get-Val 'Publisher' ''
 $developer     = Get-Val 'Developer' $publisher
 $owner         = Get-Val 'Owner' ''
-$pkgRev        = Get-Val 'PkgRev' '01'
-$scriptVersion = Get-Val 'ScriptVersion' '0.1'
+# No invented header facts (0.49.4): script version, revision and author come from the launcher (read in
+# the manifest block), the author otherwise from config.author; a value nobody supplied renders as a dash
+# instead of the literals '0.1' and '01', which read like facts about the package.
+$cfgAuthor = ''
+if ($cfgProbe -and $cfgProbe.Config -and $cfgProbe.Config.author) {
+    $cfgAuthor = (@([string]$cfgProbe.Config.author.person, [string]$cfgProbe.Config.author.company) | Where-Object { $_ }) -join ', '
+}
+$pkgRev        = Get-Val 'PkgRev' ''
+$scriptVersion = Get-Val 'ScriptVersion' ''
 $created       = Get-Val 'Created' (Get-Date -Format 'yyyy-MM-dd')
-$author        = Get-Val 'Author' ''
+$author        = Get-Val 'Author' $cfgAuthor
 # Default the PSADT version from the ACTUALLY INSTALLED module, not a literal that silently goes stale
 # on the next PSADT update; '4.1.8' is only the last-resort fallback when the module isn't present.
-$psadtInstalled = try {
-    (Get-Module -ListAvailable PSAppDeployToolkit -ErrorAction SilentlyContinue |
-        Sort-Object Version -Descending | Select-Object -First 1).Version.ToString()
+$psadtModuleInfo = try {
+    Get-Module -ListAvailable PSAppDeployToolkit -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
 } catch { $null }
+$psadtInstalled = if ($psadtModuleInfo) { $psadtModuleInfo.Version.ToString() } else { $null }
 $psadtVersion  = Get-Val 'PsadtVersion' $(if ($psadtInstalled) { $psadtInstalled } else { '4.1.8' })
 $moduleVersion = Get-Val 'ModuleVersion' $psadtVersion
 
@@ -434,18 +538,20 @@ $vPrivacyUrl = if ($privacyUrl) { Codei $privacyUrl } else { Bspan 'nicht gesetz
 $notesVal = Get-Val 'Notes' ''
 $vNotes = if ($notesVal) { Esc $notesVal } else { Bspan 'nicht gesetzt' 'not set' }
 
+$vOwner = if ($owner) { Esc $owner } else { Bspan 'nicht gesetzt' 'not set' }
+
+# The logo is described once, in the logo section (0.49.4). An app-information row said the same thing
+# again - "real app logo, <file>" - and told the reader nothing the logo section does not.
 $logoLeaf = ''
 if ($LogoPath) { $logoLeaf = Split-Path $LogoPath -Leaf }
 $logoSource = Get-Val 'LogoSource' $logoLeaf
 $logoGuardOk = [bool](Get-Val 'LogoGuardOk' $true)
-$vLogo = (Badge 'b-ok' 'echtes App-Logo' 'real app logo') +
-         (NoteHtml (Esc $logoSource) (Esc $logoSource))
 
 # ----------------------------------------------------------------------------- program cells
 $vInstallCmd   = Codei (Get-Val 'InstallCmd' 'Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent')
 $vUninstallCmd = Codei (Get-Val 'UninstallCmd' 'Invoke-AppDeployToolkit.exe -DeploymentType Uninstall -DeployMode Silent')
 $vInstallBehavior = Badge 'b-ok' (Esc (Get-Val 'InstallBehavior' 'System')) (Esc (Get-Val 'InstallBehavior' 'System'))
-$restartDe = Get-Val 'RestartBehaviorDe' 'Determine behavior based on return codes'
+$restartDe = Get-Val 'RestartBehaviorDe' 'Verhalten basierend auf R&uuml;ckgabecodes bestimmen'
 $restartEn = Get-Val 'RestartBehaviorEn' 'Determine behavior based on return codes'
 $restartNoteDe = Get-Val 'RestartNoteDe' ''
 $restartNoteEn = Get-Val 'RestartNoteEn' ''
@@ -460,9 +566,11 @@ $vAllowUninstall = if ($allowUninstall) { Badge 'b-ok' 'Ja' 'Yes' } else { Badge
 $vOsArch = Esc (Get-Val 'OsArch' 'x64')
 # 1607 is what the upload sends by default (0.49.3); '22H2' was printed here while Intune got 1607.
 $vMinOs  = Esc (Get-Val 'MinOs' 'Windows 10 1607')
-$vDisk   = Esc (Get-Val 'DiskMb' '')
+# An unset requirement says so (0.49.4); the disk-space cell used to be empty.
+$vDisk   = $dsk = Get-Val 'DiskMb' ''
+$vDisk   = if ($dsk) { Esc $dsk } else { (Bspan 'nicht festgelegt' 'not set') }
 $vMemory = $m = Get-Val 'MemoryMb' ''
-$vMemory = if ($m) { Esc $m } else { (Bspan 'nicht relevant' 'not relevant') }
+$vMemory = if ($m) { Esc $m } else { (Bspan 'nicht festgelegt' 'not set') }
 
 # Certificate / driver-trust policy (guide Appendix N). CertPolicy = @{ Store; Thumbprint; OmaUri; Owner }
 # Owner = 'Policy' (Intune Custom OMA-URI) | 'Package' (in-script import). Default: none required.
@@ -498,13 +606,13 @@ if (-not $dt) {
     $classBadge = switch ($dtClass) {
         'GREEN'  { Badge 'b-ok'   'Microsoft-signiert' 'Microsoft-signed' }
         'YELLOW' { Badge 'b-warn' 'herstellersigniert' 'vendor-signed' }
-        'RED'    { Badge 'b-fail' 'nicht vertrauenswuerdig' 'not trusted' }
+        'RED'    { Badge 'b-fail' 'nicht vertrauensw&uuml;rdig' 'not trusted' }
         default  { Badge 'b-neut' (Esc $dtClass) (Esc $dtClass) }
     }
     $ownerBadge2 = switch ($dtOwner) {
         'policy'  { Badge 'b-ok'   'Zertifikat: Intune-Policy' 'certificate: Intune policy' }
         'package' { Badge 'b-warn' 'Zertifikat: Paket-Import'  'certificate: package import' }
-        'none'    { Badge 'b-neut' 'kein Zertifikat noetig'    'no certificate needed' }
+        'none'    { Badge 'b-neut' 'kein Zertifikat n&ouml;tig' 'no certificate needed' }
         default   { '' }
     }
     $vDrivers = $classBadge + ' ' + $ownerBadge2
@@ -523,7 +631,20 @@ if (-not $dt) {
     }
 }
 
-$vRuleFormat   = Esc (Get-Val 'RuleFormat' 'Custom Detection Script')
+# One row when there is nothing to say twice (0.49.4): "driver certificate: none" and "driver trust: no
+# drivers" were two rows stating one fact. A package with drivers or a certificate policy keeps both.
+if (-not $cp -and -not $dt) {
+    $driverRows = "          <tr><td class=`"k`" data-de=`"Treiber`" data-en=`"Drivers`">Treiber</td><td>" +
+        (Badge 'b-neut' 'keine Treiber' 'no drivers') +
+        (NoteHtml 'das Paket liefert keine Treiber aus, kein Zertifikat erforderlich' 'this package ships no drivers, no certificate required') + '</td></tr>'
+} else {
+    $driverRows = "          <tr><td class=`"k`" data-de=`"Treiber-Zertifikat`" data-en=`"Driver certificate`">Treiber-Zertifikat</td><td>$vCertPolicy</td></tr>`r`n" +
+        "          <tr><td class=`"k`" data-de=`"Treiber-Vertrauen`" data-en=`"Driver trust`">Treiber-Vertrauen</td><td>$vDrivers</td></tr>"
+}
+
+# The portal's own wording, per language (0.49.4) - "Custom Detection Script" showed in the German view.
+$ruleFormat = Get-Val 'RuleFormat' $null
+$vRuleFormat = if ($ruleFormat) { Esc $ruleFormat } else { Bspan 'Benutzerdefiniertes Erkennungsskript' 'Custom detection script' }
 $detectScript  = Get-Val 'DetectScript' ''
 $vDetectScript = if ($detectScript) { Codei $detectScript } else { Bspan 'n. z.' 'n/a' }
 $runAs32 = [bool](Get-Val 'RunAs32' $false)
@@ -550,7 +671,18 @@ $vSup = if ([string]::IsNullOrWhiteSpace([string]$sup)) {
 # ----------------------------------------------------------------------------- logo / intunewin
 $vLogoSource     = Bspan (Esc $logoSource) (Esc $logoSource)
 $vLogoResolution = Get-Val 'LogoResolution' ''
-$vLogoResolution = if ($vLogoResolution) { (Esc $vLogoResolution) + ' ' + (Badge 'b-ok' 'verifiziert' 'verified') } else { (Bspan 'nicht gepr&uuml;ft' 'not checked') }
+# Measured, not asked for (0.49.4): a PNG states its size and whether it carries an alpha channel in its
+# IHDR chunk, so "not checked" was never necessary. The guideline is App. J: >= 512 px, transparent.
+$png = Get-PngFacts $LogoPath
+$vLogoResolution = if ($vLogoResolution) { (Esc $vLogoResolution) + ' ' + (Badge 'b-ok' 'verifiziert' 'verified') }
+elseif ($png) {
+    $alphaDe = if ($png.Alpha) { 'mit Alphakanal' } else { 'ohne Alphakanal' }
+    $alphaEn = if ($png.Alpha) { 'with alpha channel' } else { 'no alpha channel' }
+    $meets = $png.Width -ge 512 -and $png.Height -ge 512 -and $png.Alpha
+    (Bspan "$($png.Width) &times; $($png.Height) px, $alphaDe" "$($png.Width) &times; $($png.Height) px, $alphaEn") + ' ' +
+    $(if ($meets) { Badge 'b-ok' 'erf&uuml;llt die Vorgabe' 'meets the guideline' } else { Badge 'b-warn' 'unter der Vorgabe (&ge; 512 px, transparent)' 'below the guideline (&ge; 512 px, transparent)' })
+}
+else { (Bspan 'nicht gepr&uuml;ft' 'not checked') }
 $vLogoGuard = if ($logoGuardOk) {
     (Badge 'b-ok' 'kein PSADT-AppIcon.png' 'no PSADT AppIcon.png') + (NoteHtml 'SHA256-Blocklist bestanden' 'SHA256 blocklist passed')
 } else { Badge 'b-fail' 'PSADT-Default!' 'PSADT default!' }
@@ -560,11 +692,31 @@ $vSetupFile = (Codei (Get-Val 'SetupFile' 'Invoke-AppDeployToolkit.exe')) + ' ' 
 $vLocation = $loc = Get-Val 'Location' ''
 $vLocation = if ($loc) { Codei $loc } else { Bspan 'Output-Ordner der App' 'app output folder' }
 
+# The upload, once there was one (0.49.4): which Intune app this file became, and the hash of what went up.
+$uploadRows = @()
+$pkgSha = Get-Val 'PackageSha256' ''
+if ($pkgSha) { $uploadRows += "          <tr><td class=`"k`">SHA256</td><td>$(Codei $pkgSha)</td></tr>" }
+$upId = Get-Val 'UploadAppId' ''
+if ($upId) {
+    $upCell = Codei $upId
+    $upPortal = Get-Val 'UploadPortal' ''
+    if ($upPortal -match '^https://') {
+        $upCell += " <a href=`"$(Esc $upPortal)`" target=`"_blank`" rel=`"noopener`" data-de=`"im Intune Admin Center &ouml;ffnen`" data-en=`"open in the Intune admin center`">im Intune Admin Center &ouml;ffnen</a>"
+    }
+    $upAt = Get-Val 'UploadAt' ''
+    if ($upAt) { $upCell += NoteHtml "hochgeladen am $(Esc $upAt)" "uploaded on $(Esc $upAt)" }
+    $uploadRows += "          <tr><td class=`"k`" data-de=`"Intune-App-ID`" data-en=`"Intune app ID`">Intune-App-ID</td><td>$upCell</td></tr>"
+}
+$uploadRowsHtml = $uploadRows -join "`r`n"
+
 # ----------------------------------------------------------------------------- description markdown
 # No invented prose. "_Beschreibung folgt._" read like a finished field, survived review and shipped
 # to Company Portal; this marker cannot be mistaken for content. The guard above refuses outright when
 # an upload is planned.
-$descMdDe = Esc (Get-Val 'DescMdDe' "**$appName $appVersion**`n`n> **KEINE BESCHREIBUNG HINTERLEGT.** Dieses Feld wird unveraendert ins Company Portal uebernommen und muss vor dem Upload gefuellt werden (New-PsadtReport.ps1 -Metadata @{ DescMdDe = '...' }).")
+# Real umlauts via [char] - the Markdown source is escaped text, so an HTML entity would print literally,
+# and this file stays 7-bit ASCII.
+$ae = [char]0xE4; $ue = [char]0xFC
+$descMdDe = Esc (Get-Val 'DescMdDe' "**$appName $appVersion**`n`n> **KEINE BESCHREIBUNG HINTERLEGT.** Dieses Feld wird unver$($ae)ndert ins Company Portal $($ue)bernommen und muss vor dem Upload gef$($ue)llt werden (New-PsadtReport.ps1 -Metadata @{ DescMdDe = '...' }).")
 $descMdEn = Esc (Get-Val 'DescMdEn' "**$appName $appVersion**`n`n> **NO DESCRIPTION SUPPLIED.** This field is copied to Company Portal verbatim and must be filled before upload (New-PsadtReport.ps1 -Metadata @{ DescMdEn = '...' }).")
 
 # ----------------------------------------------------------------------------- return codes
@@ -589,7 +741,7 @@ $rcRows = @(foreach ($r in $rc) {
     # portal label (Soft reboot). Shown side by side it reads as a duplicated word rather than as two
     # audiences, but "copy table" still needs the API spelling - so it is carried, not displayed.
     "            <tr data-rc-type=`"$(Esc $r.Type)`"><td><code>$(Esc $r.Code)</code></td>" +
-    "<td><span class=`"badge $($r.Cls)`">$(Esc $r.Label)</span></td>" +
+    "<td><span class=`"badge $($r.Cls)`" data-de=`"$(Esc $r.LabelDe)`" data-en=`"$(Esc $r.LabelEn)`">$(Esc $r.LabelDe)</span></td>" +
     "<td><span data-de=`"$(AttrHtml $r.De)`" data-en=`"$(AttrHtml $r.En)`">$($r.De)</span></td></tr>"
 }) -join "`n"
 
@@ -600,8 +752,8 @@ if ($asgRecorded) {
     $asgAt = Format-IsoDay $asgRecorded.at
     $asgTagDe = "Gesetzt &middot; aus Intune zur&uuml;ckgelesen $asgAt"
     $asgTagEn = "Set &middot; read back from Intune $asgAt"
-    $asgNoteDe = 'Die Zuweisung wurde in Phase 10 gesetzt und aus Intune zur&uuml;ckgelesen (Invoke-IntuneAppAssignment.ps1). Kategorie und Featured-Flag bleiben bewusste menschliche Entscheidungen.'
-    $asgNoteEn = 'The assignment was set in Phase 10 and read back from Intune (Invoke-IntuneAppAssignment.ps1). Category and the featured flag remain deliberate human decisions.'
+    $asgNoteDe = "Diese Zuweisungen sind der Stand in Intune am $asgAt, kein Vorschlag. Kategorie und Hervorhebung im Company Portal legt die Organisation bewusst selbst fest."
+    $asgNoteEn = "These assignments are what Intune held on $asgAt, not a suggestion. Category and the Company Portal highlight are left to the organisation on purpose."
 } else {
     $asgTagDe = 'Vorschlag &middot; Anwender entscheidet'
     $asgTagEn = 'Suggestion &middot; user decides'
@@ -611,9 +763,17 @@ if ($asgRecorded) {
 if ($asg.Count -eq 0) {
     $asgRows = "            <tr><td colspan=`"3`"><span data-de=`"noch nicht zugewiesen &ndash; bewusste Entscheidung im Admin Center`" data-en=`"not yet assigned &ndash; a deliberate decision in the Admin Center`">noch nicht zugewiesen</span></td></tr>"
 } else {
+    # The recorded values stay the portal's English tokens; the reader gets them in the page language
+    # (0.49.4), and the group by name with its id as a detail - three GUIDs told an approver nothing.
+    $asgTypeDe = @{ Available = 'Verf&uuml;gbar'; Required = 'Erforderlich'; Uninstall = 'Deinstallieren' }
+    $asgAvailDe = @{ 'As soon as possible' = 'So bald wie m&ouml;glich' }
     $asgRows = @(foreach ($a in $asg) {
         $tcls = switch ($a.Type) { 'Required' { 'b-info' } 'Uninstall' { 'b-fail' } default { 'b-neut' } }
-        "            <tr><td>$(Esc $a.Group)</td><td><span class=`"badge $tcls`">$(Esc $a.Type)</span></td><td>$(Esc $a.Availability)</td></tr>"
+        $grpCell = Esc $a.Group
+        if ($a.GroupId -and [string]$a.GroupId -ne [string]$a.Group) { $grpCell += ' ' + (NoteHtml (Codei $a.GroupId)) }
+        $tDe = if ($asgTypeDe.ContainsKey([string]$a.Type)) { $asgTypeDe[[string]$a.Type] } else { Esc $a.Type }
+        $avDe = if ($asgAvailDe.ContainsKey([string]$a.Availability)) { $asgAvailDe[[string]$a.Availability] } else { Esc $a.Availability }
+        "            <tr><td>$grpCell</td><td>$(Badge $tcls $tDe (Esc $a.Type))</td><td>$(Bspan $avDe (Esc $a.Availability))</td></tr>"
     }) -join "`n"
 }
 
@@ -622,6 +782,19 @@ function Format-HookItems {
     param($Items)
     if (-not $Items -or $Items.Count -eq 0) { return '' }
     @(foreach ($it in $Items) {
+        $kind = $null
+        if ($it -isnot [string] -and $it -isnot [hashtable] -and $it.PSObject -and $it.PSObject.Properties['Kind']) { $kind = [string]$it.Kind }
+        if ($kind -eq 'comment') {
+            # A '##' comment from the launcher, which is English by convention (0.49.4): quoted and labelled
+            # as one, so the German view does not read as if it had slipped into English mid-sentence.
+            "              <li class=`"cmt`"><span class=`"qlabel`" data-de=`"Kommentar im Skript (EN)`" data-en=`"Script comment`">Kommentar im Skript (EN)</span> <q>$(Esc $it.Text)</q></li>"
+            continue
+        }
+        if ($kind -eq 'helper') {
+            "              <li><code>$(Esc $it.Text)</code><span class=`"htag`" data-de=`"Paket-Helfer`" data-en=`"package helper`">Paket-Helfer</span></li>"
+            continue
+        }
+        if ($kind -eq 'cmd') { "              <li><code>$(Esc $it.Text)</code></li>"; continue }
         $de = $null; $en = $null
         if ($it -is [hashtable] -and $it.ContainsKey('De')) { $de = $it['De']; $en = $it['En'] }
         elseif ($it -isnot [string] -and $it.PSObject -and $it.PSObject.Properties['De']) { $de = $it.De; $en = $it.En }
@@ -633,22 +806,47 @@ function Format-HookItems {
 # defaults here used to be a generic MSI package's contents - "Start-ADTMsiProcess", "user data is
 # preserved" - printed as fact for whatever was being reported on. A WinMerge package driven by
 # Start-ADTProcess with Inno switches was described as calling Start-ADTMsiProcess four times.
-# Nothing in the document said the list was a guess.
-$launcherAst = $null
-$launcherTokens = $null
-if ($ManifestPath) {
-    $launcherFile = Join-Path (Split-Path -Parent (Resolve-Path -LiteralPath $ManifestPath).Path) 'Invoke-AppDeployToolkit.ps1'
-    if (Test-Path -LiteralPath $launcherFile) {
-        $launcherTokens = $null
-        $launcherAst = [System.Management.Automation.Language.Parser]::ParseFile($launcherFile, [ref]$launcherTokens, [ref]$null)
+# Nothing in the document said the list was a guess. The launcher is parsed once, in the manifest block.
+
+# PSADT's own template comments describe the template, not this package, and "<Perform ... here>" is a
+# placeholder (0.49.4): both were printed as if they were the package's rationale - "allow up to 3
+# deferrals" on a package that runs Silent. The list comes from the installed module's v4 template when
+# there is one, so a new PSADT release needs no new skill release; the built-in lines are the floor.
+$stockHookComments = New-Object System.Collections.Generic.HashSet[string]
+foreach ($c in @(
+        'Show Welcome Message, close processes if specified, allow up to 3 deferrals, verify there is enough disk space to complete the install, and persist the prompt.'
+        'Show Progress Message (with the default message).'
+        'If there are processes to close, show Welcome Message with a 60 second countdown before automatically closing.'
+        'Handle Zero-Config MSI installations.'
+        'Handle Zero-Config MSI uninstallations.'
+        'Handle Zero-Config MSI repairs.'
+        'Display a message at the end of the install.')) { [void]$stockHookComments.Add($c) }
+try {
+    $tplFile = if ($psadtModuleInfo) { Join-Path $psadtModuleInfo.ModuleBase 'Frontend\v4\Invoke-AppDeployToolkit.ps1' } else { $null }
+    if ($tplFile -and (Test-Path -LiteralPath $tplFile)) {
+        $tplTokens = $null
+        [void][System.Management.Automation.Language.Parser]::ParseFile($tplFile, [ref]$tplTokens, [ref]$null)
+        foreach ($tk in @($tplTokens | Where-Object { $_.Kind -eq 'Comment' -and $_.Text -match '^##\s' })) {
+            [void]$stockHookComments.Add(($tk.Text -replace '^##\s*', '').Trim())
+        }
+    }
+} catch { Write-Verbose "PSADT template comments not readable: $($_.Exception.Message)" }
+
+# The package's own helpers (0.49.4). The core step of a hook is often one - Install-WindowsAppProvisioning
+# provisions the whole app - and a filter that knew only *-ADT* names left that step out of the hook.
+$extHelpers = @{}
+if ($launcherFile) {
+    foreach ($psm in @(Get-ChildItem -LiteralPath (Join-Path (Split-Path -Parent $launcherFile) 'PSAppDeployToolkit.Extensions') -Filter '*.psm1' -File -ErrorAction SilentlyContinue)) {
+        $extAst = [System.Management.Automation.Language.Parser]::ParseFile($psm.FullName, [ref]$null, [ref]$null)
+        foreach ($fd in $extAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { $extHelpers[$fd.Name] = $true }
     }
 }
 
 function Get-HookItems {
-    # The hook as a reader needs it: the '##' rationale comments the launcher carries AND the ADT commands,
-    # in source order. Commands alone said "Uninstall-ADTApplication" on Chrome 154 and nothing about WHY
-    # it replaced a ProductCode call - that had to be retyped into -Metadata by hand (0.44.0).
-    # MARK banners and separator lines are template furniture, not rationale, and are skipped.
+    # The hook as a reader needs it: the '##' rationale comments the launcher carries AND the commands it
+    # runs, in source order. Commands alone said "Uninstall-ADTApplication" on Chrome 154 and nothing about
+    # WHY it replaced a ProductCode call - that had to be retyped into -Metadata by hand (0.44.0).
+    # MARK banners, separator lines, PSADT's template comments and placeholders are skipped.
     param($Ast, $Tokens, [string]$FunctionName)
     if (-not $Ast) { return $null }
     $fn = $Ast.FindAll({ param($n)
@@ -659,10 +857,11 @@ function Get-HookItems {
     $seen = @{}
     foreach ($c in $fn.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true)) {
         $name = $c.GetCommandName()
-        if ($name -and $name -match '^[A-Za-z]+-(ADT|Psadt)' -and -not $seen.ContainsKey($name)) {
-            $seen[$name] = $true
-            $items.Add([pscustomobject]@{ Offset = $c.Extent.StartOffset; Line = $c.Extent.StartLineNumber; Text = $name; Comment = $false })
-        }
+        if (-not $name -or $seen.ContainsKey($name)) { continue }
+        $kind = if ($name -match '^[A-Za-z]+-(ADT|Psadt)') { 'cmd' } elseif ($extHelpers.ContainsKey($name)) { 'helper' } else { $null }
+        if (-not $kind) { continue }
+        $seen[$name] = $true
+        $items.Add([pscustomobject]@{ Offset = $c.Extent.StartOffset; Line = $c.Extent.StartLineNumber; Text = $name; Kind = $kind })
     }
     $last = $null
     foreach ($t in @($Tokens | Where-Object {
@@ -670,12 +869,13 @@ function Get-HookItems {
         $txt = $t.Text.Trim()
         if ($txt -notmatch '^##\s' -or $txt -match '^##\s*(=|MARK:)') { $last = $null; continue }
         $txt = ($txt -replace '^##\s*', '').Trim()
+        if ($stockHookComments.Contains($txt) -or $txt -match '^<Perform .+ here>$') { $last = $null; continue }
         # Consecutive '##' lines are one sentence wrapped at the column limit.
         if ($last -and $t.Extent.StartLineNumber -eq $last.Line + 1) { $last.Text = "$($last.Text) $txt"; $last.Line = $t.Extent.StartLineNumber; continue }
-        $last = [pscustomobject]@{ Offset = $t.Extent.StartOffset; Line = $t.Extent.StartLineNumber; Text = $txt; Comment = $true }
+        $last = [pscustomobject]@{ Offset = $t.Extent.StartOffset; Line = $t.Extent.StartLineNumber; Text = $txt; Kind = 'comment' }
         $items.Add($last)
     }
-    return @($items | Sort-Object Offset | ForEach-Object { $_.Text })
+    return @($items | Sort-Object Offset)
 }
 
 function Get-HookCommands {
@@ -719,22 +919,63 @@ $defaultPf = @(
 )
 # The recorded verdict (Invoke-PsadtPreflight.ps1 writes results.preflight.checks since 0.44.0). Before
 # that, a package whose pre-flight was GREEN in the manifest still rendered "not run" here - Chrome 154.
+# Check names in the reader's language (0.49.4); the finding itself is the tool's output and is shown as
+# that - as code, the same in both views - instead of an English sentence in the German view.
+$pfNames = @{
+    'Encoding'       = @('Zeichenkodierung', 'Encoding')
+    'Parse'          = @('Syntax', 'Syntax')
+    'v3-cmdlets'     = @('Keine v3-Cmdlets', 'No v3 cmdlets')
+    'Structure'      = @('Struktur', 'Structure')
+    'ProductCode'    = @('ProductCode-&Uuml;bergabe', 'ProductCode usage')
+    'AsyncUninstall' = @('Deinstallation gepr&uuml;ft', 'Uninstall verified')
+    'TopLevel'       = @('Kein Code au&szlig;erhalb von try/catch', 'No top-level code')
+    'Detection'      = @('Erkennungsskript', 'Detection script')
+    'Manifest'       = @('Paket-Manifest', 'Package manifest')
+    'LogName'        = @('Log je Lauf', 'Per-run log')
+    'DriverTrust'    = @('Treiber-Vertrauen', 'Driver trust')
+    'Research'       = @('Recherche', 'Research')
+    'SupportFiles'   = @('SupportFiles', 'SupportFiles')
+    'SwitchSync'     = @('Schalter-Abgleich', 'Switch sync')
+}
 if ($ManifestPath -and $mf -and $mf.results.preflight -and $mf.results.preflight.checks) {
     $defaultPf = @(foreach ($pc in @($mf.results.preflight.checks)) {
         $cls = switch ([string]$pc.Status) { 'PASS' { 'ok' } 'WARN' { 'warn' } default { 'fail' } }
         $bde = switch ($cls) { 'ok' { 'bestanden' } 'warn' { 'Hinweis' } default { 'fehlgeschlagen' } }
         $ben = switch ($cls) { 'ok' { 'passed' } 'warn' { 'warning' } default { 'failed' } }
-        $title = if ($pc.File) { "$($pc.Name) - $($pc.File)" } else { [string]$pc.Name }
-        @{ Title = $title; Cls = $cls; De = (Esc ([string]$pc.Detail)); En = (Esc ([string]$pc.Detail)); BDe = $bde; BEn = $ben }
+        $nm = [string]$pc.Name
+        $pair = if ($pfNames.ContainsKey($nm)) { $pfNames[$nm] } else { @((Esc $nm), (Esc $nm)) }
+        $file = if ($pc.File) { ' &middot; ' + (Esc ([string]$pc.File)) } else { '' }
+        @{ Title = $nm; TitleDe = $pair[0] + $file; TitleEn = $pair[1] + $file; Cls = $cls; Raw = [string]$pc.Detail; BDe = $bde; BEn = $ben }
     })
 }
 $pf = Get-Val 'Preflight' $defaultPf
-$pfChecks = @(foreach ($c in $pf) {
+function Format-PfCheck {
+    param($c)
     $sym = switch ($c.Cls) { 'ok' { '&#10003;' } 'warn' { '!' } 'neutral' { '&ndash;' } default { '&times;' } }
     $bcls = switch ($c.Cls) { 'ok' { 'b-ok' } 'warn' { 'b-warn' } 'neutral' { 'b-neut' } default { 'b-fail' } }
-    "          <div class=`"check`"><span class=`"ci $($c.Cls)`">$sym</span><div><div class=`"ct`">$(Esc $c.Title)</div><div class=`"cd`" data-de=`"$(AttrHtml $c.De)`" data-en=`"$(AttrHtml $c.En)`">$($c.De)</div></div><span class=`"badge $bcls`" data-de=`"$(AttrHtml $c.BDe)`" data-en=`"$(AttrHtml $c.BEn)`">$($c.BDe)</span></div>"
-}) -join "`n"
-
+    $title = if ($c.TitleDe) { "<div class=`"ct`" data-de=`"$(AttrHtml $c.TitleDe)`" data-en=`"$(AttrHtml $c.TitleEn)`">$($c.TitleDe)</div>" } else { "<div class=`"ct`">$(Esc $c.Title)</div>" }
+    $detail = if ($null -ne $c.Raw) { "<div class=`"cd`"><code>$(Esc $c.Raw)</code></div>" } else { "<div class=`"cd`" data-de=`"$(AttrHtml $c.De)`" data-en=`"$(AttrHtml $c.En)`">$($c.De)</div>" }
+    "          <div class=`"check`"><span class=`"ci $($c.Cls)`">$sym</span><div>$title$detail</div><span class=`"badge $bcls`" data-de=`"$(AttrHtml $c.BDe)`" data-en=`"$(AttrHtml $c.BEn)`">$($c.BDe)</span></div>"
+}
+# Eighteen near-identical "passed" rows buried the one that mattered (0.49.4): the roll-up says how many
+# passed, warnings and failures stay open, and the passed checks fold away.
+$pfPass = @($pf | Where-Object { $_.Cls -eq 'ok' })
+$pfOpen = @($pf | Where-Object { $_.Cls -ne 'ok' })
+if ($pfPass.Count -and @($pf).Count -gt 1) {
+    $nAll = @($pf).Count
+    $nWarn = @($pf | Where-Object { $_.Cls -eq 'warn' }).Count
+    $nFail = @($pf | Where-Object { $_.Cls -notin @('ok', 'warn', 'neutral') }).Count
+    $sumDe = "$($pfPass.Count) von $nAll Pr&uuml;fungen bestanden" + $(if ($nWarn) { " &middot; $nWarn $(if ($nWarn -eq 1) { 'Hinweis' } else { 'Hinweise' })" }) + $(if ($nFail) { " &middot; $nFail fehlgeschlagen" })
+    $sumEn = "$($pfPass.Count) of $nAll checks passed" + $(if ($nWarn) { " &middot; $nWarn $(if ($nWarn -eq 1) { 'warning' } else { 'warnings' })" }) + $(if ($nFail) { " &middot; $nFail failed" })
+    $pfParts = @("          <div class=`"pf-sum`" data-de=`"$(AttrHtml $sumDe)`" data-en=`"$(AttrHtml $sumEn)`">$sumDe</div>")
+    $pfParts += @($pfOpen | ForEach-Object { Format-PfCheck $_ })
+    $pfParts += "          <details class=`"pf-fold`"><summary data-de=`"Bestandene Pr&uuml;fungen anzeigen ($($pfPass.Count))`" data-en=`"Show passed checks ($($pfPass.Count))`">Bestandene Pr&uuml;fungen anzeigen ($($pfPass.Count))</summary>"
+    $pfParts += @($pfPass | ForEach-Object { Format-PfCheck $_ })
+    $pfParts += '          </details>'
+    $pfChecks = $pfParts -join "`n"
+} else {
+    $pfChecks = @(foreach ($c in $pf) { Format-PfCheck $c }) -join "`n"
+}
 # KPI band status: a compact roll-up of the pre-flight result for the header KPI band.
 # fail (any non-ok/warn/neutral Cls) -> ROT; all neutral -> not run; any warn -> GELB; else GRUEN.
 $pfClsList = @($pf | ForEach-Object { $_.Cls })
@@ -748,13 +989,19 @@ else                { $kpiStatusDe = 'GR&Uuml;N';          $kpiStatusEn = 'GREEN
 # ----------------------------------------------------------------------------- system test
 # Default = NOT RUN (neutral) - same honesty rule as pre-flight: no synthetic "Success" rows.
 $defaultSt = @(
-    @{ StepDe = 'SYSTEM-Test'; StepEn = 'SYSTEM test'; Exit = '-'; Detection = '&ndash;'; Cls = 'b-neut'; Result = 'not run' }
+    @{ StepDe = 'SYSTEM-Test'; StepEn = 'SYSTEM test'; Exit = '-'; Detection = '&ndash;'; Cls = 'b-neut'; Result = 'not run'; ResultDe = 'nicht ausgef&uuml;hrt'; ResultEn = 'not run' }
 )
 $st = Get-Val 'SystemTest' $defaultSt
+$legacyResult = @{ 'pass' = @('bestanden', 'passed'); 'fail' = @('fehlgeschlagen', 'failed'); 'not run' = @('nicht ausgef&uuml;hrt', 'not run') }
 $stRows = @(foreach ($s in $st) {
     # Rows built from result.json carry DetectionDe/DetectionEn; a caller-supplied row keeps its single cell.
     $detCell = if ($s.DetectionDe) { "<td data-de=`"$(AttrHtml $s.DetectionDe)`" data-en=`"$(AttrHtml $s.DetectionEn)`">$($s.DetectionDe)</td>" } else { "<td>$($s.Detection)</td>" }
-    "            <tr><td data-de=`"$(AttrHtml $s.StepDe)`" data-en=`"$(AttrHtml $s.StepEn)`">$($s.StepDe)</td><td><code>$(Esc $s.Exit)</code></td>$detCell<td><span class=`"badge $($s.Cls)`">$(Esc $s.Result)</span></td></tr>"
+    # One result per language (0.49.4) - the German view printed "pass" under "Ergebnis". A caller row that
+    # still says pass / fail / not run gets the same two words; anything else is shown as given.
+    $resDe = $s.ResultDe; $resEn = $s.ResultEn
+    if (-not $resDe -and $legacyResult.ContainsKey([string]$s.Result)) { $resDe = $legacyResult[[string]$s.Result][0]; $resEn = $legacyResult[[string]$s.Result][1] }
+    $resCell = if ($resDe) { "<span class=`"badge $($s.Cls)`" data-de=`"$(AttrHtml $resDe)`" data-en=`"$(AttrHtml $resEn)`">$resDe</span>" } else { "<span class=`"badge $($s.Cls)`">$(Esc $s.Result)</span>" }
+    "            <tr><td data-de=`"$(AttrHtml $s.StepDe)`" data-en=`"$(AttrHtml $s.StepEn)`">$($s.StepDe)</td><td><code>$(Esc $s.Exit)</code></td>$detCell<td>$resCell</td></tr>"
 }) -join "`n"
 $stNoteDe = Get-Val 'SystemTestNoteDe' 'Keine SYSTEM-Test-Ergebnisse &uuml;bergeben &ndash; der SYSTEM-Test wurde nicht ausgef&uuml;hrt (kein Beleg).'
 $stNoteEn = Get-Val 'SystemTestNoteEn' 'No SYSTEM-test results supplied &ndash; the SYSTEM test was not run (no evidence).'
@@ -775,6 +1022,20 @@ if ($uploadGate -and -not $uploadGate.Passed) {
     $stNoteEn = "Upload blocked &ndash; the upload refuses -Execute until the gate is met: $(Esc ([string]$uploadGate.Reason)). $stNoteEn"
 }
 
+# Whether each hook's action was exercised, from the rows above (0.49.4). The template printed "tested"
+# under every hook of every package, whether a SYSTEM test had run or not.
+function Get-RowAction {
+    param($Row)
+    $a = if ($Row.Action) { [string]$Row.Action } else { ([string]$Row.StepEn -split '[\s(]')[0] }
+    switch ($a) { 'Install' { 'Install' } 'Reinstall' { 'Install' } 'Uninstall' { 'Uninstall' } 'FinalUninstall' { 'Uninstall' } 'Repair' { 'Repair' } default { $null } }
+}
+$hookBadge = @{}
+foreach ($h in 'Install', 'Uninstall', 'Repair') {
+    $hr = @($st | Where-Object { (Get-RowAction $_) -eq $h })
+    $hookBadge[$h] = if (@($hr | Where-Object { $_.Cls -eq 'b-fail' }).Count) { Badge 'b-fail' 'fehlgeschlagen' 'failed' }
+    elseif (@($hr | Where-Object { $_.Cls -eq 'b-ok' }).Count) { Badge 'b-ok' 'getestet' 'tested' }
+    else { Badge 'b-neut' 'nicht getestet' 'not tested' }
+}
 # ----------------------------------------------------------------------------- header status
 # Derived, never asserted. The rule the SYSTEM-test table and the pre-flight KPI already follow -
 # "no synthetic Success rows" - applies with most force to the badge at the top of the page, because
@@ -813,10 +1074,10 @@ $tokens = [ordered]@{
     'APP_NAME'          = (Esc $appName)
     'APP_VERSION'       = (Esc $appVersion)
     'PUBLISHER'         = (Esc $publisher)
-    'PKG_REV'           = (Esc $pkgRev)
-    'SCRIPT_VERSION'    = (Esc $scriptVersion)
+    'PKG_REV'           = $(if ($pkgRev) { Esc $pkgRev } else { '&ndash;' })
+    'SCRIPT_VERSION'    = $(if ($scriptVersion) { Esc $scriptVersion } else { '&ndash;' })
     'CREATED'           = (Esc $created)
-    'AUTHOR'            = (Esc $author)
+    'AUTHOR'            = $(if ($author) { Esc $author } else { '&ndash;' })
     'MODULE_VERSION'    = (Esc $moduleVersion)
     'SUB_DE'            = (AttrHtml $subDe)
     'SUB_EN'            = (AttrHtml $subEn)
@@ -827,13 +1088,12 @@ $tokens = [ordered]@{
     'KPI_STATUS_CLS'    = $kpiStatusCls
     'LOGO_IMG_SRC'      = $logoSrc
     'V_DEVELOPER'       = (Esc $developer)
-    'V_OWNER'           = (Esc $owner)
+    'V_OWNER'           = $vOwner
     'V_CATEGORY'        = $vCategory
     'V_FEATURED'        = $vFeatured
     'V_INFO_URL'        = $vInfoUrl
     'V_PRIVACY_URL'     = $vPrivacyUrl
     'V_NOTES'           = $vNotes
-    'V_LOGO'            = $vLogo
     'DESC_MD_DE'        = $descMdDe
     'DESC_MD_EN'        = $descMdEn
     'V_INSTALL_CMD'     = $vInstallCmd
@@ -847,8 +1107,7 @@ $tokens = [ordered]@{
     'V_MIN_OS'          = $vMinOs
     'V_DISK'            = $vDisk
     'V_MEMORY'          = $vMemory
-    'V_CERT_POLICY'     = $vCertPolicy
-    'V_DRIVERS'         = $vDrivers
+    'DRIVER_ROWS'       = $driverRows
     'V_RULE_FORMAT'     = $vRuleFormat
     'V_DETECT_SCRIPT'   = $vDetectScript
     'V_RUN_32'          = $vRun32
@@ -863,6 +1122,9 @@ $tokens = [ordered]@{
     'HOOK_INSTALL_ITEMS' = $hookInstall
     'HOOK_UNINSTALL_ITEMS' = $hookUninstall
     'HOOK_REPAIR_ITEMS' = $hookRepair
+    'HOOK_INSTALL_BADGE'   = $hookBadge['Install']
+    'HOOK_UNINSTALL_BADGE' = $hookBadge['Uninstall']
+    'HOOK_REPAIR_BADGE'    = $hookBadge['Repair']
     'CMDLET_CHIPS'      = $cmdChips
     'PREFLIGHT_CHECKS'  = $pfChecks
     'SYSTEMTEST_ROWS'   = $stRows
@@ -874,6 +1136,7 @@ $tokens = [ordered]@{
     'V_INTUNEWIN'       = $vIntunewin
     'V_SETUPFILE'       = $vSetupFile
     'V_LOCATION'        = $vLocation
+    'UPLOAD_ROWS'       = $uploadRowsHtml
 }
 
 # ----------------------------------------------------------------------------- render

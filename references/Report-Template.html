@@ -201,6 +201,12 @@
   .hook.install .hook-h .ic { background: var(--ok); } .hook.uninstall .hook-h .ic { background: var(--fail); } .hook.repair .hook-h .ic { background: var(--warn); }
   .hook-b { padding: 12px 14px; font-size: 13px; flex: 1; } .hook-b ul { margin: 0; padding-left: 17px; } .hook-b li { margin: 4px 0; color: var(--ink-2); }
   .hook-foot { padding: 9px 14px; border-top: 1px solid var(--line-soft); background:#fbfafa; font-size: 12px; }
+/* A '##' comment quoted from the (English) launcher, and a helper from the package's Extensions module. */
+.hook-b li.cmt { list-style: none; margin-left: -17px; color: var(--ink-3); }
+.hook-b li.cmt .qlabel { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--ink-3); }
+.hook-b li.cmt q { font-style: italic; quotes: "\201C" "\201D"; }
+.hook-b li .htag { font-size: 10.5px; color: var(--ink-3); margin-left: 6px; white-space: nowrap; }
+td a { color: var(--accent-dark); text-underline-offset: 2px; }
 
   /* ---------- Check rows ---------- */
   .checks { display: grid; gap: 0; }
@@ -209,6 +215,10 @@
   .check .ci { width: 22px; height: 22px; border-radius: 50%; display:grid; place-items:center; color:#fff; font-size:12px; font-weight:700; }
   .check .ci.ok{background:var(--ok)} .check .ci.warn{background:var(--warn)} .check .ci.fail{background:var(--fail)}
   .check .ct { font-weight: 600; } .check .cd { color: var(--ink-3); font-size: 12.5px; }
+/* Pre-flight roll-up: the passed checks fold away, warnings and failures never do. */
+.pf-sum { padding: 4px 4px 10px; font-weight: 600; border-bottom: 1px solid var(--line-soft); }
+details.pf-fold > summary { cursor: pointer; padding: 10px 4px; color: var(--ink-3); font-size: 12.5px; }
+details.pf-fold > summary::marker { color: var(--ink-3); }
 
   .chips { display: flex; flex-wrap: wrap; gap: 7px; margin: 6px 0 2px; }
   .chip { font-family: var(--mono); font-size: 12px; background:#EDF6F2; border:1px solid var(--line-soft); color:#005E52; padding: 3px 9px; border-radius: 5px; }
@@ -314,7 +324,6 @@
       <div class="sub" data-de="{{SUB_DE}}" data-en="{{SUB_EN}}">{{SUB_DE}}</div>
       <div class="hero-meta">
         <div><b data-de="Hersteller" data-en="Publisher">Hersteller</b> <span class="v">{{PUBLISHER}}</span></div>
-        <div><b data-de="App-Version" data-en="App version">App-Version</b> <span class="v">{{APP_VERSION}}</span></div>
         <div><b data-de="Paket-Rev" data-en="Package rev">Paket-Rev</b> <span class="v">{{PKG_REV}}</span></div>
         <div><b data-de="Skript-Version" data-en="Script version">Skript-Version</b> <span class="v">{{SCRIPT_VERSION}}</span></div>
         <div><b data-de="Erstellt" data-en="Created">Erstellt</b> <span class="v">{{CREATED}}</span></div>
@@ -335,7 +344,7 @@
   <div class="kpi-inner">
     <div class="kpi"><div class="kpi-label" data-de="App-Version" data-en="App version">App-Version</div><div class="kpi-value">{{APP_VERSION}}</div></div>
     <div class="kpi"><div class="kpi-label" data-de="Pre-flight" data-en="Pre-flight">Pre-flight</div><div class="kpi-value"><span class="kdot {{KPI_STATUS_CLS}}"></span><span data-de="{{KPI_STATUS_DE}}" data-en="{{KPI_STATUS_EN}}">{{KPI_STATUS_DE}}</span></div></div>
-    <div class="kpi"><div class="kpi-label" data-de="Minimum OS" data-en="Minimum OS">Minimum OS</div><div class="kpi-value">{{V_MIN_OS}}</div></div>
+    <div class="kpi"><div class="kpi-label" data-de="Minimales Betriebssystem" data-en="Minimum OS">Minimales Betriebssystem</div><div class="kpi-value">{{V_MIN_OS}}</div></div>
     <div class="kpi"><div class="kpi-label" data-de="Architektur" data-en="Architecture">Architektur</div><div class="kpi-value">{{V_OS_ARCH}}</div></div>
   </div>
 </div>
@@ -349,7 +358,7 @@
     <a href="#appinfo" data-de="App-Information" data-en="App information">App-Information</a>
     <a href="#desc" data-de="Beschreibung (Markdown)" data-en="Description (Markdown)">Beschreibung (Markdown)</a>
     <a href="#program" data-de="Programm" data-en="Program">Programm</a>
-    <a href="#returncodes" data-de="Return Codes" data-en="Return codes">Return Codes</a>
+    <a href="#returncodes" data-de="R&uuml;ckgabecodes" data-en="Return codes">R&uuml;ckgabecodes</a>
     <a href="#requirements" data-de="Voraussetzungen" data-en="Requirements">Voraussetzungen</a>
     <a href="#detection" data-de="Erkennung" data-en="Detection">Erkennung</a>
     <a href="#deps" data-de="Abh&auml;ngigkeiten &amp; Supersedence" data-en="Dependencies &amp; supersedence">Abh&auml;ngigkeiten &amp; Supersedence</a>
@@ -357,7 +366,7 @@
     <a class="group" data-de="Technischer Paket-Report" data-en="Technical package report">Technischer Paket-Report</a>
     <a href="#hooks" data-de="Deployment-Hooks" data-en="Deployment hooks">Deployment-Hooks</a>
     <a href="#cmdlets" data-de="PSADT-Cmdlets" data-en="PSADT cmdlets">PSADT-Cmdlets</a>
-    <a href="#preflight" data-de="Pre-flight-Checks" data-en="Pre-flight checks">Pre-flight-Checks</a>
+    <a href="#preflight" data-de="Pre-flight-Pr&uuml;fungen" data-en="Pre-flight checks">Pre-flight-Pr&uuml;fungen</a>
     <a href="#systemtest" data-de="SYSTEM-Test" data-en="SYSTEM test">SYSTEM-Test</a>
     <a href="#logo" data-de="Logo &amp; Paketdatei" data-en="Logo &amp; package file">Logo &amp; Paketdatei</a>
   </nav>
@@ -369,20 +378,19 @@
 
     <!-- App info -->
     <section class="card" id="appinfo">
-      <h2><span class="ix">&#9432;</span> <span data-de="App-Information" data-en="App information">App-Information</span> <span class="tag">App information tab</span></h2>
+      <h2><span class="ix">&#9432;</span> <span data-de="App-Information" data-en="App information">App-Information</span> <span class="tag" data-de="Registerkarte App-Informationen" data-en="App information tab">Registerkarte App-Informationen</span></h2>
       <div class="card-body">
         <table>
           <tr><td class="k" data-de="Name" data-en="Name">Name</td><td>{{APP_NAME}}</td></tr>
-          <tr><td class="k" data-de="Publisher" data-en="Publisher">Publisher</td><td>{{PUBLISHER}}</td></tr>
+          <tr><td class="k" data-de="Herausgeber" data-en="Publisher">Herausgeber</td><td>{{PUBLISHER}}</td></tr>
           <tr><td class="k" data-de="App-Version" data-en="App version">App-Version</td><td><code>{{APP_VERSION}}</code></td></tr>
-          <tr><td class="k" data-de="Developer" data-en="Developer">Developer</td><td>{{V_DEVELOPER}}</td></tr>
-          <tr><td class="k" data-de="Owner" data-en="Owner">Owner</td><td>{{V_OWNER}}</td></tr>
+          <tr><td class="k" data-de="Entwickler" data-en="Developer">Entwickler</td><td>{{V_DEVELOPER}}</td></tr>
+          <tr><td class="k" data-de="Besitzer" data-en="Owner">Besitzer</td><td>{{V_OWNER}}</td></tr>
           <tr><td class="k" data-de="Kategorie" data-en="Category">Kategorie</td><td>{{V_CATEGORY}}</td></tr>
-          <tr><td class="k" data-de="Featured im Company Portal" data-en="Featured in Company Portal">Featured im Company Portal</td><td>{{V_FEATURED}}</td></tr>
-          <tr><td class="k" data-de="Information URL" data-en="Information URL">Information URL</td><td>{{V_INFO_URL}}</td></tr>
-          <tr><td class="k" data-de="Privacy URL" data-en="Privacy URL">Privacy URL</td><td>{{V_PRIVACY_URL}}</td></tr>
-          <tr><td class="k" data-de="Notes" data-en="Notes">Notes</td><td>{{V_NOTES}}</td></tr>
-          <tr><td class="k" data-de="Logo" data-en="Logo">Logo</td><td>{{V_LOGO}}</td></tr>
+          <tr><td class="k" data-de="Im Company Portal hervorgehoben" data-en="Featured in Company Portal">Im Company Portal hervorgehoben</td><td>{{V_FEATURED}}</td></tr>
+          <tr><td class="k" data-de="Informations-URL" data-en="Information URL">Informations-URL</td><td>{{V_INFO_URL}}</td></tr>
+          <tr><td class="k" data-de="Datenschutz-URL" data-en="Privacy URL">Datenschutz-URL</td><td>{{V_PRIVACY_URL}}</td></tr>
+          <tr><td class="k" data-de="Notizen" data-en="Notes">Notizen</td><td>{{V_NOTES}}</td></tr>
         </table>
       </div>
     </section>
@@ -409,22 +417,22 @@
 
     <!-- Program -->
     <section class="card" id="program">
-      <h2><span class="ix">&#9655;</span> <span data-de="Programm" data-en="Program">Programm</span> <span class="tag">Program tab</span></h2>
+      <h2><span class="ix">&#9655;</span> <span data-de="Programm" data-en="Program">Programm</span> <span class="tag" data-de="Registerkarte Programm" data-en="Program tab">Registerkarte Programm</span></h2>
       <div class="card-body">
         <table>
-          <tr><td class="k" data-de="Install-Befehl" data-en="Install command">Install-Befehl</td><td>{{V_INSTALL_CMD}}</td></tr>
-          <tr><td class="k" data-de="Uninstall-Befehl" data-en="Uninstall command">Uninstall-Befehl</td><td>{{V_UNINSTALL_CMD}}</td></tr>
-          <tr><td class="k" data-de="Install-Verhalten" data-en="Install behavior">Install-Verhalten</td><td>{{V_INSTALL_BEHAVIOR}}</td></tr>
+          <tr><td class="k" data-de="Installationsbefehl" data-en="Install command">Installationsbefehl</td><td>{{V_INSTALL_CMD}}</td></tr>
+          <tr><td class="k" data-de="Deinstallationsbefehl" data-en="Uninstall command">Deinstallationsbefehl</td><td>{{V_UNINSTALL_CMD}}</td></tr>
+          <tr><td class="k" data-de="Installationsverhalten" data-en="Install behavior">Installationsverhalten</td><td>{{V_INSTALL_BEHAVIOR}}</td></tr>
           <tr><td class="k" data-de="Neustart-Verhalten" data-en="Restart behavior">Neustart-Verhalten</td><td>{{V_RESTART_BEHAVIOR}}</td></tr>
           <tr><td class="k" data-de="Installationsdauer" data-en="Install time">Installationsdauer</td><td>{{V_INSTALL_TIME}}</td></tr>
-          <tr><td class="k" data-de="Uninstall &uuml;ber CP erlauben" data-en="Allow uninstall via CP">Uninstall &uuml;ber CP erlauben</td><td>{{V_ALLOW_UNINSTALL}}</td></tr>
+          <tr><td class="k" data-de="Deinstallation im Company Portal erlauben" data-en="Allow uninstall in Company Portal">Deinstallation im Company Portal erlauben</td><td>{{V_ALLOW_UNINSTALL}}</td></tr>
         </table>
       </div>
     </section>
 
     <!-- Return codes -->
     <section class="card" id="returncodes">
-      <h2><span class="ix">&#8644;</span> <span data-de="Return Codes" data-en="Return codes">Return Codes</span>
+      <h2><span class="ix">&#8644;</span> <span data-de="R&uuml;ckgabecodes" data-en="Return codes">R&uuml;ckgabecodes</span>
         <button class="copy-btn cp" onclick="copyReturnCodes(this)" data-de="Tabelle kopieren" data-en="copy table">Tabelle kopieren</button></h2>
       <div class="card-body">
         <table>
@@ -442,11 +450,10 @@
       <div class="card-body">
         <table>
           <tr><td class="k" data-de="OS-Architektur" data-en="OS architecture">OS-Architektur</td><td>{{V_OS_ARCH}}</td></tr>
-          <tr><td class="k" data-de="Minimum OS" data-en="Minimum OS">Minimum OS</td><td>{{V_MIN_OS}}</td></tr>
+          <tr><td class="k" data-de="Minimales Betriebssystem" data-en="Minimum OS">Minimales Betriebssystem</td><td>{{V_MIN_OS}}</td></tr>
           <tr><td class="k" data-de="Speicherplatz" data-en="Disk space">Speicherplatz</td><td>{{V_DISK}}</td></tr>
           <tr><td class="k" data-de="Arbeitsspeicher" data-en="Memory">Arbeitsspeicher</td><td>{{V_MEMORY}}</td></tr>
-          <tr><td class="k" data-de="Treiber-Zertifikat" data-en="Driver certificate">Treiber-Zertifikat</td><td>{{V_CERT_POLICY}}</td></tr>
-          <tr><td class="k" data-de="Treiber-Vertrauen" data-en="Driver trust">Treiber-Vertrauen</td><td>{{V_DRIVERS}}</td></tr>
+{{DRIVER_ROWS}}
         </table>
       </div>
     </section>
@@ -457,8 +464,8 @@
       <div class="card-body">
         <table>
           <tr><td class="k" data-de="Regelformat" data-en="Rule format">Regelformat</td><td>{{V_RULE_FORMAT}}</td></tr>
-          <tr><td class="k" data-de="Skript" data-en="Script">Skript</td><td><details class="script-fold"><summary data-de="Detection-Skript anzeigen" data-en="Show detection script">Detection-Skript anzeigen</summary><pre class="det-src">{{V_DETECT_SCRIPT}}</pre></details></td></tr>
-          <tr><td class="k" data-de="Als 32-bit ausf&uuml;hren" data-en="Run as 32-bit">Als 32-bit ausf&uuml;hren</td><td>{{V_RUN_32}}</td></tr>
+          <tr><td class="k" data-de="Skript" data-en="Script">Skript</td><td><details class="script-fold"><summary data-de="Erkennungsskript anzeigen" data-en="Show detection script">Erkennungsskript anzeigen</summary><pre class="det-src">{{V_DETECT_SCRIPT}}</pre></details></td></tr>
+          <tr><td class="k" data-de="Als 32-Bit-Prozess ausf&uuml;hren" data-en="Run as 32-bit">Als 32-Bit-Prozess ausf&uuml;hren</td><td>{{V_RUN_32}}</td></tr>
           <tr><td class="k" data-de="Signaturpr&uuml;fung" data-en="Signature check">Signaturpr&uuml;fung</td><td>{{V_SIG_CHECK}}</td></tr>
         </table>
       </div>
@@ -502,21 +509,21 @@
             <div class="hook-b"><ul>
 {{HOOK_INSTALL_ITEMS}}
             </ul></div>
-            <div class="hook-foot"><span class="badge b-ok" data-de="getestet" data-en="tested">getestet</span></div>
+            <div class="hook-foot">{{HOOK_INSTALL_BADGE}}</div>
           </div>
           <div class="hook uninstall">
             <div class="hook-h"><span class="ic">&minus;</span> Uninstall</div>
             <div class="hook-b"><ul>
 {{HOOK_UNINSTALL_ITEMS}}
             </ul></div>
-            <div class="hook-foot"><span class="badge b-ok" data-de="getestet" data-en="tested">getestet</span></div>
+            <div class="hook-foot">{{HOOK_UNINSTALL_BADGE}}</div>
           </div>
           <div class="hook repair">
             <div class="hook-h"><span class="ic">&#8635;</span> Repair</div>
             <div class="hook-b"><ul>
 {{HOOK_REPAIR_ITEMS}}
             </ul></div>
-            <div class="hook-foot"><span class="badge b-ok" data-de="getestet" data-en="tested">getestet</span></div>
+            <div class="hook-foot">{{HOOK_REPAIR_BADGE}}</div>
           </div>
         </div>
       </div>
@@ -535,7 +542,7 @@
 
     <!-- Preflight -->
     <section class="card" id="preflight">
-      <h2><span class="ix">&#10003;</span> <span data-de="Pre-flight-Checks" data-en="Pre-flight checks">Pre-flight-Checks</span></h2>
+      <h2><span class="ix">&#10003;</span> <span data-de="Pre-flight-Pr&uuml;fungen" data-en="Pre-flight checks">Pre-flight-Pr&uuml;fungen</span></h2>
       <div class="card-body">
         <div class="checks">
 {{PREFLIGHT_CHECKS}}
@@ -548,7 +555,7 @@
       <h2><span class="ix">&#128274;</span> <span data-de="SYSTEM-Test" data-en="SYSTEM test">SYSTEM-Test</span> <span class="tag" data-de="Phase 6 &middot; verpflichtend vor Upload" data-en="Phase 6 &middot; mandatory before upload">Phase 6 &middot; verpflichtend vor Upload</span></h2>
       <div class="card-body">
         <table>
-          <thead><tr><th data-de="Schritt" data-en="Step">Schritt</th><th data-de="Exit Code" data-en="Exit code">Exit Code</th><th>Detection</th><th data-de="Ergebnis" data-en="Result">Ergebnis</th></tr></thead>
+          <thead><tr><th data-de="Schritt" data-en="Step">Schritt</th><th data-de="Exit-Code" data-en="Exit code">Exit-Code</th><th data-de="Erkennung" data-en="Detection">Erkennung</th><th data-de="Ergebnis" data-en="Result">Ergebnis</th></tr></thead>
           <tbody>
 {{SYSTEMTEST_ROWS}}
           </tbody>
@@ -564,10 +571,11 @@
         <table>
           <tr><td class="k" data-de="Logo-Quelle" data-en="Logo source">Logo-Quelle</td><td>{{V_LOGO_SOURCE}}</td></tr>
           <tr><td class="k" data-de="Aufl&ouml;sung / Transparenz" data-en="Resolution / transparency">Aufl&ouml;sung / Transparenz</td><td>{{V_LOGO_RESOLUTION}}</td></tr>
-          <tr><td class="k" data-de="Default-Icon-Guard" data-en="Default icon guard">Default-Icon-Guard</td><td>{{V_LOGO_GUARD}}</td></tr>
+          <tr><td class="k" data-de="Standard-Icon-Sperre" data-en="Default icon guard">Standard-Icon-Sperre</td><td>{{V_LOGO_GUARD}}</td></tr>
           <tr><td class="k">.intunewin</td><td>{{V_INTUNEWIN}}</td></tr>
-          <tr><td class="k">SetupFile</td><td>{{V_SETUPFILE}}</td></tr>
+          <tr><td class="k" data-de="Setup-Datei" data-en="Setup file">Setup-Datei</td><td>{{V_SETUPFILE}}</td></tr>
           <tr><td class="k" data-de="Ablageort" data-en="Location">Ablageort</td><td>{{V_LOCATION}}</td></tr>
+{{UPLOAD_ROWS}}
         </table>
       </div>
     </section>

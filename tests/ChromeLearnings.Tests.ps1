@@ -238,7 +238,8 @@ Describe 'Learning 4 - the dossier reads what the pipeline produced' {
         $script:out | Should -Match 'Beschreibung aus dem Manifest'
     }
     It 'renders the recorded pre-flight checks instead of "not run"' {
-        $script:out | Should -Match 'Structure - Invoke-AppDeployToolkit\.ps1'
+        # The check name in both languages since 0.49.4 ("Struktur" / "Structure"), the file next to it.
+        $script:out | Should -Match 'data-de="Struktur &middot; Invoke-AppDeployToolkit\.ps1" data-en="Structure &middot; Invoke-AppDeployToolkit\.ps1"'
         $script:out | Should -Not -Match 'no results supplied'
     }
     It 'carries the launcher''s ## rationale into the hook, wrapped lines joined, MARK banners skipped' {
