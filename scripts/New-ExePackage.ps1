@@ -747,7 +747,7 @@ Assert-NoUnreplacedToken $detect "Detect-$Name.ps1"
     # not in the manifest, not in the switch store, so it had to be retyped from memory every time.
     # Already normalised by Expand-CommaSeparated further up: the -File binder hands 'a,b' over as
     # ONE element, and recording that would carry a process name matching nothing into the next version.
-    'package.processesToClose' = @($ProcessesToClose)
+    'package.processesToClose' = @($ProcessesToClose | Where-Object { $_ })
     'research.switches'      = @{
         # install/uninstall stay prose, because the dossier prints them for a human. installArgs and
         # uninstallArgs are the machine-readable pair: arguments only, no executable, nothing to parse.

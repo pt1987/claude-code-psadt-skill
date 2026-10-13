@@ -153,6 +153,11 @@ if (-not $DetectionScript) {
     if ($found.Count -eq 1) { $DetectionScript = $found[0].Name }
     elseif ($found.Count -eq 0) { throw "No Detect*.ps1 found in $PackagePath. Pass -DetectionScript, or add the detection script - the verdict is keyed on it." }
     else { throw "$($found.Count) Detect*.ps1 scripts found in $PackagePath. Pass -DetectionScript to say which one Intune will use." }
+} elseif ($DetectionScript -notmatch '\.ps1$') {
+    # Terraform 1.16.5 (2026-10-13): `pwsh -File ... -PathsAbsentAfterUninstall 'C:\a','C:\b'` hands the
+    # -File binder TWO arguments; the second one is positional and lands HERE, as the detection script.
+    # The old message ("not found in <pkg>") pointed at the package, not at the call.
+    throw "DetectionScript '$DetectionScript' is not a .ps1 - most likely a list value that slipped into this positional parameter. Under 'pwsh -File' pass a list as ONE comma-separated string: -PathsAbsentAfterUninstall 'C:\a,C:\b'."
 } elseif (-not (Test-Path -LiteralPath (Join-Path $PackagePath $DetectionScript))) {
     throw "DetectionScript '$DetectionScript' not found in $PackagePath."
 }

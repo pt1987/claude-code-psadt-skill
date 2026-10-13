@@ -13,7 +13,7 @@
       app        vendor, name, version, arch, lang, revision, displayName (optional Intune name),
                  description{de,en}; optional App-information fields developer, owner, notes,
                  informationUrl, privacyUrl, minWindowsRelease (Resolve-PsadtIntuneAppInfo, _AppKey.ps1)
-      package    name, type (installer|winget|script|browser-extension|windows-feature|driver),
+      package    name, type (installer|portable|winget|script|browser-extension|windows-feature|driver),
                  installerTech, sourceStrategy, installerFile, installerSha256, productCode,
                  processesToClose[], installCommand, uninstallCommand, detection, selfUpdating
       decisions  gate1, gate2{audience,uninstallScope,repair,reboot,runningApp,deployMode}, systemTest,

@@ -56,7 +56,7 @@ psadt-deploy/
 ├─ SKILL.md · README.md · CHANGELOG.md · SECURITY.md · LICENSE
 ├─ package.json · bin/install.mjs        the npx installer (Node 18+, zero dependencies)
 ├─ docs/                                 this documentation set
-├─ scripts/                              43 files: 38 invocable, 5 shared includes
+├─ scripts/                              44 files: 39 invocable, 5 shared includes
 │  │  setup + config
 │  ├─ Initialize-PsadtSkill.ps1          setup doctor (Phase 0, GREEN/YELLOW/RED, -Fix/-Set)
 │  ├─ Get-PsadtConfig.ps1                config read + config-home resolver
@@ -78,6 +78,7 @@ psadt-deploy/
 │  │  package generators
 │  ├─ New-MsiPackage.ps1                 MSI packages
 │  ├─ New-ExePackage.ps1                 EXE packages (Inno, NSIS, electron-builder)
+│  ├─ New-PortablePackage.ps1            portable payloads: vendor ZIP or one binary, no installer
 │  ├─ New-BrowserExtensionPackage.ps1    browser-extension force-install (opt-in)
 │  ├─ New-WindowsFeaturePackage.ps1      optional features / capabilities (opt-in)
 │  ├─ New-DriverPackage.ps1              driver packages, pnputil staging (opt-in)
@@ -108,7 +109,7 @@ psadt-deploy/
 │  ├─ conventions.md · research-trust.md the binding conventions, and why fetched text is data
 │  └─ app-registration.md                THE Graph permission matrix + manual portal route
 ├─ evals/                                trigger + behaviour eval suite
-└─ tests/                                Pester suite, 1194 tests
+└─ tests/                                Pester suite, 1224 tests
 ```
 
 Machine-local state lives outside the skill folder:

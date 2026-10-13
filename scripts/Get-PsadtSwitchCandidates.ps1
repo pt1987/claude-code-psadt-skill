@@ -310,6 +310,10 @@ $result = [pscustomobject]@{
     EngineConfidence = $engineInfo.Confidence
     EngineEvidence   = $engineInfo.Evidence
     IsMsi            = $engineInfo.IsMsi
+    # Passed through for the research ladder: a portable payload closes its install/uninstall/runtime
+    # questions from these two facts instead of sending agents after a vendor installer that does not exist.
+    IsGoBinary       = [bool]$engineInfo.IsGoBinary
+    ArchiveEntries   = @($engineInfo.ArchiveEntries)
     ProductName      = if ($ProductName) { $ProductName } else { $engineInfo.ProductName }
     ProductVersion   = $engineInfo.ProductVersion
     Publisher        = if ($Publisher) { $Publisher } else { $engineInfo.Publisher }

@@ -2,6 +2,65 @@
 
 All notable changes to this skill. Newest first. This project follows a loose [SemVer](https://semver.org/).
 
+## 0.50.0 - 2026-10-13 - Packages with no installer
+
+Terraform 1.16.5 was the first package of its kind here: a vendor ZIP holding one Go binary, no installer,
+"put it on the PATH". The skill had no route for it, and the first step showed why that mattered - the
+research ladder, handed `terraform.exe`, named it `installshield-installscript` off one "InstallShield"
+string in the binary's `.rdata`, offered `/s /f1"setup.iss"`, and budgeted three agents. Everything below
+was built for that package and proved on it: the package was generated, never hand-patched, and went
+GREEN through the full Windows Sandbox gate (Install, Uninstall, Reinstall, Repair, FinalUninstall - 23
+assertions) on its first run.
+
+**The engine probe can say "this is not an installer".** `Get-PsadtInstallerEngine.ps1` returns
+`zip-archive` for a ZIP without an AppxManifest (entry names listed, the first EXEs inside checked for a
+Go build ID) and `portable-binary` for a Go program whose code sections carry a build ID while nothing
+definitive matched. A definitive installer marker still wins, and a build ID in the overlay is payload,
+not the program. New fields `IsGoBinary` and `ArchiveEntries`, passed through by
+`Get-PsadtSwitchCandidates.ps1`.
+
+**The ladder closes what the package owns.** For a portable engine, `Get-PsadtLocalEvidence.ps1` answers
+install, uninstall, repair, exit codes, installer log and dependency installer locally, and the runtime
+prerequisite too when the binary is Go (static runtime). Measured on the Terraform ZIP: AgentBudget 3 -> 1,
+the one left being the Intune pitfalls.
+
+**`scripts/New-PortablePackage.ps1` - the generator.** App. L.10 has the full table; in short:
+
+- the vendor ZIP goes into `Files\` unchanged and is extracted at install time, so `package.installerSha256`
+  IS the vendor checksum; `-ExpectedSha256` refuses a mismatch before anything is written, and an archive
+  that lacks the promised binary is refused at generation time, not in a VM;
+- the machine PATH is edited in the registry and written back with the value kind it had -
+  `Set-ADTEnvironmentVariable` goes through `[Environment]::SetEnvironmentVariable`, which turns a
+  `REG_EXPAND_SZ` Path into `REG_SZ`; `Update-ADTDesktop` then reloads Explorer's environment in the user
+  session;
+- an own ARP row under a version-independent key (`PSADT_<Vendor>_<App>`, NoRemove/NoModify/NoRepair), and
+  detection = its `DisplayVersion` floor AND the binary on disk, read through the 64-bit registry view;
+- `-DeferIfRunning` exits 1618 (Intune's retry) instead of killing a running CLI - an interrupted
+  `terraform apply` leaves a locked, partial state;
+- `-SmokeTestArgs` / `-SmokeTestPattern` run the copied binary as SYSTEM after Install and Repair (the
+  Terraform run logged `Terraform v1.16.5 on windows_amd64`, exit 0);
+- uninstall removes the folder, our PATH entry and ARP row, the vendor folder only when empty, and
+  verifies the binary is gone; per-user data is never touched.
+
+`package.type = portable`, `package.detection = versionFloor`. Gate 1 and Phase 3 in `SKILL.md` name the
+new package type (the Phase 0-6 byte budget was kept by tightening three sentences, no rule removed).
+
+**Fixed on the way.**
+
+- `New-ExePackage.ps1`, `New-MsiPackage.ps1` (and the new generator) wrote
+  `'package.processesToClose' = @($ProcessesToClose)`. A function that returns `@()` hands its caller
+  `$null`, and `@($null)` has one element - an empty process list was recorded as `[null]`, which the next
+  version would have carried. Filtered now.
+- `Invoke-PsadtSandboxTest.ps1`: `pwsh -File ... -PathsAbsentAfterUninstall 'C:\a','C:\b'` bound the second
+  path to the positional `-DetectionScript`, and the error blamed the package. A non-`.ps1` value is now
+  refused with the cause and the one-string form `'C:\a,C:\b'`.
+- Logo catalog: HashiCorp Terraform from HashiCorp's own `@hashicorp/flight-icons` (Wikimedia has only the
+  wide wordmark, and `terraform.exe` carries no icon).
+
+**Tests.** `New-PortablePackage.Tests.ps1` (static rules, a generated package, the refusals, and the 1618
+guard run against a process that IS running - the sandbox never has the app open), four engine cases
+(Go hint, definitive-beats-Go, Go in overlay, ZIP), the sandbox message, and the ladder closing a portable ZIP down to budget 1. App. G records the incident.
+Suite 1194 -> 1224.
 ## 0.49.4 - 2026-09-28 - The dossier speaks one language at a time
 
 An operator read the dossier of a real upload (Windows App 2.0.1375.0: MSIX wrapper, DEV-VM tested,

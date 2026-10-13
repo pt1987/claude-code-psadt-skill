@@ -568,7 +568,7 @@ $detect = $detect.Replace('__NAME__', $Name).Replace('__APPNAME__', $AppName).Re
     # not in the manifest, not in the switch store, so it had to be retyped from memory every time.
     # Already normalised by Expand-CommaSeparated further up: the -File binder hands 'a,b' over as
     # ONE element, and recording that would carry a process name matching nothing into the next version.
-    'package.processesToClose' = @($ProcessesToClose)
+    'package.processesToClose' = @($ProcessesToClose | Where-Object { $_ })
     'package.productCode'    = $ProductCode
     'package.sourceStrategy' = 'bundle'
     # The command lines Intune runs (0.49.2) - recorded once, read by the upload, the dossier and the

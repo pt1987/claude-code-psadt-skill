@@ -40,7 +40,8 @@ Bundle questions (max 4 per call).
    (opt-in only, never recommended or auto-selected, App. I) · script-only fix/remediation (App. K) ·
    browser-extension force-install (App. O, `New-BrowserExtensionPackage.ps1`) · windows-features
    (App. P, `New-WindowsFeaturePackage.ps1`) · driver (App. Q, `New-DriverPackage.ps1`; classify first
-   with `Get-DriverSignatureInfo.ps1`, unsigned = no package) · MSIX/AppX (App. L.8).
+   with `Get-DriverSignatureInfo.ps1`, unsigned = no package) · portable ZIP/exe (App. L.10,
+   `New-PortablePackage.ps1`) · MSIX/AppX (App. L.8).
    > **A `.msix` is not the "native installer" default.** Intune takes it natively as a
    > line-of-business app - that is the default answer, and no PSADT package is built. Wrap one only for
    > what the native type cannot do, and read **App. L.8** first: `Add-AppxPackage` under SYSTEM reports
@@ -154,13 +155,13 @@ Short form. Full text, reasoning and the failure each one prevents: `references/
 -> intake. RED -> ask only for `.Missing` via `AskUserQuestion`, persist with `-Set @{...}`, re-run, then
 work the WARN lines - each carries its own `.Fix`. WinGet and the optional upload bootstrap: phase 0.
 
-**Phase 1 - Intake.** A PSADT v4 package always serves all three deployment types - plan them now, not
-at the end. Resolve scope via gates 1 + 2 only, every option pre-filled from research. Catalogue: 1.2.
+**Phase 1 - Intake.** A PSADT v4 package always serves all three deployment types - plan them
+now. Resolve scope via gates 1 + 2 only, every option pre-filled from research. Catalogue: 1.2.
 
 **Phase 2 - Research, gated.** `pwsh scripts/Get-PsadtLocalEvidence.ps1 -Path <installer> -AppVendor <v> -AppName <n>` FIRST: the
 local ladder - installed here? (the Uninstall registry) · binary here? (`Get-PsadtMsiFacts.ps1` /
-`Get-PsadtSwitchCandidates.ps1`) · written down already? (the corpus + `Get-PsadtPriorPackage.ps1`, and it NAMES a vendor
-doc URL for you to fetch) - returning `OpenQuestions[]` + `AgentBudget`; `Carried[]` = the last version's
+`Get-PsadtSwitchCandidates.ps1`) · written down already? (the corpus + `Get-PsadtPriorPackage.ps1`; it NAMES a vendor
+doc URL to fetch) - returning `OpenQuestions[]` + `AgentBudget`; `Carried[]` = the last version's
 answers: confirm them, never re-research.
 <!-- rule:research-gate -->
 **`AgentBudget` IS the dispatch rule: 0 open questions = 0 sub-agents; N = at most N, one per question,
@@ -169,12 +170,13 @@ never one for a question the ladder closed. One WebFetch is not a fan-out.
 Findings before scaffold - pre-flight `Research` stays RED until each is `research.answers.<id>` - per
 deployment type: install/uninstall/repair, exit codes, log path, leftovers, and the unbundled runtime
 Gate 1 decides (phase 1.4).
-Ladder detail, queries, per-type research (K · O.2 · P.2 · I.1) and the PSADT release-notes diff (verify
+Ladder detail, per-type research (K · O.2 · P.2 · I.1) and the PSADT release-notes diff (verify
 with `Get-Command -Module PSAppDeployToolkit`, never adopt a version by number): phases 1.1/1.3, App. D/L.
 
 **Phase 3 - Scaffold.** **A generator is the default route** - it writes the launcher, the detection
 script, the per-run `LogName` and the manifest in one go: MSI → `New-MsiPackage.ps1` (self-updating:
-`-SelfUpdatingBinary`, 4.3), EXE → `New-ExePackage.ps1`, browser extension →
+`-SelfUpdatingBinary`, 4.3), EXE → `New-ExePackage.ps1`, ZIP →
+`New-PortablePackage.ps1`, browser extension →
 `New-BrowserExtensionPackage.ps1`, Windows features → `New-WindowsFeaturePackage.ps1`, driver →
 `New-DriverPackage.ps1`. A hand-scaffold (`New-ADTTemplate`) writes the manifest at once
 (`Set-PsadtPackageManifest.ps1`) and still owes a per-run `LogName` and a `.NOTES` changelog. A generic
@@ -208,9 +210,8 @@ live acid test would install: App. I.4.
 enforces. Runs append to `results.systemTest[]`.
 
 **Default route: `pwsh scripts/Invoke-PsadtSandboxTest.ps1 -PackagePath <pkg>`.** One throwaway Windows
-Sandbox, every action as SYSTEM. No elevation, host untouched. Runs the FULL gate by default (a VM boot
-costs 139s). Red Install/Uninstall skips the rest; `-Quick` = the
-pair. Poll the `progress.json` it names; never buffer its output. **Start the VM, then do Phases 7+8 in
+Sandbox, every action as SYSTEM, host untouched. Runs the FULL gate by default. Red Install/Uninstall
+skips the rest; `-Quick` = the pair. Poll the `progress.json` it names; never buffer its output. **Start the VM, then do Phases 7+8 in
 the SAME turn** - neither needs the verdict (the VM runs a snapshot, so their manifest writes are safe),
 and waiting idle costs the whole run twice. Verdict = the
 DETECTION SCRIPT (what Intune evaluates). Each run snapshots the real installed-app entry (`InstalledAppFacts`):
