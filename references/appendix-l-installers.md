@@ -15,6 +15,7 @@
 - [L.7 Inno Setup and NSIS - the two traps the switch table cannot hold](#l7-inno-setup-and-nsis---the-two-traps-the-switch-table-cannot-hold)
 - [L.8 MSIX / AppX - staging vs registration, and why SYSTEM breaks the obvious call](#l8-msix--appx---staging-vs-registration-and-why-system-breaks-the-obvious-call)
 - [L.9 App-V - the support position, corrected](#l9-app-v---the-support-position-corrected)
+- [L.10 Portable payloads - a ZIP or a bare binary, no installer](#l10-portable-payloads---a-zip-or-a-bare-binary-no-installer)
 
 ## Appendix L: Installer technologies + silent switches (consult BEFORE web research)
 
@@ -507,5 +508,54 @@ and batch conversion of App-V 5 packages is a published path); Learn also carrie
 MSIX comparison. Treat a conversion as a project with a test phase, not a format change: App-V was typically
 chosen for applications with deep system integration, and the MSIX container does not host everything such an
 application may rely on. Verify the converted package behaves identically before retiring the App-V one.
+
+### L.10 Portable payloads - a ZIP or a bare binary, no installer
+
+Many tools ship with no installer at all: a vendor ZIP holding one executable (Terraform, Packer, kubectl,
+Helm) or a single `.exe` meant to be "put on the PATH". There is no silent switch to find, no uninstaller
+and no repair verb - the **package** owns all three deployment types. `scripts/New-PortablePackage.ps1`
+generates them (0.50.0, proved on Terraform 1.16.5 by a GREEN full sandbox gate, 2026-10-13).
+
+**How the ladder recognises it.** `Get-PsadtInstallerEngine.ps1` returns `zip-archive` for a ZIP (no
+AppxManifest - that one is MSIX, L.8) and `portable-binary` for a Go program with no definitive installer
+marker. Before 0.50.0 neither existed: `terraform.exe` contains the word "InstallShield" once in `.rdata`,
+came back as `installshield-installscript` with an `/s /f1` switch, and the ladder budgeted three agents
+for an installer that does not exist. With the engine named, `Get-PsadtLocalEvidence.ps1` closes the
+install, uninstall, repair, exit-code, log and dependency questions itself, and the runtime question too
+when the program is a Go binary (Go links its runtime statically). What stays open is what only the
+vendor or other fleets can answer - usually just the Intune pitfalls.
+
+**What the generator writes, and why.**
+
+| Decision | Generated behaviour | The failure it prevents |
+|---|---|---|
+| Payload | the vendor ZIP goes into `Files\` **unchanged** and is extracted at install time; `-ExpectedSha256` refuses a mismatch before anything is written | a repacked archive loses the vendor checksum; `package.installerSha256` is the join key for pre-flight's research gate |
+| Location | `%ProgramW6432%\<Vendor>\<App>`, emptied before each copy | files a previous version shipped and this one dropped would linger |
+| PATH (`-AddToPath`) | raw registry read (`DoNotExpandEnvironmentNames`), our one entry added/removed, written back with the **same value kind**, then `Update-ADTDesktop` | `[Environment]::SetEnvironmentVariable` - what `Set-ADTEnvironmentVariable` calls in 4.1.8 - rewrites a `REG_EXPAND_SZ` Path as `REG_SZ`, and every `%SystemRoot%` segment stops resolving |
+| ARP row | own key `PSADT_<Vendor>_<App>`, **version-independent**, `NoRemove`/`NoModify`/`NoRepair` = 1 | without a row the app is invisible to inventory and there is nothing version-aware to detect on; a per-version key would leave the old row behind on upgrade |
+| Detection | that row's `DisplayVersion` **>= baseline** AND the binary present, 64-bit registry view | an ARP row that outlived its files is not "installed"; a 32-bit detection host would read WOW6432Node and find nothing |
+| Running app (`-DeferIfRunning`) | exit **1618** (Intune's retry) instead of killing it | an interrupted `terraform apply` leaves a locked, partial state file - and a running binary cannot be replaced anyway |
+| Smoke test (`-SmokeTestArgs`/`-SmokeTestPattern`) | runs the copied binary as SYSTEM after Install and Repair, matches its output | a copy that "succeeds" for a binary that cannot start (wrong architecture, missing runtime) |
+| Uninstall | removes the folder, our PATH entry, our ARP row, the vendor folder only if empty; verifies the binary is gone | removing what another product of the same vendor placed; per-user data (`%APPDATA%`) is never the package's |
+
+**Call (Terraform, as shipped):**
+
+```powershell
+pwsh scripts/New-PortablePackage.ps1 -Name 'HashiCorp_Terraform_1.16.5' -AppVendor HashiCorp -AppName Terraform `
+  -AppVersion 1.16.5 -AppArch x64 -SourcePath .\terraform_1.16.5_windows_amd64.zip `
+  -ExpectedSha256 <from the vendor's SHA256SUMS> -VerifyRelativePath terraform.exe -AddToPath `
+  -DeferIfRunning terraform -SmokeTestArgs version -SmokeTestPattern '^Terraform v1\.16\.5' `
+  -SmokeTestEnvironment @{ CHECKPOINT_DISABLE = '1' }
+```
+
+An archive that wraps everything in one folder (`tool-1.2.3\tool.exe`) takes `-ArchiveSubfolder
+'tool-1.2.3'`. The manifest records `package.type = portable` and `package.detection = versionFloor`, so the
+upload takes the detection script. The verified-switch store does not apply - it keys on one installer
+binary, and a portable package has no switch to prove.
+
+**PATH reaches new shells, not open ones.** A process inherits its environment from its parent, so a
+console that was open during the install keeps the old PATH; `Update-ADTDesktop` makes Explorer reload
+it in the logged-on user's session, after which every newly opened console finds the tool. Say so in the
+Company-Portal description.
 
 ---

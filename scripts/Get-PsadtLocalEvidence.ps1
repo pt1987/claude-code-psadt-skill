@@ -809,6 +809,42 @@ if ($psadtVersion -and @($psadtMissing).Count -eq 0) {
 }
 
 # ---------------------------------------------------------------------------------------------------
+# Portable payloads (0.50.0): there is no vendor installer, so the PACKAGE owns every deployment type
+# ---------------------------------------------------------------------------------------------------
+# A ZIP or a bare application binary has no silent switch, no uninstaller and no repair verb to find:
+# New-PortablePackage.ps1 copies the payload, writes its own ARP entry and removes exactly what it
+# placed. Before this branch, Terraform 1.16.5 (2026-10-13) came back as InstallShield with three
+# agents budgeted to research an installer that does not exist.
+$isPortable = ($engine -in @('portable-binary', 'zip-archive'))
+if ($isPortable) {
+    $portRef = 'scripts/New-PortablePackage.ps1'
+    $closeOwned = {
+        param($Q, [string]$Value, [string]$Detail)
+        Set-Answer $Q $Value 'high' 2 'portable-generator' $portRef $Detail
+        $Q.WhyOpen = $null
+        $Q.FoldInto = $null
+    }
+    & $closeOwned $qInstall 'no installer: New-PortablePackage.ps1 copies the payload to Program Files and writes its own ARP entry' `
+        "engine '$engine' is not an installer, so there is no switch to find"
+    & $closeOwned $qUninstall 'package-owned: remove the copied payload, the PATH entry and the package''s own ARP entry, then verify' `
+        'the package placed every file itself, so it removes exactly those - nothing to research'
+    & $closeOwned $qRepair 'package-owned: re-copy the payload and re-assert PATH + ARP (idempotent)' `
+        'a copy is its own repair verb'
+    & $closeOwned $qCodes '0 (success), 1618 (deferred: the app is running), 60001 (script error)' `
+        'no vendor process runs, so the only exit codes are the package''s own'
+    & $closeOwned $qLog 'none - the PSADT session log is the only log' 'no installer runs, so there is no installer log'
+    & $closeOwned $qDep 'none - an archive chains nothing' 'nothing runs at install time but a file copy'
+    Set-Open $qConfig 'the package copies files only; vendor configuration is a separate deployment decision' 'accept-unanswered'
+    $qConfig.FoldInto = $null
+    Set-Open $qSelfUpd 'New-PortablePackage detects by its own ARP DisplayVersion floor, never by a ProductCode' 'accept-unanswered'
+    if ([bool](Get-Prop $sc 'IsGoBinary')) {
+        $qRuntime.CanCloseLocally = $true
+        & $closeOwned $qRuntime 'none - a Go program links its runtime statically' `
+            'the Go build ID in the binary proves the toolchain; Phase 6 still runs it in a clean sandbox'
+    }
+}
+
+# ---------------------------------------------------------------------------------------------------
 # Carry what the previous version answered - offered for confirmation, never closed
 # ---------------------------------------------------------------------------------------------------
 # A question the ladder would send to an agent, and that the previous package of this application

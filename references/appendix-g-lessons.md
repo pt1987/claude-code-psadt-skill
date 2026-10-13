@@ -14,6 +14,7 @@
 - [2026-09-14 - Citrix Workspace + Greenshot: five faults that all blamed the package](#2026-09-14---citrix-workspace--greenshot-five-faults-that-all-blamed-the-package)
 - [2026-09-23 - Google Chrome 154: a GREEN package that would have looped in production](#2026-09-23---google-chrome-154-a-green-package-that-would-have-looped-in-production)
 - [2026-09-27 - CPU-Z 2.21, then 3.01: every script green, the pipeline disagreeing with itself](#2026-09-27---cpu-z-221-then-301-every-script-green-the-pipeline-disagreeing-with-itself)
+- [2026-10-13 - Terraform 1.16.5: a package with no installer, and a ladder that saw one](#2026-10-13---terraform-1165-a-package-with-no-installer-and-a-ladder-that-saw-one)
 
 ## Appendix G: Lessons Learned (from real-world incidents)
 
@@ -424,3 +425,23 @@ reads, what Intune receives and what the tenant holds afterwards are produced by
 nothing compared them. Two kinds of test now do: one that feeds the SAME manifest to the upload and the
 dossier and compares the fields, and a small fake tenant (`tests/_helpers.ps1`) that the tenant-writing
 scripts actually run against, so what they record after a write is checked against what the tenant holds.
+
+### 2026-10-13 - Terraform 1.16.5: a package with no installer, and a ladder that saw one
+
+HashiCorp ships Terraform as a ZIP with one Go binary in it. The skill had no route for that: every
+generator assumed a vendor installer, so the package would have been hand-scaffolded - and the research
+ladder, handed `terraform.exe`, named it an InstallShield installer and budgeted three agents.
+
+| Symptom | Cost had it shipped | Fix (0.50.0) |
+|---|---|---|
+| `Get-PsadtInstallerEngine.ps1` reported `installshield-installscript` (low) off ONE "InstallShield" string in the Go binary's `.rdata`, and offered `/s /f1"setup.iss"` | three researchers sent after an uninstaller that does not exist; a switch that would have been probe-run against a CLI | engine `portable-binary` when the code sections carry a Go build ID and nothing definitive matched; engine `zip-archive` for a non-MSIX ZIP, with the Go check run on the EXEs inside |
+| The ladder had no notion of a package-owned lifecycle | AgentBudget 3 | portable engines close install/uninstall/repair/exit codes/log/dependency locally, and the runtime question for a Go binary; measured budget 3 -> 1 |
+| No generator for a portable payload | a hand-scaffold: PATH, ARP and detection rewritten from memory | `New-PortablePackage.ps1`; the Terraform package was generated, never hand-patched, and went GREEN through the full gate on the first run |
+| `Set-ADTEnvironmentVariable` (4.1.8) calls `[Environment]::SetEnvironmentVariable`, which writes `REG_SZ` | a machine Path that was `REG_EXPAND_SZ` loses every `%SystemRoot%` indirection | the generated helper reads raw and writes back the value kind it found; the sandbox log shows "value kind ExpandString kept" for add and remove |
+| `'package.processesToClose' = @($ProcessesToClose)` in all three generators | a function returning `@()` returns `$null`, `@($null)` has one element: the manifest carried `[null]`, which the next version would inherit | `@($ProcessesToClose \| Where-Object { $_ })`, tested |
+| `pwsh -File ... -PathsAbsentAfterUninstall 'C:\a','C:\b'` bound the second path to the positional `-DetectionScript`; the error said "not found in <pkg>" | one wasted sandbox start, a message pointing at the package | a non-`.ps1` DetectionScript is refused with the cause and the one-string form |
+| The sandbox never runs with the app open, so the 1618 defer path was unexercised | a defer guard that ships untested | a Pester test imports the generated module and calls the guard with a process that IS running |
+| No square logo on Wikimedia (wordmarks only); `terraform.exe` has no icon resource | a stretched wordmark on the Intune tile | catalog entry for HashiCorp's own `@hashicorp/flight-icons` product icon |
+
+**General lesson:** a fingerprint built to tell installers apart has to be able to say "this is not an
+installer". A hint is a word, and a large program contains a lot of words.

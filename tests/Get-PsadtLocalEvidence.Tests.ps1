@@ -918,3 +918,25 @@ Describe 'the ladder reads what the previous version learned (0.49.2)' {
         if ($deferredBlock) { $deferredBlock | Should -Not -Match 'confirm-carried' }
     }
 }
+
+
+Describe 'Get-PsadtLocalEvidence: a portable payload owns its lifecycle (0.50.0)' {
+    # Terraform 1.16.5 (2026-10-13): the ZIP's Go binary was named an InstallShield installer and the ladder
+    # budgeted three agents. A portable engine closes what the package owns; only the Intune pitfalls remain.
+    It 'closes install, uninstall, repair, codes, log, dependency and the Go runtime - budget 1' {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('pz_' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        [System.IO.File]::WriteAllBytes((Join-Path $dir 'tool.exe'), (Join-Bytes (New-Pad 64) (New-Ascii 'Go build ID: "x"') (New-Ascii 'InstallShield') (New-Pad 64)))
+        $zip = Track (Join-Path ([System.IO.Path]::GetTempPath()) ('pz_' + [guid]::NewGuid().ToString('N') + '.zip'))
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($dir, $zip)
+        Remove-Item $dir -Recurse -Force
+
+        $r = & $script:src -Path $zip -ProductName 'Portable Tool' -UninstallRoots $script:reg 6>$null
+        foreach ($id in 'silent-install', 'silent-uninstall', 'repair-strategy', 'exit-codes', 'installer-log', 'dependency-installer', 'runtime-prerequisite') {
+            ($r.Questions | Where-Object Id -eq $id).Status | Should -Be 'Closed' -Because "$id is owned by New-PortablePackage.ps1"
+        }
+        @($r.OpenQuestions | ForEach-Object Id) | Should -Be @('intune-pitfalls')
+        $r.AgentBudget | Should -Be 1
+    }
+}

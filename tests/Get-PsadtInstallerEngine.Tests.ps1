@@ -222,3 +222,59 @@ Describe 'identity strings come out trimmed (0.49.3)' {
         $r.Publisher | Should -BeExactly 'CPUID, Inc.'
     }
 }
+
+
+Describe 'Get-PsadtInstallerEngine: portable payloads (0.50.0)' {
+    # Terraform 1.16.5 (2026-10-13) was reported as installshield-installscript off ONE word in .rdata, and
+    # the research ladder budgeted three agents for an installer that does not exist. A Go build ID in the
+    # code sections names the binary as the application itself.
+    BeforeAll {
+        . "$PSScriptRoot/_helpers.ps1"
+        $script:src2 = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\Get-PsadtInstallerEngine.ps1')).ProviderPath
+        $script:made2 = New-Object System.Collections.Generic.List[string]
+    }
+    AfterAll { foreach ($p in $script:made2) { Remove-Item $p -Force -ErrorAction SilentlyContinue } }
+
+    It 'calls a Go program with only an installer HINT portable-binary, at high confidence' {
+        $p = New-TestPe -FirstSectionData (Join-Bytes (New-Ascii 'Go build ID: "abc/def"') (New-Pad 16) (New-Ascii 'InstallShield'))
+        $script:made2.Add($p)
+        $r = & $script:src2 -Path $p
+        $r.Engine | Should -Be 'portable-binary'
+        $r.Confidence | Should -Be 'high'
+        $r.IsGoBinary | Should -BeTrue
+        @($r.Evidence | Where-Object { $_.Marker -eq 'Go build ID' -and $_.Kind -eq 'definitive' }).Count | Should -Be 1
+    }
+
+    It 'still lets a DEFINITIVE installer marker win over a Go build ID' {
+        # A Go-built bootstrapper that really is an NSIS installer stays NSIS.
+        $p = New-TestPe -FirstSectionData (New-Ascii 'Go build ID: "x"') -Overlay (New-Blob 'NullsoftInst')
+        $script:made2.Add($p)
+        (& $script:src2 -Path $p).Engine | Should -Be 'nsis'
+    }
+
+    It 'ignores a Go build ID that sits in the overlay - that is payload, not the program' {
+        $p = New-TestPe -Overlay (New-Blob 'Go build ID: "x"')
+        $script:made2.Add($p)
+        $r = & $script:src2 -Path $p
+        $r.Engine | Should -Not -Be 'portable-binary'
+        $r.IsGoBinary | Should -BeFalse
+    }
+
+    It 'calls a plain ZIP zip-archive, lists its entries and finds the Go program inside' {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('zipsrc_' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        [System.IO.File]::WriteAllBytes((Join-Path $dir 'tool.exe'), (Join-Bytes (New-Pad 64) (New-Ascii 'Go build ID: "x"') (New-Pad 64)))
+        Set-Content -LiteralPath (Join-Path $dir 'LICENSE.txt') -Value 'license'
+        $zip = Join-Path ([System.IO.Path]::GetTempPath()) ('engine_' + [guid]::NewGuid().ToString('N') + '.zip')
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($dir, $zip)
+        Remove-Item $dir -Recurse -Force
+        $script:made2.Add($zip)
+
+        $r = & $script:src2 -Path $zip
+        $r.Engine | Should -Be 'zip-archive'
+        $r.Confidence | Should -Be 'high'
+        $r.ArchiveEntries | Should -Contain 'tool.exe'
+        $r.IsGoBinary | Should -BeTrue
+    }
+}

@@ -80,6 +80,19 @@
       "transparent": false,
       "note": "The app's own icon: a purple tile with a white chip, compared against the icon in the vendor's portable build. The tile IS the mark, so the corners are opaque by design and border-key must not be applied. Commons also has a 256 px PNG of the same mark - too small for the tile. The version resource pads the product name with trailing spaces; the lookup trims it, and the appKey matches across versions.",
       "verifiedAt": "2026-09-27"
+    },
+    {
+      "appKey": "hashicorp terraform",
+      "productName": "Terraform",
+      "publisher": "HashiCorp",
+      "source": "hashicorp-flight-icons",
+      "url": "https://cdn.jsdelivr.net/npm/@hashicorp/flight-icons@5.3.0/svg/terraform-color-24.svg",
+      "fetch": "svg-rasterize",
+      "postProcess": null,
+      "renderedSize": 1024,
+      "transparent": true,
+      "note": "HashiCorp's own product icon from their design system package (@hashicorp/flight-icons), the purple #7B42BC mark on a transparent ground. Wikimedia Commons only has the wide wordmark (Terraform Logo.svg, 512x123; Terraform-logo.png, 693x242), which shrinks to an unreadable strip in a square Intune tile. terraform.exe carries no icon resource, so there is no MSI/EXE fallback either.",
+      "verifiedAt": "2026-10-13"
     }
   ]
 }

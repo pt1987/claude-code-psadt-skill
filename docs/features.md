@@ -78,6 +78,11 @@ The app's **native installer is always the default**. Everything else is opt-in 
   Code Integrity - it would install and then not load. Unsigned is refused outright, with three honest
   options and no testsigning. Staging is per-INF `pnputil`; uninstall resolves `oemNN.inf` by original name
   instead of a remembered index.
+- **Portable payloads (a vendor ZIP or one binary)** - `New-PortablePackage.ps1`. Terraform, kubectl and
+  the like ship no installer, so the package owns all three deployment types: the ZIP stays byte-identical
+  to the vendor checksum, the machine PATH is edited without turning `REG_EXPAND_SZ` into `REG_SZ`, an own
+  ARP row carries a version floor for detection, a running CLI defers with 1618 instead of being killed,
+  and a smoke test runs the copied binary as SYSTEM.
 - **Script-only / remediation packages** - ESP-safe patterns for fix packages with no installer at all.
 
 ## Deliverables
@@ -122,5 +127,5 @@ The app's **native installer is always the default**. Everything else is opt-in 
 - **Self-update** - `scripts/Update-PsadtSkill.ps1` compares against GitHub, shows what changed, and
   updates in place on your confirmation (`git pull --ff-only` for a clone, otherwise a branch-zip overwrite
   of tracked files only). Machine-local state is never touched. Say *"psadt update"*.
-- **1194 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
+- **1224 Pester tests** over the helper scripts, including drift guards that fail when the docs and the code
   disagree - one of them reads the published landing page and compares its figures against the repository.

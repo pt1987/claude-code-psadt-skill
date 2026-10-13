@@ -25,7 +25,7 @@
   and the switch stays a CLAIM until a run proves it.
 .OUTPUTS
   PSCustomObject: Path, SizeBytes, Sha256, Engine, Confidence (high|low|unknown), Evidence
-  (Marker, Offset, Region, Kind)[], IsMsi, ProductName, ProductVersion, Publisher, FileDescription,
+  (Marker, Offset, Region, Kind)[], IsMsi, IsGoBinary, ArchiveEntries, ProductName, ProductVersion, Publisher, FileDescription,
   SectionNames, OverlayOffset, ScannedBytes, SignatureStatus, Signer
 .EXAMPLE
   Get-PsadtInstallerEngine.ps1 -Path .\Files\setup.exe
@@ -40,6 +40,9 @@
   Changelog:
     - 0.1 (2026-09-14, Patrick Taubert): first version. Region-aware fingerprinting for Appendix L.1,
       single-pass whole-file scan.
+    - 0.2 (2026-10-13, Patrick Taubert): portable payloads. A ZIP is engine 'zip-archive'; a Go program with
+      no definitive installer marker is 'portable-binary' (Terraform was reported as InstallShield off one
+      word in .rdata). New fields IsGoBinary + ArchiveEntries.
 #>
 [CmdletBinding()]
 param(
@@ -104,6 +107,10 @@ $extraNeedles = @(
     @{ Key = 'cfb'; Magic = [byte[]](0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1) }
     @{ Key = 'appxmanifest'; Text = 'AppxManifest.xml' }
     @{ Key = 'electron-builder'; Text = 'electron-builder' }
+    # The Go linker writes this into every binary it produces. It is what tells "an application that
+    # happens to mention InstallShield" from "an installer": Terraform 1.16.5 (2026-10-13) carries the
+    # word once in .rdata and was reported as installshield-installscript with an /s /f1 switch.
+    @{ Key = 'go-build-id'; Text = 'Go build ID: "' }
 )
 
 # ---------------------------------------------------------------------------------------------------
@@ -237,6 +244,46 @@ $evidence = New-Object System.Collections.Generic.List[object]
 $engine = 'unknown'
 $confidence = 'unknown'
 $isMsi = $false
+$isGoBinary = $false
+$archiveEntries = @()
+
+# Is this a Go program? Only a build ID in the CODE sections counts: an installer that carries a Go
+# helper as payload has it in the overlay, and that installer is still an installer.
+function Test-GoBuildId {
+    $goHits = @(Get-Hits 'go-build-id' | Where-Object { (Get-Region $_) -ne 'overlay' })
+    if ($goHits.Count -gt 0) { return $goHits[0] }
+    return $null
+}
+
+# A ZIP is not an installer, but the binary inside decides what the package needs (a Go program has
+# no runtime to stage). Bounded on purpose: entry names, and a build-ID scan of the first few EXEs.
+function Read-ZipPayload([string]$ZipPath) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $names = New-Object System.Collections.Generic.List[string]
+    $goEntries = New-Object System.Collections.Generic.List[string]
+    $needle = [System.Text.Encoding]::ASCII.GetBytes('Go build ID: "')
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $exeScanned = 0
+        foreach ($e in $zip.Entries) {
+            if ($names.Count -lt 200) { $names.Add($e.FullName) }
+            if ($e.FullName -notmatch '\.exe$' -or $exeScanned -ge 5) { continue }
+            $exeScanned++
+            # The build ID sits in the first section of a Go binary; 4 MB covers it with room to spare.
+            $buf = New-Object byte[] 4194304
+            $st = $e.Open()
+            try {
+                $n = 0
+                while ($n -lt $buf.Length) { $r = $st.Read($buf, $n, $buf.Length - $n); if ($r -le 0) { break }; $n += $r }
+            }
+            finally { $st.Dispose() }
+            $hay = $latin1.GetString($buf, 0, $n)
+            if ($hay.IndexOf($latin1.GetString($needle), [StringComparison]::Ordinal) -ge 0) { $goEntries.Add($e.FullName) }
+        }
+    }
+    finally { $zip.Dispose() }
+    return [pscustomobject]@{ Names = $names.ToArray(); GoEntries = $goEntries.ToArray() }
+}
 
 # --- Container formats decide on their own, before any marker ranking. -----------------------------
 $cfbHits = Get-Hits 'cfb'
@@ -254,6 +301,26 @@ elseif ($isZipAtStart -and $appxHits.Count -gt 0) {
     $engine = 'msix'
     $confidence = 'high'
     $evidence.Add([pscustomobject]@{ Marker = 'zip container + AppxManifest.xml'; Offset = $appxHits[0]; Region = (Get-Region $appxHits[0]); Kind = 'definitive' })
+}
+elseif ($isZipAtStart) {
+    # A plain archive: nothing in it runs as an installer, so the PACKAGE owns install, uninstall and
+    # repair (New-PortablePackage.ps1). Without this branch an archive fell through to the marker scan
+    # and could be named after whatever installer its compressed bytes happened to spell.
+    $engine = 'zip-archive'
+    $confidence = 'high'
+    $evidence.Add([pscustomobject]@{ Marker = 'zip local-file header 504B0304'; Offset = 0L; Region = 'headers'; Kind = 'definitive' })
+    try {
+        $payload = Read-ZipPayload $Path
+        $archiveEntries = @($payload.Names)
+        foreach ($g in $payload.GoEntries) {
+            $isGoBinary = $true
+            $evidence.Add([pscustomobject]@{ Marker = "Go build ID in $g"; Offset = 0L; Region = 'archive-entry'; Kind = 'definitive' })
+        }
+    }
+    catch {
+        # A damaged or encrypted archive still IS an archive; only the payload facts are missing.
+        $archiveEntries = @()
+    }
 }
 else {
     $matched = New-Object System.Collections.Generic.List[object]
@@ -286,6 +353,16 @@ else {
     if ($chosen) {
         $engine = $chosen.Engine
         $confidence = if ($chosen.Kind -eq 'definitive') { 'high' } else { 'low' }
+    }
+
+    # A compiled application is not an installer. When nothing DEFINITIVE matched and the code sections
+    # carry a Go build ID, the hints are words the program happens to contain - the binary IS the app.
+    $goOffset = Test-GoBuildId
+    if ($null -ne $goOffset) { $isGoBinary = $true }
+    if ($definitiveMatches.Count -eq 0 -and $null -ne $goOffset) {
+        $engine = 'portable-binary'
+        $confidence = 'high'
+        $evidence.Add([pscustomobject]@{ Marker = 'Go build ID'; Offset = $goOffset; Region = (Get-Region $goOffset); Kind = 'definitive' })
     }
 
     # --- Refinements that need a second look. ------------------------------------------------------
@@ -378,6 +455,10 @@ $result = [pscustomobject]@{
     Confidence      = $confidence
     Evidence        = $evidence.ToArray()
     IsMsi           = $isMsi
+    # Portable payloads (0.50.0): a Go program links its runtime statically, and an archive's entry
+    # names are what New-PortablePackage.ps1 copies. Both answer research questions without an agent.
+    IsGoBinary      = $isGoBinary
+    ArchiveEntries  = @($archiveEntries)
     ProductName     = Get-Identity 'ProductName'    $(if ($vi) { $vi.ProductName })
     ProductVersion  = Get-Identity 'ProductVersion' $(if ($vi) { $vi.ProductVersion })
     Publisher       = Get-Identity 'Manufacturer'   $(if ($vi) { $vi.CompanyName })

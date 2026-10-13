@@ -78,7 +78,7 @@ Thirteen phases, each owned by a script rather than by prose, so a step either p
 |---|---|---|
 | **0** Setup | 14 prerequisite checks, GREEN/YELLOW/RED, `-Fix` provisions | `Initialize-PsadtSkill.ps1` |
 | **1-2** Intake + research | blocker questions as clickable options; a local-evidence ladder (installed here? binary here? already written down?) answers what it can, and a research agent is dispatched only per question it leaves open | agent (gates 1-2) |
-| **3** Scaffold | a generator writes launcher + detection + per-run log name + manifest | `New-MsiPackage` · `New-ExePackage` · `New-BrowserExtensionPackage` · `New-WindowsFeaturePackage` · `New-DriverPackage` |
+| **3** Scaffold | a generator writes launcher + detection + per-run log name + manifest | `New-MsiPackage` · `New-ExePackage` · `New-PortablePackage` · `New-BrowserExtensionPackage` · `New-WindowsFeaturePackage` · `New-DriverPackage` |
 | **4** Customize | all three hooks filled from the research, helpers in the Extensions module | agent |
 | **5** Pre-flight | 14 checks (encoding, AST parse, v3 cmdlets, structure, detection contract, manifest, log name, driver trust …) → GREEN/RED | `Invoke-PsadtPreflight.ps1` |
 | **6** SYSTEM test | the whole loop in a throwaway Windows Sandbox, every action as **SYSTEM** like the IME does - no elevation, host untouched. **Binding before any upload** | `Invoke-PsadtSandboxTest.ps1` |
@@ -110,7 +110,7 @@ the same app from disagreeing about their own version.
 - **A dossier is produced every time**, uploaded or not: one self-contained bilingual HTML file with the
   return-code map, the detection rule, the hooks, the test results - and a ready-to-paste Company-Portal
   description.
-- **1194 Pester tests**, including drift guards that fail when the documentation and the code disagree -
+- **1224 Pester tests**, including drift guards that fail when the documentation and the code disagree -
   one of them reads the published landing page and compares its figures against this repository.
 
 ## Go deeper
@@ -128,7 +128,7 @@ the same app from disagreeing about their own version.
 ## Status
 
 In active use for the full build → package → test → dossier workflow, with the direct Graph upload
-verified against a live tenant. The helper scripts are covered by 1194 Pester tests.
+verified against a live tenant. The helper scripts are covered by 1224 Pester tests.
 
 One open point, honestly: **the driver `pnputil` exit-code semantics are documented, not verified here.**
 `0` / `259` / `3010` and the two `0xE...` failures come from Microsoft's documentation; confirming them
@@ -180,7 +180,16 @@ installed.
 **[CHANGELOG.md](CHANGELOG.md)** carries the complete history, every release since 0.1.0, and nothing is
 ever removed from it.
 
-Latest: **0.49.4 - The dossier speaks one language at a time.** An operator reading a real upload's
+Latest: **0.50.0 - Packages with no installer.** Terraform ships as a ZIP holding one Go binary, and the
+skill had no route for it: the research ladder named `terraform.exe` an InstallShield installer off one word
+in its data section and budgeted three agents. The engine probe now knows `zip-archive` and
+`portable-binary`, the ladder closes the package-owned questions itself (budget 3 -> 1), and
+`New-PortablePackage.ps1` generates the package: the vendor ZIP unchanged, a machine-PATH edit that keeps
+`REG_EXPAND_SZ`, an own ARP row with a version-floor detection, a 1618 defer instead of killing a running
+CLI, and a SYSTEM smoke test of the copied binary. Terraform 1.16.5 went GREEN through the full sandbox
+gate on the first run. Also fixed on the way: all three generators recorded an empty process list as `[null]`.
+
+Previously: **0.49.4 - The dossier speaks one language at a time.** An operator reading a real upload's
 dossier found German and English mixed, the assigned groups shown as GUIDs and a logo row that repeated
 the logo section; reading both language views end to end found twenty more. The German view is German
 now, return-code types, Intune field labels and SYSTEM-test results included. Groups are recorded and

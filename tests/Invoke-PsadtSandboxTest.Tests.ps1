@@ -949,3 +949,18 @@ Describe 'the sandbox tests the command line the package ships (0.49.2)' {
         { & $script:mScript -PackagePath $script:mPkg -GenerateOnly } | Should -Throw -ExpectedMessage '*package.installCommand*'
     }
 }
+
+
+Describe 'Invoke-PsadtSandboxTest: a list value in the positional DetectionScript slot (0.50.0)' {
+    # Terraform 1.16.5 (2026-10-13): two quoted paths after -PathsAbsentAfterUninstall under 'pwsh -File'
+    # bound the second one to -DetectionScript, and the error blamed the package.
+    It 'names the call, not the package' {
+        $pkg = Join-Path $TestDrive 'pkgDs'
+        New-Item -ItemType Directory -Path $pkg -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $pkg 'Invoke-AppDeployToolkit.ps1') -Value '# x'
+        Set-Content -LiteralPath (Join-Path $pkg 'Invoke-AppDeployToolkit.exe') -Value 'x'
+        $src = Join-Path $PSScriptRoot '..\scripts\Invoke-PsadtSandboxTest.ps1'
+        { & $src -PackagePath $pkg -DetectionScript 'C:\Program Files\HashiCorp' } |
+            Should -Throw -ExpectedMessage '*ONE comma-separated string*'
+    }
+}
